@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Categoria, Produto } from "@/types/db";
@@ -14,13 +14,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Upload, X } from "lucide-react";
 
 const schema = z.object({
   nome: z.string().trim().min(2, "Nome muito curto").max(80),
   descricao: z.string().trim().max(300).optional().or(z.literal("")),
   preco: z.number().min(0, "Preço inválido").max(9999),
   categoria_id: z.string().uuid().nullable(),
-  imagem_url: z.string().trim().url("URL inválida").max(500).optional().or(z.literal("")),
+  imagem_url: z.string().trim().max(500).optional().or(z.literal("")),
   disponivel: z.boolean(),
   promocao: z.boolean(),
   preco_promocional: z.number().min(0).max(9999).nullable(),
@@ -45,6 +46,27 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
   const [promocao, setPromocao] = useState(false);
   const [precoPromo, setPrecoPromo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Selecione uma imagem válida");
+    if (file.size > 2 * 1024 * 1024) return toast.error("Imagem deve ter no máximo 2MB");
+
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `produtos/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("loja").upload(path, file, { upsert: true });
+    setUploading(false);
+
+    if (error) return toast.error("Erro ao fazer upload: " + error.message);
+
+    const { data } = supabase.storage.from("loja").getPublicUrl(path);
+    setImagemUrl(data.publicUrl);
+    toast.success("Imagem enviada!");
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -132,15 +154,51 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="p-img">Imagem (URL)</Label>
-            <Input id="p-img" value={imagemUrl} onChange={(e) => setImagemUrl(e.target.value)} maxLength={500} placeholder="https://..." />
-            {imagemUrl && (
-              <img
-                src={imagemUrl}
-                alt="Pré-visualização"
-                className="mt-2 h-24 w-24 object-cover rounded-md border"
-                onError={(e) => ((e.currentTarget.style.display = "none"))}
+            <Label>Imagem</Label>
+            <div className="flex gap-2">
+              <Input
+                id="p-img"
+                value={imagemUrl}
+                onChange={(e) => setImagemUrl(e.target.value)}
+                maxLength={500}
+                placeholder="https://... ou envie um arquivo"
+                className="flex-1"
               />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                title="Enviar imagem do computador"
+              >
+                <Upload className="w-4 h-4" />
+              </Button>
+            </div>
+            {uploading && <p className="text-xs text-muted-foreground">Enviando imagem...</p>}
+            {imagemUrl && (
+              <div className="relative w-fit">
+                <img
+                  src={imagemUrl}
+                  alt="Pré-visualização"
+                  className="mt-2 h-24 w-24 object-cover rounded-md border"
+                  onError={(e) => ((e.currentTarget.style.display = "none"))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setImagemUrl("")}
+                  className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             )}
           </div>
 

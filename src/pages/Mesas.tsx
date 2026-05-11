@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Utensils } from "lucide-react";
+import { Utensils, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Mesa } from "@/types/db";
 import MesaCard from "@/components/mesas/MesaCard";
 import AbrirContaDialog from "@/components/mesas/AbrirContaDialog";
 import ContaSheet from "@/components/mesas/ContaSheet";
+import NovaMesaDialog from "@/components/mesas/NovaMesaDialog";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 export default function Mesas() {
@@ -12,6 +14,7 @@ export default function Mesas() {
   const [loading, setLoading] = useState(true);
   const [mesaAbrir, setMesaAbrir] = useState<Mesa | null>(null);
   const [mesaConta, setMesaConta] = useState<Mesa | null>(null);
+  const [showNovaMesa, setShowNovaMesa] = useState(false);
 
   const load = async () => {
     const { data, error } = await supabase.from("mesas").select("*").order("numero");
@@ -49,10 +52,16 @@ export default function Mesas() {
           </h1>
           <p className="text-muted-foreground mt-1">Visão em tempo real do salão</p>
         </div>
-        <div className="flex gap-3 text-sm">
-          <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-status-livre" />{counts.livre} livres</span>
-          <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-status-ocupada" />{counts.ocupada} ocupadas</span>
-          <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-status-pagamento" />{counts.pagamento} pagamento</span>
+        <div className="flex gap-3 flex-col sm:flex-row sm:items-center">
+          <div className="flex gap-3 text-sm">
+            <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-status-livre" />{counts.livre} livres</span>
+            <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-status-ocupada" />{counts.ocupada} ocupadas</span>
+            <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-status-pagamento" />{counts.pagamento} pagamento</span>
+          </div>
+          <Button onClick={() => setShowNovaMesa(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Nova Mesa
+          </Button>
         </div>
       </div>
 
@@ -74,6 +83,11 @@ export default function Mesas() {
         onOpened={() => { const m = mesaAbrir; setMesaAbrir(null); if (m) setMesaConta({ ...m, status: "ocupada" }); }}
       />
       <ContaSheet mesa={mesaConta} onClose={() => setMesaConta(null)} />
+      <NovaMesaDialog 
+        open={showNovaMesa}
+        onClose={() => setShowNovaMesa(false)}
+        onCreated={() => load()}
+      />
     </div>
   );
 }

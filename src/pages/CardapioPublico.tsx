@@ -242,14 +242,21 @@ export default function CardapioPublico() {
 
       {/* HEADER / BANNER */}
       <header className="relative">
-        <div
-          className="h-48 sm:h-64 md:h-72 bg-cover bg-center relative"
-          style={{
-            backgroundImage: cfg.banner_url
-              ? `url(${cfg.banner_url})`
-              : `linear-gradient(135deg, ${cfg.cor_primaria}, ${cfg.cor_primaria}99)`,
-          }}
-        >
+        <div className="relative h-48 sm:h-64 md:h-72 overflow-hidden">
+          {cfg.banner_url ? (
+            <img
+              src={cfg.banner_url}
+              alt="Banner"
+              className="w-full h-full object-cover object-center"
+            />
+          ) : (
+            <div
+              className="w-full h-full"
+              style={{
+                background: `linear-gradient(135deg, ${cfg.cor_primaria}, ${cfg.cor_primaria}99)`,
+              }}
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/10 to-black/60" />
           {/* theme toggle */}
           <button

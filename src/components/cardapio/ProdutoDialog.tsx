@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { Categoria, Produto } from "@/types/db";
+import { Categoria, GrupoAdicional, Produto, ProdutoGrupoAdicional } from "@/types/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +47,10 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
   const [precoPromo, setPrecoPromo] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [grupos, setGrupos] = useState<GrupoAdicional[]>([]);
+  const [gruposVinculados, setGruposVinculados] = useState<ProdutoGrupoAdicional[]>([]);
+  const [novoGrupoId, setNovoGrupoId] = useState<string>("__none");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,6 +83,89 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
     setPromocao(produto?.promocao ?? false);
     setPrecoPromo(produto?.preco_promocional != null ? String(produto.preco_promocional) : "");
   }, [open, produto, defaultCategoriaId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    (async () => {
+      const { data: gs } = await supabase
+        .from("grupos_adicionais")
+        .select("*")
+        .order("ordem", { ascending: true })
+        .order("nome", { ascending: true });
+      setGrupos((gs || []) as GrupoAdicional[]);
+
+      if (!produto) {
+        setGruposVinculados([]);
+        return;
+      }
+
+      const { data: vinculos } = await supabase
+        .from("produto_grupos_adicionais")
+        .select("*")
+        .eq("produto_id", produto.id)
+        .order("ordem", { ascending: true });
+      setGruposVinculados((vinculos || []) as ProdutoGrupoAdicional[]);
+    })();
+  }, [open, produto]);
+
+  const persistOrdemVinculos = async (next: ProdutoGrupoAdicional[]) => {
+    const updates = next.map((item, idx) =>
+      supabase.from("produto_grupos_adicionais").update({ ordem: idx }).eq("id", item.id)
+    );
+    const results = await Promise.all(updates);
+    const erro = results.find((res) => res.error)?.error;
+    if (erro) toast.error(erro.message);
+  };
+
+  const vincularGrupo = async () => {
+    if (!produto || novoGrupoId === "__none") return;
+
+    const { error } = await supabase.from("produto_grupos_adicionais").insert({
+      produto_id: produto.id,
+      grupo_id: novoGrupoId,
+      ordem: gruposVinculados.length,
+    });
+
+    if (error) return toast.error(error.message);
+
+    const { data: vinculos } = await supabase
+      .from("produto_grupos_adicionais")
+      .select("*")
+      .eq("produto_id", produto.id)
+      .order("ordem", { ascending: true });
+    setGruposVinculados((vinculos || []) as ProdutoGrupoAdicional[]);
+    setNovoGrupoId("__none");
+  };
+
+  const desvincularGrupo = async (vinculoId: string) => {
+    const { error } = await supabase.from("produto_grupos_adicionais").delete().eq("id", vinculoId);
+    if (error) return toast.error(error.message);
+
+    const next = gruposVinculados
+      .filter((item) => item.id !== vinculoId)
+      .map((item, idx) => ({ ...item, ordem: idx }));
+
+    setGruposVinculados(next);
+    await persistOrdemVinculos(next);
+  };
+
+  const handleDropGrupo = async (targetId: string) => {
+    if (!draggingId || draggingId === targetId) return;
+
+    const sourceIndex = gruposVinculados.findIndex((item) => item.id === draggingId);
+    const targetIndex = gruposVinculados.findIndex((item) => item.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const next = [...gruposVinculados];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    const normalized = next.map((item, idx) => ({ ...item, ordem: idx }));
+
+    setGruposVinculados(normalized);
+    await persistOrdemVinculos(normalized);
+    setDraggingId(null);
+  };
 
   const save = async () => {
     const parsed = schema.safeParse({
@@ -223,6 +310,68 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
                 <Label htmlFor="p-pp">Preço promocional (R$)</Label>
                 <Input id="p-pp" type="number" min={0} step="0.10" value={precoPromo} onChange={(e) => setPrecoPromo(e.target.value)} />
               </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border p-3 space-y-3">
+            <div>
+              <Label className="cursor-default">Grupos de adicionais</Label>
+              <p className="text-xs text-muted-foreground">Arraste para reordenar a ordem das etapas do modal</p>
+            </div>
+
+            {!produto ? (
+              <p className="text-xs text-muted-foreground">Salve o produto para vincular grupos de adicionais.</p>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <Select value={novoGrupoId} onValueChange={setNovoGrupoId}>
+                    <SelectTrigger><SelectValue placeholder="Vincular grupo" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">Selecionar grupo</SelectItem>
+                      {grupos
+                        .filter((g) => !gruposVinculados.some((v) => v.grupo_id === g.id))
+                        .map((g) => (
+                          <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" onClick={vincularGrupo}>Vincular</Button>
+                </div>
+
+                <div className="space-y-2">
+                  {gruposVinculados.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum grupo vinculado.</p>
+                  ) : (
+                    gruposVinculados.map((vinculo) => {
+                      const grupo = grupos.find((g) => g.id === vinculo.grupo_id);
+                      return (
+                        <div
+                          key={vinculo.id}
+                          draggable
+                          onDragStart={() => setDraggingId(vinculo.id)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => handleDropGrupo(vinculo.id)}
+                          className="rounded-md border p-2 flex items-center justify-between gap-2 cursor-move"
+                        >
+                          <div>
+                            <div className="text-sm font-medium">{grupo?.nome || "Grupo removido"}</div>
+                            <div className="text-xs text-muted-foreground">Ordem {vinculo.ordem + 1}</div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="hover:text-destructive"
+                            onClick={() => desvincularGrupo(vinculo.id)}
+                          >
+                            Desvincular
+                          </Button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>

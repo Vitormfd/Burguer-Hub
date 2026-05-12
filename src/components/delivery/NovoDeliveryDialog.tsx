@@ -26,7 +26,7 @@ interface Props {
 }
 
 export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) {
-  const [cart, setCart] = useState<Cart>({});
+  const [cart, setCart] = useState<Cart>([]);
   const [nome, setNome] = useState("");
   const [tel, setTel] = useState("");
   const [endereco, setEndereco] = useState("");
@@ -35,14 +35,14 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [busy, setBusy] = useState(false);
 
   const reset = () => {
-    setCart({}); setNome(""); setTel(""); setEndereco(""); setBairro(""); setTaxa("0");
+    setCart([]); setNome(""); setTel(""); setEndereco(""); setBairro(""); setTaxa("0");
   };
 
   const taxaNum = Number(taxa.replace(",", ".")) || 0;
   const subtotal = cartSubtotal(cart);
 
   const handleConfirm = async () => {
-    const items = Object.values(cart);
+    const items = cart;
     if (!items.length) return toast.error("Adicione pelo menos um item");
 
     const parsed = deliverySchema.safeParse({
@@ -67,11 +67,25 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
       pedido_id: pedido.id,
       produto_id: i.produto.id,
       quantidade: i.quantidade,
-      preco_unitario: Number(i.produto.preco),
+      preco_unitario: i.precoUnit,
       observacao: i.observacao || null,
     }));
-    const { error: e2 } = await supabase.from("pedido_itens").insert(rows);
+    const { data: insertedItems, error: e2 } = await supabase.from("pedido_itens").insert(rows).select("id");
     if (e2) { setBusy(false); return toast.error(e2.message); }
+
+    const adicionaisRows = items.flatMap((item, idx) =>
+      item.adicionais.map((adicional) => ({
+        pedido_item_id: insertedItems?.[idx]?.id,
+        adicional_id: adicional.adicionalId,
+        quantidade: adicional.quantidade,
+        preco_unitario: adicional.precoUnitario,
+      }))
+    ).filter((row) => !!row.pedido_item_id);
+
+    if (adicionaisRows.length) {
+      const { error: eAdd } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
+      if (eAdd) { setBusy(false); return toast.error(eAdd.message); }
+    }
 
     // 3. Entrega
     const { error: e3 } = await supabase.from("entregas").insert({

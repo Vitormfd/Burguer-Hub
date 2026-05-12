@@ -15,13 +15,13 @@ interface Props {
 }
 
 export default function NovoPedidoDialog({ open, contaId, onClose, onCreated }: Props) {
-  const [cart, setCart] = useState<Cart>({});
+  const [cart, setCart] = useState<Cart>([]);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (open) setCart({}); }, [open]);
+  useEffect(() => { if (open) setCart([]); }, [open]);
 
   const handleConfirm = async () => {
-    const items = Object.values(cart);
+    const items = cart;
     if (!items.length) return toast.error("Adicione pelo menos um item");
 
     setBusy(true);
@@ -35,12 +35,26 @@ export default function NovoPedidoDialog({ open, contaId, onClose, onCreated }: 
       pedido_id: pedido.id,
       produto_id: i.produto.id,
       quantidade: i.quantidade,
-      preco_unitario: Number(i.produto.preco),
+      preco_unitario: i.precoUnit,
       observacao: i.observacao || null,
     }));
-    const { error: e2 } = await supabase.from("pedido_itens").insert(rows);
+    const { data: insertedItems, error: e2 } = await supabase.from("pedido_itens").insert(rows).select("id");
     setBusy(false);
     if (e2) return toast.error(e2.message);
+
+    const adicionaisRows = items.flatMap((item, idx) =>
+      item.adicionais.map((adicional) => ({
+        pedido_item_id: insertedItems?.[idx]?.id,
+        adicional_id: adicional.adicionalId,
+        quantidade: adicional.quantidade,
+        preco_unitario: adicional.precoUnitario,
+      }))
+    ).filter((row) => !!row.pedido_item_id);
+
+    if (adicionaisRows.length) {
+      const { error: e3 } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
+      if (e3) return toast.error(e3.message);
+    }
 
     toast.success("Pedido enviado para a cozinha");
     onCreated();
@@ -57,8 +71,8 @@ export default function NovoPedidoDialog({ open, contaId, onClose, onCreated }: 
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={handleConfirm} disabled={busy || !Object.keys(cart).length} size="lg">
-            {busy ? "Enviando..." : `Enviar (${Object.values(cart).reduce((s, i) => s + i.quantidade, 0)} itens)`}
+          <Button onClick={handleConfirm} disabled={busy || !cart.length} size="lg">
+            {busy ? "Enviando..." : `Enviar (${cart.reduce((s, i) => s + i.quantidade, 0)} itens)`}
           </Button>
         </div>
         <span className="hidden">{cartSubtotal(cart)}</span>

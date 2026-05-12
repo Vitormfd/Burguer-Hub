@@ -18,13 +18,8 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import type { BairroTaxa, Categoria, Configuracao, Produto } from "@/types/db";
-
-interface CartItem {
-  produto: Produto;
-  quantidade: number;
-  observacao: string;
-  precoUnit: number;
-}
+import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
+import type { CartItem } from "@/components/cardapio/cartTypes";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
@@ -61,8 +56,6 @@ export default function CardapioPublico() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const [adicionando, setAdicionando] = useState<Produto | null>(null);
-  const [qtd, setQtd] = useState(1);
-  const [obs, setObs] = useState("");
 
   const [activeCat, setActiveCat] = useState<string>("");
   const [theme, setTheme] = useState<"light" | "dark">(() =>
@@ -142,17 +135,7 @@ export default function CardapioPublico() {
 
   const promocoes = useMemo(() => produtos.filter((p) => p.promocao), [produtos]);
 
-  const openAdd = (p: Produto) => { setAdicionando(p); setQtd(1); setObs(""); };
-  const confirmAdd = () => {
-    if (!adicionando) return;
-    setCart((prev) => [...prev, {
-      produto: adicionando,
-      quantidade: qtd,
-      observacao: obs.slice(0, 200),
-      precoUnit: precoEfetivo(adicionando),
-    }]);
-    setAdicionando(null);
-  };
+  const openAdd = (p: Produto) => setAdicionando(p);
   const removeItem = (idx: number) => setCart((prev) => prev.filter((_, i) => i !== idx));
   const updateQty = (idx: number, delta: number) =>
     setCart((prev) => prev.map((it, i) => i === idx ? { ...it, quantidade: Math.max(1, it.quantidade + delta) } : it));
@@ -189,8 +172,24 @@ export default function CardapioPublico() {
       preco_unitario: i.precoUnit,
       observacao: i.observacao || null,
     }));
-    const { error: e2 } = await supabase.from("pedido_itens").insert(itensRows);
+    const { data: insertedItens, error: e2 } = await supabase.from("pedido_itens").insert(itensRows).select("id");
     if (e2) { setBusy(false); return toast.error(e2.message); }
+
+    const adicionaisRows = cart
+      .flatMap((item, idx) =>
+        item.adicionais.map((adicional) => ({
+          pedido_item_id: insertedItens?.[idx]?.id,
+          adicional_id: adicional.adicionalId,
+          quantidade: adicional.quantidade,
+          preco_unitario: adicional.precoUnitario,
+        }))
+      )
+      .filter((row) => !!row.pedido_item_id);
+
+    if (adicionaisRows.length) {
+      const { error: eAdd } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
+      if (eAdd) { setBusy(false); return toast.error(eAdd.message); }
+    }
 
     const enderecoFull = `${endereco}, ${numero}${complemento ? ` - ${complemento}` : ""}`;
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
@@ -428,14 +427,21 @@ export default function CardapioPublico() {
         {categorias.map((c) => {
           const itens = produtos.filter((p) => p.categoria_id === c.id);
           if (!itens.length) return null;
+          const isDestaque = c.destaque || c.nome.toLowerCase().includes("lanche");
           return (
             <section
               key={c.id}
               ref={(el) => (sectionRefs.current[c.id] = el)}
-              className="scroll-mt-32"
+              className={cn(
+                "scroll-mt-32",
+                isDestaque && "rounded-2xl border p-4 md:p-5",
+                isDestaque && (isDark ? "bg-zinc-900/50" : "bg-primary/5")
+              )}
+              style={isDestaque ? { borderColor: cfg.cor_primaria } : undefined}
             >
               <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                {c.icone && <span>{c.icone}</span>} {c.nome}
+                {(c.emoji || c.icone) && <span>{c.emoji || c.icone}</span>} {c.nome}
+                {isDestaque && <Badge className="bg-amber-500 text-black">⭐ Destaques</Badge>}
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {itens.map((p) => {
@@ -475,7 +481,7 @@ export default function CardapioPublico() {
                           <span className="text-lg font-bold brand-text">{brl(preco)}</span>
                         </div>
                       </div>
-                      <div className="relative w-[40%] shrink-0 bg-zinc-100 dark:bg-zinc-800">
+                      <div className={cn("relative shrink-0 bg-zinc-100 dark:bg-zinc-800", isDestaque ? "w-[50%]" : "w-[40%]")}>
                         {p.imagem_url ? (
                           <img src={p.imagem_url} alt={p.nome} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
                         ) : (
@@ -522,50 +528,14 @@ export default function CardapioPublico() {
         </button>
       )}
 
-      {/* MODAL PRODUTO */}
-      <Dialog open={!!adicionando} onOpenChange={(o) => !o && setAdicionando(null)}>
-        <DialogContent className="max-w-md p-0 overflow-hidden">
-          {adicionando?.imagem_url && (
-            <div className="h-56 -mt-0">
-              <img src={adicionando.imagem_url} alt={adicionando.nome} className="w-full h-full object-cover" />
-            </div>
-          )}
-          <div className="p-6 space-y-4">
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-bold">{adicionando?.nome}</DialogTitle>
-            </DialogHeader>
-            {adicionando?.descricao && (
-              <p className="text-sm text-muted-foreground">{adicionando.descricao}</p>
-            )}
-            <div className="flex items-end gap-2">
-              {adicionando && adicionando.promocao && adicionando.preco_promocional != null && (
-                <span className="text-sm line-through text-muted-foreground">{brl(Number(adicionando.preco))}</span>
-              )}
-              <span className="text-2xl font-bold brand-text">
-                {brl(adicionando ? precoEfetivo(adicionando) : 0)}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 border-t pt-4">
-              <Label className="flex-1 font-semibold">Quantidade</Label>
-              <Button size="icon" variant="outline" onClick={() => setQtd((v) => Math.max(1, v - 1))}><Minus className="w-4 h-4" /></Button>
-              <span className="text-2xl font-bold w-10 text-center">{qtd}</span>
-              <Button size="icon" variant="outline" onClick={() => setQtd((v) => v + 1)}><Plus className="w-4 h-4" /></Button>
-            </div>
-            <div className="space-y-2">
-              <Label>Alguma observação?</Label>
-              <Textarea value={obs} onChange={(e) => setObs(e.target.value)} maxLength={200} placeholder="Sem cebola, ponto da carne..." />
-            </div>
-            <Button
-              onClick={confirmAdd}
-              size="lg"
-              className="w-full text-white hover:opacity-90 font-bold"
-              style={{ background: cfg.cor_primaria }}
-            >
-              Adicionar — {brl((adicionando ? precoEfetivo(adicionando) : 0) * qtd)}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ProdutoCascadeDialog
+        open={!!adicionando}
+        produto={adicionando}
+        onClose={() => setAdicionando(null)}
+        onConfirm={(item) => setCart((prev) => [...prev, item])}
+        priceResolver={precoEfetivo}
+        color={cfg.cor_primaria}
+      />
 
       {/* CHECKOUT */}
       <Sheet open={checkoutOpen} onOpenChange={setCheckoutOpen}>
@@ -591,6 +561,15 @@ export default function CardapioPublico() {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+                  {i.adicionais.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {i.adicionais.map((adicional) => (
+                        <p key={`${i.id}-${adicional.adicionalId}`} className="text-[11px] text-muted-foreground truncate">
+                          + {adicional.grupoNome}: {adicional.adicionalNome}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   {i.observacao && <p className="text-xs text-muted-foreground mt-0.5 truncate">↳ {i.observacao}</p>}
                   <div className="flex items-center justify-between mt-1">
                     <div className="flex items-center gap-1">

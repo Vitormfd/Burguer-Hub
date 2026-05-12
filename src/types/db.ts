@@ -14,6 +14,8 @@ export interface Categoria {
   nome: string;
   ativo: boolean;
   icone?: string | null;
+  destaque?: boolean;
+  emoji?: string | null;
 }
 
 export interface Produto {
@@ -52,6 +54,42 @@ export interface PedidoItem {
   quantidade: number;
   preco_unitario: number;
   observacao: string | null;
+}
+
+export interface GrupoAdicional {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  obrigatorio: boolean;
+  min_escolhas: number;
+  max_escolhas: number;
+  ordem: number;
+  disponivel: boolean;
+}
+
+export interface Adicional {
+  id: string;
+  grupo_id: string;
+  nome: string;
+  preco: number;
+  disponivel: boolean;
+  imagem_url: string | null;
+  ordem: number;
+}
+
+export interface ProdutoGrupoAdicional {
+  id: string;
+  produto_id: string;
+  grupo_id: string;
+  ordem: number;
+}
+
+export interface PedidoItemAdicional {
+  id: string;
+  pedido_item_id: string;
+  adicional_id: string;
+  quantidade: number;
+  preco_unitario: number;
 }
 
 export interface Configuracao {

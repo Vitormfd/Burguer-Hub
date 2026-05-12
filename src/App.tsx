@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Mesas from "./pages/Mesas";
 import Delivery from "./pages/Delivery";
 import Cardapio from "./pages/Cardapio";
+import AdicionaisAdmin from "./pages/AdicionaisAdmin";
 import Cozinha from "./pages/Cozinha";
 import Relatorios from "./pages/Relatorios";
 import Configuracoes from "./pages/Configuracoes";
@@ -33,6 +34,7 @@ const App = () => (
               <Route path="/mesas" element={<Mesas />} />
               <Route path="/delivery" element={<Delivery />} />
               <Route path="/admin/cardapio" element={<Cardapio />} />
+              <Route path="/admin/adicionais" element={<AdicionaisAdmin />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>

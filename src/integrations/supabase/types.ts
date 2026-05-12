@@ -38,10 +38,53 @@ export type Database = {
         }
         Relationships: []
       }
+      adicionais: {
+        Row: {
+          created_at: string
+          disponivel: boolean
+          grupo_id: string
+          id: string
+          imagem_url: string | null
+          nome: string
+          ordem: number
+          preco: number
+        }
+        Insert: {
+          created_at?: string
+          disponivel?: boolean
+          grupo_id: string
+          id?: string
+          imagem_url?: string | null
+          nome: string
+          ordem?: number
+          preco?: number
+        }
+        Update: {
+          created_at?: string
+          disponivel?: boolean
+          grupo_id?: string
+          id?: string
+          imagem_url?: string | null
+          nome?: string
+          ordem?: number
+          preco?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adicionais_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_adicionais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categorias: {
         Row: {
           ativo: boolean
           created_at: string
+          destaque: boolean
+          emoji: string | null
           icone: string | null
           id: string
           nome: string
@@ -49,6 +92,8 @@ export type Database = {
         Insert: {
           ativo?: boolean
           created_at?: string
+          destaque?: boolean
+          emoji?: string | null
           icone?: string | null
           id?: string
           nome: string
@@ -56,6 +101,8 @@ export type Database = {
         Update: {
           ativo?: boolean
           created_at?: string
+          destaque?: boolean
+          emoji?: string | null
           icone?: string | null
           id?: string
           nome?: string
@@ -201,6 +248,42 @@ export type Database = {
           },
         ]
       }
+      grupos_adicionais: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          disponivel: boolean
+          id: string
+          max_escolhas: number
+          min_escolhas: number
+          nome: string
+          obrigatorio: boolean
+          ordem: number
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          disponivel?: boolean
+          id?: string
+          max_escolhas?: number
+          min_escolhas?: number
+          nome: string
+          obrigatorio?: boolean
+          ordem?: number
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          disponivel?: boolean
+          id?: string
+          max_escolhas?: number
+          min_escolhas?: number
+          nome?: string
+          obrigatorio?: boolean
+          ordem?: number
+        }
+        Relationships: []
+      }
       mesas: {
         Row: {
           created_at: string
@@ -221,6 +304,48 @@ export type Database = {
           status?: Database["public"]["Enums"]["mesa_status"]
         }
         Relationships: []
+      }
+      pedido_item_adicionais: {
+        Row: {
+          adicional_id: string
+          created_at: string
+          id: string
+          pedido_item_id: string
+          preco_unitario: number
+          quantidade: number
+        }
+        Insert: {
+          adicional_id: string
+          created_at?: string
+          id?: string
+          pedido_item_id: string
+          preco_unitario?: number
+          quantidade?: number
+        }
+        Update: {
+          adicional_id?: string
+          created_at?: string
+          id?: string
+          pedido_item_id?: string
+          preco_unitario?: number
+          quantidade?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pedido_item_adicionais_adicional_id_fkey"
+            columns: ["adicional_id"]
+            isOneToOne: false
+            referencedRelation: "adicionais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pedido_item_adicionais_pedido_item_id_fkey"
+            columns: ["pedido_item_id"]
+            isOneToOne: false
+            referencedRelation: "pedido_itens"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pedido_itens: {
         Row: {
@@ -292,6 +417,45 @@ export type Database = {
             columns: ["conta_id"]
             isOneToOne: false
             referencedRelation: "contas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      produto_grupos_adicionais: {
+        Row: {
+          created_at: string
+          grupo_id: string
+          id: string
+          ordem: number
+          produto_id: string
+        }
+        Insert: {
+          created_at?: string
+          grupo_id: string
+          id?: string
+          ordem?: number
+          produto_id: string
+        }
+        Update: {
+          created_at?: string
+          grupo_id?: string
+          id?: string
+          ordem?: number
+          produto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produto_grupos_adicionais_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_adicionais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "produto_grupos_adicionais_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
             referencedColumns: ["id"]
           },
         ]

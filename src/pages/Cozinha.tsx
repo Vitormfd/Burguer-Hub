@@ -154,7 +154,12 @@ export default function Cozinha() {
 
   const advance = async (c: KdsCard, next: Status) => {
     const { error } = await supabase.from("pedidos").update({ status: next }).eq("id", c.pedido_id);
-    if (error) toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    // Recarregar imediatamente após sucesso (garante atualização visual mesmo sem realtime)
+    await load();
   };
 
   const counts = useMemo(() => ({

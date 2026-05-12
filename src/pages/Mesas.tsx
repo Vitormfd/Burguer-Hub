@@ -81,8 +81,13 @@ export default function Mesas() {
         mesa={mesaAbrir}
         onClose={() => setMesaAbrir(null)}
         onOpened={() => { const m = mesaAbrir; setMesaAbrir(null); if (m) setMesaConta({ ...m, status: "ocupada" }); }}
+        onMesaUpdated={() => load()}
       />
-      <ContaSheet mesa={mesaConta} onClose={() => setMesaConta(null)} />
+      <ContaSheet 
+        mesa={mesaConta} 
+        onClose={() => setMesaConta(null)}
+        onClosed={() => { setMesaConta(null); load(); }}
+      />
       <NovaMesaDialog 
         open={showNovaMesa}
         onClose={() => setShowNovaMesa(false)}

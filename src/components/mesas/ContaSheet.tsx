@@ -27,7 +27,7 @@ const statusLabel: Record<Pedido["status"], { label: string; variant: "default" 
   entregue: { label: "Entregue", variant: "default" },
 };
 
-export default function ContaSheet({ mesa, onClose }: { mesa: Mesa | null; onClose: () => void }) {
+export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | null; onClose: () => void; onClosed?: () => void }) {
   const [conta, setConta] = useState<Conta | null>(null);
   const [pedidos, setPedidos] = useState<PedidoComItens[]>([]);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -102,6 +102,8 @@ export default function ContaSheet({ mesa, onClose }: { mesa: Mesa | null; onClo
     toast.success(`Mesa ${mesa.numero} fechada — ${brl(total)}`);
     setConfirmFechar(false);
     onClose();
+    // Recarrega mesas após sucesso
+    onClosed?.();
   };
 
   return (

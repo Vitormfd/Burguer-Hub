@@ -95,8 +95,13 @@ export default function Delivery() {
     if (!cfg.next) return;
     const { error } = await supabase
       .from("entregas").update({ status: cfg.next }).eq("id", row.entrega_id);
-    if (error) toast.error(error.message);
-    else toast.success(`Entrega: ${statusCfg[cfg.next].label}`);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(`Entrega: ${statusCfg[cfg.next].label}`);
+    // Recarregar imediatamente para garantir atualização visual
+    await load();
   };
 
   const counts = {

@@ -11,9 +11,10 @@ interface Props {
   mesa: Mesa | null;
   onClose: () => void;
   onOpened: () => void;
+  onMesaUpdated?: () => void;
 }
 
-export default function AbrirContaDialog({ mesa, onClose, onOpened }: Props) {
+export default function AbrirContaDialog({ mesa, onClose, onOpened, onMesaUpdated }: Props) {
   const [busy, setBusy] = useState(false);
 
   const handleConfirm = async () => {
@@ -33,6 +34,7 @@ export default function AbrirContaDialog({ mesa, onClose, onOpened }: Props) {
     if (e2) return toast.error(e2.message);
     toast.success(`Mesa ${mesa.numero} aberta`);
     onOpened();
+    onMesaUpdated?.();
   };
 
   return (

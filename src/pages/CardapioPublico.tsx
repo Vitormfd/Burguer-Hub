@@ -134,6 +134,28 @@ export default function CardapioPublico() {
   const total = subtotal + Number(taxa);
 
   const promocoes = useMemo(() => produtos.filter((p) => p.promocao), [produtos]);
+  const destaquesProdutos = useMemo(() => produtos.filter((p) => p.destaque), [produtos]);
+  const categoriaById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
+
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const isHamburger = (produto: Produto | null) => {
+    if (!produto) return false;
+    const categoria = produto.categoria_id ? categoriaById.get(produto.categoria_id) : null;
+    const categoriaNome = normalize(categoria?.nome || "");
+    const produtoNome = normalize(produto.nome || "");
+    return (
+      categoriaNome.includes("lanche") ||
+      categoriaNome.includes("hamburg") ||
+      categoriaNome.includes("burger") ||
+      produtoNome.includes("hamburg") ||
+      produtoNome.includes("burger")
+    );
+  };
 
   const openAdd = (p: Produto) => setAdicionando(p);
   const removeItem = (idx: number) => setCart((prev) => prev.filter((_, i) => i !== idx));
@@ -423,10 +445,75 @@ export default function CardapioPublico() {
           </section>
         )}
 
+        {/* DESTAQUES MANUAIS */}
+        {destaquesProdutos.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                ⭐ Destaques
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {destaquesProdutos.map((p) => {
+                const isPromo = p.promocao && p.preco_promocional != null;
+                const preco = isPromo ? Number(p.preco_promocional) : Number(p.preco);
+                return (
+                  <article
+                    key={`destaque-${p.id}`}
+                    onClick={() => aberta && openAdd(p)}
+                    className={cn(
+                      "relative rounded-2xl border overflow-hidden flex transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer",
+                      isDark ? "bg-zinc-900 border-zinc-800 hover:border-zinc-700" : "bg-white border-zinc-200 hover:border-zinc-300"
+                    )}
+                    style={{ minHeight: 140 }}
+                  >
+                    <div className="flex-1 p-4 pr-3 flex flex-col">
+                      <div className="flex items-start gap-2 flex-wrap">
+                        <h3 className="font-bold text-base leading-tight">{p.nome}</h3>
+                        <Badge className="bg-amber-500 text-black text-[10px]">⭐ Destaque</Badge>
+                      </div>
+                      {p.descricao && (
+                        <p className={cn("text-xs mt-1 line-clamp-2", isDark ? "text-zinc-400" : "text-zinc-500")}>
+                          {p.descricao}
+                        </p>
+                      )}
+                      <div className="mt-auto pt-2 flex items-end gap-2">
+                        {isPromo && (
+                          <span className={cn("text-xs line-through", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                            {brl(Number(p.preco))}
+                          </span>
+                        )}
+                        <span className="text-lg font-bold brand-text">{brl(preco)}</span>
+                      </div>
+                    </div>
+                    <div className="relative w-[50%] shrink-0 bg-zinc-100 dark:bg-zinc-800">
+                      {p.imagem_url ? (
+                        <img src={p.imagem_url} alt={p.nome} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="absolute inset-0 grid place-items-center">
+                          <UtensilsCrossed className="w-10 h-10 opacity-30" />
+                        </div>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); aberta && openAdd(p); }}
+                        disabled={!aberta}
+                        aria-label="Adicionar"
+                        className="absolute bottom-2 right-2 w-10 h-10 rounded-full grid place-items-center text-white shadow-lg hover:scale-105 active:scale-95 transition disabled:opacity-50"
+                        style={{ background: cfg.cor_primaria }}
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* CATEGORIAS / PRODUTOS */}
         {categorias.map((c) => {
           const itens = produtos.filter((p) => p.categoria_id === c.id);
-          if (!itens.length) return null;
           const isDestaque = c.destaque || c.nome.toLowerCase().includes("lanche");
           return (
             <section
@@ -443,71 +530,77 @@ export default function CardapioPublico() {
                 {(c.emoji || c.icone) && <span>{c.emoji || c.icone}</span>} {c.nome}
                 {isDestaque && <Badge className="bg-amber-500 text-black">⭐ Destaques</Badge>}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {itens.map((p) => {
-                  const isPromo = p.promocao && p.preco_promocional != null;
-                  const preco = isPromo ? Number(p.preco_promocional) : Number(p.preco);
-                  const isTop = topSellers.has(p.id);
-                  return (
-                    <article
-                      key={p.id}
-                      onClick={() => aberta && openAdd(p)}
-                      className={cn(
-                        "relative rounded-2xl border overflow-hidden flex transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer",
-                        isDark ? "bg-zinc-900 border-zinc-800 hover:border-zinc-700" : "bg-white border-zinc-200 hover:border-zinc-300"
-                      )}
-                      style={{ minHeight: 140 }}
-                    >
-                      <div className="flex-1 p-4 pr-3 flex flex-col">
-                        <div className="flex items-start gap-2 flex-wrap">
-                          <h3 className="font-bold text-base leading-tight">{p.nome}</h3>
-                          {isTop && (
-                            <span className="bg-orange-500/15 text-orange-600 dark:text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Flame className="w-3 h-3" /> Mais pedido
-                            </span>
-                          )}
-                        </div>
-                        {p.descricao && (
-                          <p className={cn("text-xs mt-1 line-clamp-2", isDark ? "text-zinc-400" : "text-zinc-500")}>
-                            {p.descricao}
-                          </p>
+              {itens.length === 0 ? (
+                <div className={cn("rounded-xl border p-4 text-sm", isDark ? "border-zinc-800 text-zinc-400" : "border-zinc-200 text-zinc-500")}>
+                  Categoria sem itens por enquanto.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {itens.map((p) => {
+                    const isPromo = p.promocao && p.preco_promocional != null;
+                    const preco = isPromo ? Number(p.preco_promocional) : Number(p.preco);
+                    const isTop = topSellers.has(p.id);
+                    return (
+                      <article
+                        key={p.id}
+                        onClick={() => aberta && openAdd(p)}
+                        className={cn(
+                          "relative rounded-2xl border overflow-hidden flex transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer",
+                          isDark ? "bg-zinc-900 border-zinc-800 hover:border-zinc-700" : "bg-white border-zinc-200 hover:border-zinc-300"
                         )}
-                        <div className="mt-auto pt-2 flex items-end gap-2">
-                          {isPromo && (
-                            <span className={cn("text-xs line-through", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                              {brl(Number(p.preco))}
-                            </span>
-                          )}
-                          <span className="text-lg font-bold brand-text">{brl(preco)}</span>
-                        </div>
-                      </div>
-                      <div className={cn("relative shrink-0 bg-zinc-100 dark:bg-zinc-800", isDestaque ? "w-[50%]" : "w-[40%]")}>
-                        {p.imagem_url ? (
-                          <img src={p.imagem_url} alt={p.nome} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                        ) : (
-                          <div className="absolute inset-0 grid place-items-center">
-                            <UtensilsCrossed className="w-10 h-10 opacity-30" />
+                        style={{ minHeight: 140 }}
+                      >
+                        <div className="flex-1 p-4 pr-3 flex flex-col">
+                          <div className="flex items-start gap-2 flex-wrap">
+                            <h3 className="font-bold text-base leading-tight">{p.nome}</h3>
+                            {isTop && (
+                              <span className="bg-orange-500/15 text-orange-600 dark:text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <Flame className="w-3 h-3" /> Mais pedido
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); aberta && openAdd(p); }}
-                          disabled={!aberta}
-                          aria-label="Adicionar"
-                          className="absolute bottom-2 right-2 w-10 h-10 rounded-full grid place-items-center text-white shadow-lg hover:scale-105 active:scale-95 transition disabled:opacity-50"
-                          style={{ background: cfg.cor_primaria }}
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
-                        {isPromo && (
-                          <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">
-                            PROMO
-                          </span>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+                          {p.descricao && (
+                            <p className={cn("text-xs mt-1 line-clamp-2", isDark ? "text-zinc-400" : "text-zinc-500")}>
+                              {p.descricao}
+                            </p>
+                          )}
+                          <div className="mt-auto pt-2 flex items-end gap-2">
+                            {isPromo && (
+                              <span className={cn("text-xs line-through", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                                {brl(Number(p.preco))}
+                              </span>
+                            )}
+                            <span className="text-lg font-bold brand-text">{brl(preco)}</span>
+                          </div>
+                        </div>
+                        <div className={cn("relative shrink-0 bg-zinc-100 dark:bg-zinc-800", isDestaque ? "w-[50%]" : "w-[40%]")}>
+                          {p.imagem_url ? (
+                            <img src={p.imagem_url} alt={p.nome} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className="absolute inset-0 grid place-items-center">
+                              <UtensilsCrossed className="w-10 h-10 opacity-30" />
+                            </div>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); aberta && openAdd(p); }}
+                            disabled={!aberta}
+                            aria-label="Adicionar"
+                            className="absolute bottom-2 right-2 w-10 h-10 rounded-full grid place-items-center text-white shadow-lg hover:scale-105 active:scale-95 transition disabled:opacity-50"
+                            style={{ background: cfg.cor_primaria }}
+                          >
+                            <Plus className="w-5 h-5" />
+                          </button>
+                          {isPromo && (
+                            <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">
+                              PROMO
+                            </span>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           );
         })}
@@ -535,6 +628,7 @@ export default function CardapioPublico() {
         onConfirm={(item) => setCart((prev) => [...prev, item])}
         priceResolver={precoEfetivo}
         color={cfg.cor_primaria}
+        fallbackAllGroups={isHamburger(adicionando)}
       />
 
       {/* CHECKOUT */}
@@ -565,7 +659,7 @@ export default function CardapioPublico() {
                     <div className="mt-1 space-y-0.5">
                       {i.adicionais.map((adicional) => (
                         <p key={`${i.id}-${adicional.adicionalId}`} className="text-[11px] text-muted-foreground truncate">
-                          + {adicional.grupoNome}: {adicional.adicionalNome}
+                          + {adicional.grupoNome}: {adicional.adicionalNome} x{adicional.quantidade}
                         </p>
                       ))}
                     </div>

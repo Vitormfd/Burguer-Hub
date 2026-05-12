@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Plus, Pencil, Trash2, Search, Folder, Power } from "lucide-react";
+import { BookOpen, Plus, Pencil, Trash2, Search, Folder, Power, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Categoria, Produto } from "@/types/db";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,12 @@ export default function Cardapio() {
     const { error } = await supabase.from("produtos").update({ disponivel: !p.disponivel }).eq("id", p.id);
     if (error) return toast.error(error.message);
     setProdutos((prev) => prev.map((x) => x.id === p.id ? { ...x, disponivel: !x.disponivel } : x));
+  };
+
+  const toggleDestaqueProd = async (p: Produto) => {
+    const { error } = await supabase.from("produtos").update({ destaque: !p.destaque }).eq("id", p.id);
+    if (error) return toast.error(error.message);
+    setProdutos((prev) => prev.map((x) => x.id === p.id ? { ...x, destaque: !x.destaque } : x));
   };
 
   const toggleCat = async (c: Categoria) => {
@@ -255,13 +261,25 @@ export default function Cardapio() {
                         ) : (
                           <Badge variant="outline" className="text-xs italic">Sem categoria</Badge>
                         )}
+                        {p.destaque && <Badge className="text-xs bg-amber-500 text-black">⭐ Destaque</Badge>}
                         {!p.disponivel && <Badge variant="outline" className="text-xs">Indisponível</Badge>}
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t mt-2">
-                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                          <Switch checked={p.disponivel} onCheckedChange={() => toggleProd(p)} />
-                          Disponível
-                        </label>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                            <Switch checked={p.disponivel} onCheckedChange={() => toggleProd(p)} />
+                            Disponível
+                          </label>
+                          <Button
+                            size="sm"
+                            variant={p.destaque ? "default" : "outline"}
+                            className="h-7 text-xs"
+                            onClick={() => toggleDestaqueProd(p)}
+                          >
+                            <Star className="h-3.5 w-3.5 mr-1" />
+                            Destaque
+                          </Button>
+                        </div>
                         <div className="flex gap-1">
                           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setProdEdit(p); setProdDialogOpen(true); }}>
                             <Pencil className="h-4 w-4" />

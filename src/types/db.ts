@@ -25,6 +25,7 @@ export interface Produto {
   descricao: string | null;
   preco: number;
   disponivel: boolean;
+  destaque?: boolean;
   imagem_url: string | null;
   promocao?: boolean;
   preco_promocional?: number | null;

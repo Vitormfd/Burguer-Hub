@@ -23,6 +23,7 @@ const schema = z.object({
   categoria_id: z.string().uuid().nullable(),
   imagem_url: z.string().trim().max(500).optional().or(z.literal("")),
   disponivel: z.boolean(),
+  destaque: z.boolean(),
   promocao: z.boolean(),
   preco_promocional: z.number().min(0).max(9999).nullable(),
 });
@@ -43,6 +44,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [imagemUrl, setImagemUrl] = useState("");
   const [disponivel, setDisponivel] = useState(true);
+  const [destaque, setDestaque] = useState(false);
   const [promocao, setPromocao] = useState(false);
   const [precoPromo, setPrecoPromo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -80,6 +82,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
     setCategoriaId(produto?.categoria_id ?? defaultCategoriaId ?? null);
     setImagemUrl(produto?.imagem_url ?? "");
     setDisponivel(produto?.disponivel ?? true);
+    setDestaque(produto?.destaque ?? false);
     setPromocao(produto?.promocao ?? false);
     setPrecoPromo(produto?.preco_promocional != null ? String(produto.preco_promocional) : "");
   }, [open, produto, defaultCategoriaId]);
@@ -175,6 +178,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
       categoria_id: categoriaId,
       imagem_url: imagemUrl,
       disponivel,
+      destaque,
       promocao,
       preco_promocional: promocao && precoPromo ? Number(precoPromo.replace(",", ".")) : null,
     });
@@ -185,6 +189,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
       preco: parsed.data.preco,
       categoria_id: parsed.data.categoria_id,
       disponivel: parsed.data.disponivel,
+      destaque: parsed.data.destaque,
       descricao: parsed.data.descricao || null,
       imagem_url: parsed.data.imagem_url || null,
       promocao: parsed.data.promocao,
@@ -295,6 +300,14 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
               <p className="text-xs text-muted-foreground">Itens indisponíveis ficam ocultos no cardápio</p>
             </div>
             <Switch id="p-disp" checked={disponivel} onCheckedChange={setDisponivel} />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <Label htmlFor="p-destaque" className="cursor-pointer">Destaque no cardápio público</Label>
+              <p className="text-xs text-muted-foreground">Produto aparece na seção ⭐ Destaques</p>
+            </div>
+            <Switch id="p-destaque" checked={destaque} onCheckedChange={setDestaque} />
           </div>
 
           <div className="rounded-lg border p-3 space-y-3">

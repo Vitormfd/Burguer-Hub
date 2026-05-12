@@ -3,7 +3,6 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
@@ -18,9 +17,10 @@ interface Props {
   onConfirm: (item: CartItem) => void;
   priceResolver?: (produto: Produto) => number;
   color?: string;
+  fallbackAllGroups?: boolean;
 }
 
-type Selections = Record<string, string[]>;
+type Selections = Record<string, Record<string, number>>;
 
 export default function ProdutoCascadeDialog({
   open,
@@ -29,9 +29,9 @@ export default function ProdutoCascadeDialog({
   onConfirm,
   priceResolver,
   color,
+  fallbackAllGroups,
 }: Props) {
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(0);
   const [qtd, setQtd] = useState(1);
   const [obs, setObs] = useState("");
   const [grupos, setGrupos] = useState<GrupoComAdicionais[]>([]);
@@ -45,29 +45,24 @@ export default function ProdutoCascadeDialog({
   useEffect(() => {
     if (!open || !produto) return;
 
-    setStep(0);
     setQtd(1);
     setObs("");
     setSelecionados({});
     setGrupos([]);
 
     setLoading(true);
-    loadGruposProduto(produto.id)
+    loadGruposProduto(produto.id, { fallbackAllAvailable: fallbackAllGroups })
       .then((data) => setGrupos(data.filter((g) => g.disponivel)))
       .finally(() => setLoading(false));
-  }, [open, produto]);
-
-  const totalSteps = grupos.length + 2;
-  const onSummary = step === totalSteps - 1;
-  const onProductStep = step === 0;
-  const grupoAtual = !onProductStep && !onSummary ? grupos[step - 1] : null;
+  }, [open, produto, fallbackAllGroups]);
 
   const adicionaisSelecionados = useMemo(() => {
     const list: CartItem["adicionais"] = [];
 
     grupos.forEach((grupo) => {
-      const selected = selecionados[grupo.id] || [];
-      selected.forEach((adicionalId) => {
+      const selected = selecionados[grupo.id] || {};
+      Object.entries(selected).forEach(([adicionalId, quantidade]) => {
+        if (quantidade <= 0) return;
         const adicional = grupo.adicionais.find((a) => a.id === adicionalId);
         if (!adicional) return;
 
@@ -76,7 +71,7 @@ export default function ProdutoCascadeDialog({
           grupoNome: grupo.nome,
           adicionalId: adicional.id,
           adicionalNome: adicional.nome,
-          quantidade: 1,
+          quantidade,
           precoUnitario: Number(adicional.preco),
         });
       });
@@ -102,50 +97,77 @@ export default function ProdutoCascadeDialog({
     return "Opcional, ate 1 opcao";
   };
 
-  const canProceedCurrentStep = useMemo(() => {
-    if (!grupoAtual) return true;
-    const selectedCount = (selecionados[grupoAtual.id] || []).length;
-    if (!grupoAtual.obrigatorio) return true;
-    return selectedCount >= Math.max(1, grupoAtual.min_escolhas);
-  }, [grupoAtual, selecionados]);
+  const gruposObrigatoriosPendentes = useMemo(
+    () =>
+      grupos.filter((grupo) => {
+        if (!grupo.obrigatorio) return false;
+        const totalGrupo = Object.values(selecionados[grupo.id] || {}).reduce((sum, qty) => sum + qty, 0);
+        return totalGrupo < Math.max(1, grupo.min_escolhas);
+      }),
+    [grupos, selecionados]
+  );
 
-  const toggleAdicional = (grupoId: string, adicionalId: string, max: number, disponivel: boolean) => {
+  const canConfirm = gruposObrigatoriosPendentes.length === 0;
+
+  const quantidadeGrupo = (grupoId: string) =>
+    Object.values(selecionados[grupoId] || {}).reduce((sum, qty) => sum + qty, 0);
+
+  const updateAdicionalQuantidade = (
+    grupoId: string,
+    adicionalId: string,
+    delta: number,
+    max: number,
+    disponivel: boolean
+  ) => {
     if (!disponivel) return;
 
     setSelecionados((prev) => {
-      const current = prev[grupoId] || [];
-      if (current.includes(adicionalId)) {
-        return {
-          ...prev,
-          [grupoId]: current.filter((id) => id !== adicionalId),
-        };
+      const currentGroup = prev[grupoId] || {};
+      const currentQty = currentGroup[adicionalId] || 0;
+      const currentTotal = Object.values(currentGroup).reduce((sum, qty) => sum + qty, 0);
+
+      if (delta > 0 && currentTotal >= max) {
+        return prev;
       }
 
-      if (max <= 1) {
-        return {
-          ...prev,
-          [grupoId]: [adicionalId],
-        };
-      }
+      const nextQty = Math.max(0, currentQty + delta);
 
-      if (current.length >= max) return prev;
+      const nextGroup = { ...currentGroup };
+      if (nextQty <= 0) delete nextGroup[adicionalId];
+      else nextGroup[adicionalId] = nextQty;
 
       return {
         ...prev,
-        [grupoId]: [...current, adicionalId],
+        [grupoId]: nextGroup,
       };
     });
   };
 
-  const handleNext = () => {
-    if (onSummary || !produto) return;
-    setStep((s) => Math.min(totalSteps - 1, s + 1));
+  const toggleAdicional = (grupoId: string, adicionalId: string, max: number, disponivel: boolean) => {
+    if (!disponivel) return;
+    const currentQty = (selecionados[grupoId] || {})[adicionalId] || 0;
+    if (currentQty > 0) {
+      setSelecionados((prev) => {
+        const currentGroup = prev[grupoId] || {};
+        const nextGroup = { ...currentGroup };
+        delete nextGroup[adicionalId];
+        return { ...prev, [grupoId]: nextGroup };
+      });
+      return;
+    }
+    updateAdicionalQuantidade(grupoId, adicionalId, 1, max, disponivel);
   };
 
-  const handleBack = () => setStep((s) => Math.max(0, s - 1));
+  const grupoCheio = (grupoId: string, max: number) => quantidadeGrupo(grupoId) >= max;
+
+  const isSelecionado = (grupoId: string, adicionalId: string) =>
+    ((selecionados[grupoId] || {})[adicionalId] || 0) > 0;
+
+  const quantidadeSelecionada = (grupoId: string, adicionalId: string) =>
+    (selecionados[grupoId] || {})[adicionalId] || 0;
 
   const handleConfirm = () => {
-    if (!produto) return;
+    if (!produto || !canConfirm) return;
 
     onConfirm({
       id: crypto.randomUUID(),
@@ -164,18 +186,10 @@ export default function ProdutoCascadeDialog({
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-2xl p-0 overflow-hidden">
-        <div className="p-4 border-b space-y-2 bg-muted/30">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Etapa {step + 1} de {totalSteps}</span>
-            <span>{Math.round(((step + 1) / totalSteps) * 100)}%</span>
-          </div>
-          <Progress value={((step + 1) / totalSteps) * 100} className="h-2" />
-        </div>
-
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {loading && <p className="text-sm text-muted-foreground">Carregando adicionais...</p>}
 
-          {!loading && onProductStep && produto && (
+          {!loading && produto && (
             <div className="space-y-4">
               {produto.imagem_url && (
                 <div className="h-56 rounded-xl overflow-hidden border">
@@ -214,23 +228,24 @@ export default function ProdutoCascadeDialog({
             </div>
           )}
 
-          {!loading && grupoAtual && (
-            <div className="space-y-4">
+          {!loading && grupos.map((grupo) => (
+            <div key={grupo.id} className="space-y-4">
               <div>
-                <h3 className="text-xl font-bold">{grupoAtual.nome}</h3>
-                <p className="text-sm text-muted-foreground">{regraGrupo(grupoAtual)}</p>
+                <h3 className="text-xl font-bold">{grupo.nome}</h3>
+                <p className="text-sm text-muted-foreground">{regraGrupo(grupo)}</p>
               </div>
 
               <div className="grid sm:grid-cols-2 gap-3">
-                {grupoAtual.adicionais.map((adicional) => {
-                  const selected = (selecionados[grupoAtual.id] || []).includes(adicional.id);
+                {grupo.adicionais.map((adicional) => {
+                  const selected = isSelecionado(grupo.id, adicional.id);
+                  const qtdAdicional = quantidadeSelecionada(grupo.id, adicional.id);
                   return (
                     <button
                       type="button"
                       key={adicional.id}
                       disabled={!adicional.disponivel}
                       onClick={() =>
-                        toggleAdicional(grupoAtual.id, adicional.id, grupoAtual.max_escolhas, adicional.disponivel)
+                        toggleAdicional(grupo.id, adicional.id, grupo.max_escolhas, adicional.disponivel)
                       }
                       className={cn(
                         "text-left border rounded-xl p-3 transition",
@@ -247,65 +262,85 @@ export default function ProdutoCascadeDialog({
                       <div className="text-sm text-muted-foreground">
                         {Number(adicional.preco) > 0 ? `+ ${brl(Number(adicional.preco))}` : "Gratis"}
                       </div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateAdicionalQuantidade(grupo.id, adicional.id, -1, grupo.max_escolhas, adicional.disponivel);
+                          }}
+                          disabled={!adicional.disponivel || qtdAdicional === 0}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="w-6 text-center text-sm font-semibold">{qtdAdicional}</span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateAdicionalQuantidade(grupo.id, adicional.id, 1, grupo.max_escolhas, adicional.disponivel);
+                          }}
+                          disabled={!adicional.disponivel || (!selected && grupoCheio(grupo.id, grupo.max_escolhas))}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </button>
                   );
                 })}
               </div>
 
-              {grupoAtual.max_escolhas > 1 && (
+              {grupo.max_escolhas > 1 && (
                 <p className="text-xs text-muted-foreground">
-                  Selecionados: {(selecionados[grupoAtual.id] || []).length}/{grupoAtual.max_escolhas}
+                  Selecionados: {quantidadeGrupo(grupo.id)}/{grupo.max_escolhas}
                 </p>
               )}
             </div>
-          )}
+          ))}
 
-          {!loading && onSummary && produto && (
-            <div className="space-y-4">
-              <h3 className="text-xl font-bold">Resumo do pedido</h3>
-              <div className="border rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{produto.nome}</span>
-                  <span>{brl(precoBase)}</span>
+          {!loading && (
+            <div className="border rounded-xl p-4 space-y-2">
+              {adicionaisSelecionados.map((adicional) => (
+                <div key={adicional.adicionalId} className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>{adicional.grupoNome}: {adicional.adicionalNome}</span>
+                  <span>{adicional.precoUnitario > 0 ? `+ ${brl(adicional.precoUnitario)}` : "Gratis"}</span>
                 </div>
-                {adicionaisSelecionados.map((adicional) => (
-                  <div key={adicional.adicionalId} className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>{adicional.grupoNome}: {adicional.adicionalNome}</span>
-                    <span>{adicional.precoUnitario > 0 ? `+ ${brl(adicional.precoUnitario)}` : "Gratis"}</span>
-                  </div>
-                ))}
-                <div className="border-t pt-2 text-sm flex items-center justify-between">
-                  <span>Unitario</span>
-                  <span>{brl(subtotalUnit)}</span>
-                </div>
-                <div className="text-lg font-bold flex items-center justify-between">
-                  <span>Total x{qtd}</span>
-                  <span>{brl(total)}</span>
-                </div>
+              ))}
+              <div className="border-t pt-2 text-sm flex items-center justify-between">
+                <span>Unitario</span>
+                <span>{brl(subtotalUnit)}</span>
+              </div>
+              <div className="text-lg font-bold flex items-center justify-between">
+                <span>Total x{qtd}</span>
+                <span>{brl(total)}</span>
               </div>
             </div>
           )}
         </div>
 
-        <div className="border-t p-4 flex items-center justify-between gap-2">
-          <Button variant="outline" onClick={handleBack} disabled={step === 0}>
-            Voltar
-          </Button>
-
-          {onSummary ? (
-            <Button className="text-white" style={color ? { backgroundColor: color } : undefined} onClick={handleConfirm}>
-              Adicionar ao carrinho - {brl(total)}
-            </Button>
-          ) : (
+        <div className="border-t p-4 space-y-2">
+          {!canConfirm && (
+            <p className="text-xs text-destructive">
+              Complete os grupos obrigatorios: {gruposObrigatoriosPendentes.map((g) => g.nome).join(", ")}
+            </p>
+          )}
+          <div className="flex justify-end">
             <Button
               className="text-white"
               style={color ? { backgroundColor: color } : undefined}
-              onClick={handleNext}
-              disabled={!!grupoAtual && !canProceedCurrentStep}
+              onClick={handleConfirm}
+              disabled={!canConfirm}
             >
-              {step === 0 && grupos.length === 0 ? "Ver resumo" : "Proximo"}
+              Adicionar ao carrinho - {brl(total)}
             </Button>
-          )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

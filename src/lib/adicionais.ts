@@ -5,7 +5,14 @@ export interface GrupoComAdicionais extends GrupoAdicional {
   adicionais: Adicional[];
 }
 
-export async function loadGruposProduto(produtoId: string): Promise<GrupoComAdicionais[]> {
+interface LoadGruposProdutoOptions {
+  fallbackAllAvailable?: boolean;
+}
+
+export async function loadGruposProduto(
+  produtoId: string,
+  options: LoadGruposProdutoOptions = {}
+): Promise<GrupoComAdicionais[]> {
   const { data: vinculos, error: vinculosError } = await supabase
     .from("produto_grupos_adicionais")
     .select("grupo_id, ordem")
@@ -13,9 +20,28 @@ export async function loadGruposProduto(produtoId: string): Promise<GrupoComAdic
     .order("ordem", { ascending: true });
 
   if (vinculosError) throw vinculosError;
-  if (!vinculos?.length) return [];
 
-  const grupoIds = vinculos.map((v) => v.grupo_id);
+  const fallbackAll = !!options.fallbackAllAvailable;
+
+  if (!vinculos?.length && !fallbackAll) return [];
+
+  const { data: gruposDisponiveis, error: gruposDisponiveisError } = await supabase
+    .from("grupos_adicionais")
+    .select("id")
+    .eq("disponivel", true)
+    .order("ordem", { ascending: true });
+
+  if (gruposDisponiveisError) throw gruposDisponiveisError;
+
+  const linkedIds = (vinculos || []).map((v) => v.grupo_id);
+  const availableIds = (gruposDisponiveis || []).map((g) => g.id);
+
+  // When fallback is active (hamburger flow), include linked groups plus any new available group.
+  const grupoIds = fallbackAll
+    ? Array.from(new Set([...linkedIds, ...availableIds]))
+    : linkedIds;
+
+  if (!grupoIds.length) return [];
 
   const [{ data: grupos, error: gruposError }, { data: adicionais, error: adicionaisError }] = await Promise.all([
     supabase
@@ -34,7 +60,7 @@ export async function loadGruposProduto(produtoId: string): Promise<GrupoComAdic
   if (gruposError) throw gruposError;
   if (adicionaisError) throw adicionaisError;
 
-  const ordemMap = new Map(vinculos.map((v) => [v.grupo_id, v.ordem]));
+  const ordemMap = new Map((vinculos || []).map((v) => [v.grupo_id, v.ordem]));
   const porGrupo = new Map<string, Adicional[]>();
 
   (adicionais || []).forEach((a) => {
@@ -46,7 +72,8 @@ export async function loadGruposProduto(produtoId: string): Promise<GrupoComAdic
   return (grupos || [])
     .map((g) => ({
       ...(g as GrupoAdicional),
-      ordem: ordemMap.get(g.id) ?? (g as GrupoAdicional).ordem,
+      // In fallback-all mode (hamburger flow), respect the group's own order.
+      ordem: fallbackAll ? (g as GrupoAdicional).ordem : (ordemMap.get(g.id) ?? (g as GrupoAdicional).ordem),
       adicionais: porGrupo.get(g.id) || [],
     }))
     .sort((a, b) => a.ordem - b.ordem);

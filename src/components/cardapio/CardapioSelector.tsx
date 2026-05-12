@@ -34,6 +34,28 @@ export default function CardapioSelector({
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
 
+  const categoriaById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
+
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const isHamburger = (produto: Produto | null) => {
+    if (!produto) return false;
+    const categoria = produto.categoria_id ? categoriaById.get(produto.categoria_id) : null;
+    const categoriaNome = normalize(categoria?.nome || "");
+    const produtoNome = normalize(produto.nome || "");
+    return (
+      categoriaNome.includes("lanche") ||
+      categoriaNome.includes("hamburg") ||
+      categoriaNome.includes("burger") ||
+      produtoNome.includes("hamburg") ||
+      produtoNome.includes("burger")
+    );
+  };
+
   useEffect(() => {
     (async () => {
       const [{ data: cs }, { data: ps }] = await Promise.all([
@@ -137,7 +159,7 @@ export default function CardapioSelector({
                     <div className="space-y-0.5">
                       {item.adicionais.map((adicional) => (
                         <div key={`${item.id}-${adicional.adicionalId}`} className="text-[11px] text-muted-foreground">
-                          + {adicional.grupoNome}: {adicional.adicionalNome} {adicional.precoUnitario > 0 ? `(${brl(adicional.precoUnitario)})` : "(gratis)"}
+                          + {adicional.grupoNome}: {adicional.adicionalNome} x{adicional.quantidade} {adicional.precoUnitario > 0 ? `(${brl(adicional.precoUnitario)})` : "(gratis)"}
                         </div>
                       ))}
                     </div>
@@ -185,6 +207,7 @@ export default function CardapioSelector({
         produto={produtoSelecionado}
         onClose={() => setProdutoSelecionado(null)}
         onConfirm={(item) => onCartChange([...cart, item])}
+        fallbackAllGroups={isHamburger(produtoSelecionado)}
       />
     </>
   );

@@ -17,6 +17,7 @@ interface KdsItem {
   nome: string;
   quantidade: number;
   observacao: string | null;
+  adicionais: { nome: string; quantidade: number }[];
 }
 
 interface KdsCard {
@@ -67,18 +68,41 @@ export default function Cozinha() {
       supabase.from("entregas").select("pedido_id, cliente_nome, origem").in("pedido_id", ids),
     ]);
 
+    const itemIds = (itens || []).map((i) => i.id);
     const prodIds = Array.from(new Set((itens || []).map((i) => i.produto_id).filter(Boolean))) as string[];
     const mesaIds = Array.from(new Set((contas || []).map((c) => c.mesa_id).filter(Boolean))) as string[];
+    const { data: itemAdicionais } = itemIds.length
+      ? await supabase
+          .from("pedido_item_adicionais")
+          .select("pedido_item_id, adicional_id, quantidade")
+          .in("pedido_item_id", itemIds)
+      : { data: [] as any[] };
 
-    const [{ data: produtos }, { data: mesas }] = await Promise.all([
+    const adicionalIds = Array.from(
+      new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean))
+    ) as string[];
+
+    const [{ data: produtos }, { data: mesas }, { data: adicionais }] = await Promise.all([
       prodIds.length ? supabase.from("produtos").select("id, nome").in("id", prodIds) : Promise.resolve({ data: [] as any[] }),
       mesaIds.length ? supabase.from("mesas").select("id, numero").in("id", mesaIds) : Promise.resolve({ data: [] as any[] }),
+      adicionalIds.length ? supabase.from("adicionais").select("id, nome").in("id", adicionalIds) : Promise.resolve({ data: [] as any[] }),
     ]);
 
     const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
     const mesaMap = new Map((mesas || []).map((m) => [m.id, m.numero as number]));
+    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome as string]));
     const contaToMesa = new Map((contas || []).map((c) => [c.id, c.mesa_id as string | null]));
     const entregaMap = new Map((entregas || []).map((e) => [e.pedido_id, e]));
+    const adicionaisPorItem = new Map<string, { nome: string; quantidade: number }[]>();
+
+    (itemAdicionais || []).forEach((row: any) => {
+      const current = adicionaisPorItem.get(row.pedido_item_id) || [];
+      current.push({
+        nome: adicionalMap.get(row.adicional_id) ?? "Adicional",
+        quantidade: row.quantidade || 1,
+      });
+      adicionaisPorItem.set(row.pedido_item_id, current);
+    });
 
     const list: KdsCard[] = pedidos.map((p) => {
       let rotulo = "—";
@@ -99,6 +123,7 @@ export default function Cozinha() {
           nome: i.produto_id ? prodMap.get(i.produto_id) ?? "Item" : "Item",
           quantidade: i.quantidade,
           observacao: i.observacao,
+          adicionais: adicionaisPorItem.get(i.id) || [],
         }));
       return {
         pedido_id: p.id,
@@ -121,6 +146,7 @@ export default function Cozinha() {
       .channel("kds-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "pedido_itens" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedido_item_adicionais" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -265,6 +291,11 @@ function KdsCardView({
             </span>
             <div className="min-w-0">
               <div className="font-semibold leading-tight">{it.nome}</div>
+              {it.adicionais.map((ad, idx) => (
+                <div key={`${it.id}-ad-${idx}`} className="mt-0.5 text-xs text-muted-foreground">
+                  + {ad.nome} x{ad.quantidade}
+                </div>
+              ))}
               {it.observacao && (
                 <div className={cn("mt-0.5 inline-block text-xs px-2 py-0.5 rounded border", palette.chipBg)}>
                   ↳ {it.observacao}

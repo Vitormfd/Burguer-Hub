@@ -464,6 +464,7 @@ export type Database = {
         Row: {
           categoria_id: string | null
           created_at: string
+          destaque: boolean
           descricao: string | null
           disponivel: boolean
           id: string
@@ -476,6 +477,7 @@ export type Database = {
         Insert: {
           categoria_id?: string | null
           created_at?: string
+          destaque?: boolean
           descricao?: string | null
           disponivel?: boolean
           id?: string
@@ -488,6 +490,7 @@ export type Database = {
         Update: {
           categoria_id?: string | null
           created_at?: string
+          destaque?: boolean
           descricao?: string | null
           disponivel?: boolean
           id?: string

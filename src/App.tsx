@@ -14,6 +14,7 @@ import Cozinha from "./pages/Cozinha";
 import Relatorios from "./pages/Relatorios";
 import Configuracoes from "./pages/Configuracoes";
 import CardapioPublico from "./pages/CardapioPublico";
+import FidelidadeAdmin from "./pages/FidelidadeAdmin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
               <Route path="/delivery" element={<Delivery />} />
               <Route path="/admin/cardapio" element={<Cardapio />} />
               <Route path="/admin/adicionais" element={<AdicionaisAdmin />} />
+              <Route path="/admin/fidelidade" element={<FidelidadeAdmin />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>

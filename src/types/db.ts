@@ -1,7 +1,9 @@
 export type MesaStatus = "livre" | "ocupada" | "aguardando_pagamento";
 export type ContaStatus = "aberta" | "fechada";
 export type PedidoTipo = "mesa" | "delivery";
-export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue";
+export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado";
+export type RecompensaTipo = "item_gratis" | "desconto_percentual" | "desconto_fixo";
+export type ResgateStatus = "pendente" | "aplicado" | "cancelado";
 
 export interface Mesa {
   id: string;
@@ -43,9 +45,15 @@ export interface Conta {
 export interface Pedido {
   id: string;
   conta_id: string | null;
+  cliente_id?: string | null;
   tipo: PedidoTipo;
   status: PedidoStatus;
   criado_em: string;
+  subtotal?: number;
+  desconto?: number;
+  total?: number;
+  recompensa_resgatada_id?: string | null;
+  observacoes_internas?: string | null;
 }
 
 export interface PedidoItem {
@@ -107,6 +115,48 @@ export interface Configuracao {
   seo_titulo: string;
   seo_descricao: string;
   tempo_entrega_min?: string;
+  fidelidade_ativa?: boolean;
+  fidelidade_texto?: string;
+  fidelidade_cor?: string;
+}
+
+export interface Cliente {
+  id: string;
+  nome: string;
+  telefone: string;
+  total_pedidos: number;
+  pontos: number;
+  criado_em: string;
+}
+
+export interface Recompensa {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  tipo: RecompensaTipo;
+  valor: number;
+  produto_id: string | null;
+  pedidos_necessarios: number;
+  ativo: boolean;
+  imagem_url: string | null;
+  ordem: number;
+  criado_em?: string;
+}
+
+export interface Resgate {
+  id: string;
+  cliente_id: string;
+  recompensa_id: string;
+  pedido_id: string | null;
+  resgatado_em: string;
+  status: ResgateStatus;
+}
+
+export interface ClientePedido {
+  id: string;
+  cliente_id: string;
+  pedido_id: string;
+  criado_em?: string;
 }
 
 export interface BairroTaxa {

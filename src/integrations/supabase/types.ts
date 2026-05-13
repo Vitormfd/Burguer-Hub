@@ -116,11 +116,15 @@ export type Database = {
           carrossel_imagens: string[]
           cor_primaria: string
           created_at: string
+          fidelidade_ativa: boolean
+          fidelidade_cor: string
+          fidelidade_texto: string
           hora_abertura: string
           hora_fechamento: string
           id: string
           logo_url: string | null
           nome_loja: string
+          referencia: string | null
           seo_descricao: string
           seo_titulo: string
           tempo_entrega_min: string
@@ -132,11 +136,15 @@ export type Database = {
           carrossel_imagens?: string[]
           cor_primaria?: string
           created_at?: string
+          fidelidade_ativa?: boolean
+          fidelidade_cor?: string
+          fidelidade_texto?: string
           hora_abertura?: string
           hora_fechamento?: string
           id?: string
           logo_url?: string | null
           nome_loja?: string
+          referencia?: string | null
           seo_descricao?: string
           seo_titulo?: string
           tempo_entrega_min?: string
@@ -148,15 +156,82 @@ export type Database = {
           carrossel_imagens?: string[]
           cor_primaria?: string
           created_at?: string
+          fidelidade_ativa?: boolean
+          fidelidade_cor?: string
+          fidelidade_texto?: string
           hora_abertura?: string
           hora_fechamento?: string
           id?: string
           logo_url?: string | null
           nome_loja?: string
+          referencia?: string | null
           seo_descricao?: string
           seo_titulo?: string
           tempo_entrega_min?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      cliente_pedidos: {
+        Row: {
+          cliente_id: string
+          criado_em: string
+          id: string
+          pedido_id: string
+        }
+        Insert: {
+          cliente_id: string
+          criado_em?: string
+          id?: string
+          pedido_id: string
+        }
+        Update: {
+          cliente_id?: string
+          criado_em?: string
+          id?: string
+          pedido_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cliente_pedidos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cliente_pedidos_pedido_id_fkey"
+            columns: ["pedido_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clientes: {
+        Row: {
+          criado_em: string
+          id: string
+          nome: string
+          pontos: number
+          telefone: string
+          total_pedidos: number
+        }
+        Insert: {
+          criado_em?: string
+          id?: string
+          nome: string
+          pontos?: number
+          telefone: string
+          total_pedidos?: number
+        }
+        Update: {
+          criado_em?: string
+          id?: string
+          nome?: string
+          pontos?: number
+          telefone?: string
+          total_pedidos?: number
         }
         Relationships: []
       }
@@ -394,32 +469,64 @@ export type Database = {
       }
       pedidos: {
         Row: {
+          cliente_id: string | null
           conta_id: string | null
           criado_em: string
+          desconto: number
           id: string
+          observacoes_internas: string | null
+          recompensa_resgatada_id: string | null
           status: Database["public"]["Enums"]["pedido_status"]
+          subtotal: number
+          total: number
           tipo: Database["public"]["Enums"]["pedido_tipo"]
         }
         Insert: {
+          cliente_id?: string | null
           conta_id?: string | null
           criado_em?: string
+          desconto?: number
           id?: string
+          observacoes_internas?: string | null
+          recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
+          subtotal?: number
+          total?: number
           tipo: Database["public"]["Enums"]["pedido_tipo"]
         }
         Update: {
+          cliente_id?: string | null
           conta_id?: string | null
           criado_em?: string
+          desconto?: number
           id?: string
+          observacoes_internas?: string | null
+          recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
+          subtotal?: number
+          total?: number
           tipo?: Database["public"]["Enums"]["pedido_tipo"]
         }
         Relationships: [
+          {
+            foreignKeyName: "pedidos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pedidos_conta_id_fkey"
             columns: ["conta_id"]
             isOneToOne: false
             referencedRelation: "contas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pedidos_recompensa_resgatada_id_fkey"
+            columns: ["recompensa_resgatada_id"]
+            isOneToOne: false
+            referencedRelation: "resgates"
             referencedColumns: ["id"]
           },
         ]
@@ -513,6 +620,105 @@ export type Database = {
           },
         ]
       }
+      recompensas: {
+        Row: {
+          ativo: boolean
+          criado_em: string
+          descricao: string | null
+          id: string
+          imagem_url: string | null
+          nome: string
+          ordem: number
+          pedidos_necessarios: number
+          produto_id: string | null
+          tipo: Database["public"]["Enums"]["recompensa_tipo"]
+          valor: number
+        }
+        Insert: {
+          ativo?: boolean
+          criado_em?: string
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          nome: string
+          ordem?: number
+          pedidos_necessarios: number
+          produto_id?: string | null
+          tipo: Database["public"]["Enums"]["recompensa_tipo"]
+          valor?: number
+        }
+        Update: {
+          ativo?: boolean
+          criado_em?: string
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          nome?: string
+          ordem?: number
+          pedidos_necessarios?: number
+          produto_id?: string | null
+          tipo?: Database["public"]["Enums"]["recompensa_tipo"]
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recompensas_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      resgates: {
+        Row: {
+          cliente_id: string
+          id: string
+          pedido_id: string | null
+          recompensa_id: string
+          resgatado_em: string
+          status: Database["public"]["Enums"]["resgate_status"]
+        }
+        Insert: {
+          cliente_id: string
+          id?: string
+          pedido_id?: string | null
+          recompensa_id: string
+          resgatado_em?: string
+          status?: Database["public"]["Enums"]["resgate_status"]
+        }
+        Update: {
+          cliente_id?: string
+          id?: string
+          pedido_id?: string | null
+          recompensa_id?: string
+          resgatado_em?: string
+          status?: Database["public"]["Enums"]["resgate_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resgates_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resgates_pedido_id_fkey"
+            columns: ["pedido_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resgates_recompensa_id_fkey"
+            columns: ["recompensa_id"]
+            isOneToOne: false
+            referencedRelation: "recompensas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -539,14 +745,49 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_cliente_fidelidade: {
+        Args: {
+          p_telefone: string
+        }
+        Returns: Json
+      }
+      get_cliente_fidelidade_detalhe: {
+        Args: {
+          p_cliente_id: string
+        }
+        Returns: Json
+      }
+      list_clientes_fidelidade: {
+        Args: {
+          search_term?: string | null
+        }
+        Returns: {
+          id: string
+          nome: string
+          telefone: string
+          total_pedidos: number
+          pontos: number
+          resgates_realizados: number
+          ultimo_pedido: string | null
+        }[]
+      }
+      register_cliente_pedido: {
+        Args: {
+          p_nome: string
+          p_pedido_id: string
+          p_telefone: string
+        }
+        Returns: string | null
+      }
     }
     Enums: {
       conta_status: "aberta" | "fechada"
       entrega_status: "aguardando" | "saiu_para_entrega" | "entregue"
       mesa_status: "livre" | "ocupada" | "aguardando_pagamento"
-      pedido_status: "pendente" | "em_preparo" | "pronto" | "entregue"
+      pedido_status: "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado"
       pedido_tipo: "mesa" | "delivery"
+      recompensa_tipo: "item_gratis" | "desconto_percentual" | "desconto_fixo"
+      resgate_status: "pendente" | "aplicado" | "cancelado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -677,8 +918,10 @@ export const Constants = {
       conta_status: ["aberta", "fechada"],
       entrega_status: ["aguardando", "saiu_para_entrega", "entregue"],
       mesa_status: ["livre", "ocupada", "aguardando_pagamento"],
-      pedido_status: ["pendente", "em_preparo", "pronto", "entregue"],
+      pedido_status: ["pendente", "em_preparo", "pronto", "entregue", "cancelado"],
       pedido_tipo: ["mesa", "delivery"],
+      recompensa_tipo: ["item_gratis", "desconto_percentual", "desconto_fixo"],
+      resgate_status: ["pendente", "aplicado", "cancelado"],
     },
   },
 } as const

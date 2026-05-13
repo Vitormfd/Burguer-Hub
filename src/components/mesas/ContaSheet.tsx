@@ -20,13 +20,21 @@ import { printReceipt } from "@/lib/print";
 
 type ItemAdicional = { nome: string; quantidade: number; preco_unitario: number };
 type ItemDetalhado = PedidoItem & { produto: Produto | null; adicionais: ItemAdicional[] };
-type PedidoComItens = Pedido & { itens: ItemDetalhado[] };
+type PedidoComItens = Pedido & {
+  itens: ItemDetalhado[];
+  resgate: {
+    id: string;
+    nome: string;
+    status: "pendente" | "aplicado" | "cancelado";
+  } | null;
+};
 
 const statusLabel: Record<Pedido["status"], { label: string; variant: "default" | "secondary" | "outline" }> = {
   pendente: { label: "Pendente", variant: "outline" },
   em_preparo: { label: "Em preparo", variant: "secondary" },
   pronto: { label: "Pronto", variant: "default" },
   entregue: { label: "Entregue", variant: "default" },
+  cancelado: { label: "Cancelado", variant: "outline" },
 };
 
 export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | null; onClose: () => void; onClosed?: () => void }) {
@@ -53,19 +61,25 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     if (!pedList.length) { setPedidos([]); return; }
 
     const ids = pedList.map((p) => p.id);
-    const { data: itens } = await supabase
-      .from("pedido_itens").select("*").in("pedido_id", ids);
+    const [{ data: itens }, { data: resgates }] = await Promise.all([
+      supabase.from("pedido_itens").select("*").in("pedido_id", ids),
+      supabase.from("resgates").select("id, pedido_id, recompensa_id, status").in("pedido_id", ids),
+    ]);
     const itensList = (itens || []) as PedidoItem[];
     const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
     const itemIds = itensList.map((i) => i.id);
+    const rewardIds = Array.from(new Set((resgates || []).map((resgate) => resgate.recompensa_id)));
 
-    const [{ data: prods }, { data: itemAdicionais }] = await Promise.all([
+    const [{ data: prods }, { data: itemAdicionais }, { data: rewards }] = await Promise.all([
       prodIds.length
         ? supabase.from("produtos").select("*").in("id", prodIds)
         : Promise.resolve({ data: [] as Produto[] }),
       itemIds.length
         ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, quantidade, preco_unitario").in("pedido_item_id", itemIds)
         : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string; quantidade: number; preco_unitario: number }[] }),
+      rewardIds.length
+        ? supabase.from("recompensas").select("id, nome").in("id", rewardIds)
+        : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
     ]);
 
     const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
@@ -75,6 +89,17 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
     const prodMap = new Map((prods || []).map((p) => [p.id, p as Produto]));
     const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome]));
+    const rewardMap = new Map((rewards || []).map((reward) => [reward.id, reward.nome as string]));
+    const resgateMap = new Map(
+      (resgates || []).map((resgate) => [
+        resgate.pedido_id,
+        {
+          id: resgate.id,
+          nome: rewardMap.get(resgate.recompensa_id) || "Recompensa",
+          status: resgate.status as "pendente" | "aplicado" | "cancelado",
+        },
+      ])
+    );
     const adPorItem = new Map<string, ItemAdicional[]>();
     (itemAdicionais || []).forEach((row) => {
       const cur = adPorItem.get(row.pedido_item_id) ?? [];
@@ -88,6 +113,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
     setPedidos(pedList.map((p) => ({
       ...p,
+      resgate: resgateMap.get(p.id) || null,
       itens: itensList
         .filter((i) => i.pedido_id === p.id)
         .map((i) => ({
@@ -107,6 +133,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       .channel(`conta-${conta.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos", filter: `conta_id=eq.${conta.id}` }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "pedido_itens" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "resgates" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [conta, load]);
@@ -157,6 +184,16 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     onClosed?.();
   };
 
+  const updateResgateStatus = async (resgateId: string, status: "aplicado" | "cancelado") => {
+    const { error } = await supabase.from("resgates").update({ status }).eq("id", resgateId);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(status === "aplicado" ? "Recompensa confirmada" : "Resgate cancelado");
+    await load();
+  };
+
   return (
     <>
       <Sheet open={!!mesa} onOpenChange={(o) => !o && onClose()}>
@@ -193,6 +230,23 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                         {new Date(p.criado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
+                    {p.resgate && (
+                      <div className="mb-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs uppercase tracking-wider text-amber-700">🎁 Recompensa aplicada</div>
+                            <div className="font-semibold text-amber-950">{p.resgate.nome}</div>
+                          </div>
+                          <Badge variant="outline">{p.resgate.status}</Badge>
+                        </div>
+                        {p.resgate.status === "pendente" && (
+                          <div className="mt-3 flex gap-2">
+                            <Button size="sm" onClick={() => updateResgateStatus(p.resgate!.id, "aplicado")}>Confirmar aplicacao</Button>
+                            <Button size="sm" variant="outline" onClick={() => updateResgateStatus(p.resgate!.id, "cancelado")}>Cancelar resgate</Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <ul className="space-y-2">
                       {p.itens.map((i) => (
                         <li key={i.id} className="flex justify-between gap-3 text-sm">

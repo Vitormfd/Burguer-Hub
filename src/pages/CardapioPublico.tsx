@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -23,20 +25,34 @@ import {
   Flame,
   Target,
   CreditCard,
+  Gift,
+  Trophy,
+  Sparkles,
 } from "lucide-react";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import type { BairroTaxa, Categoria, Configuracao, Produto } from "@/types/db";
+import type { BairroTaxa, Categoria, Cliente, Configuracao, Produto, Recompensa } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { CartItem } from "@/components/cardapio/cartTypes";
+import {
+  calculateRewardBenefit,
+  type FidelidadeLookupResult,
+  isRewardAvailable,
+  nextReward,
+  normalizePhone,
+  rewardProgress,
+} from "@/lib/fidelidade";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
 const checkoutSchema = z.object({
   nome: z.string().trim().min(2, "Informe seu nome").max(100),
-  telefone: z.string().trim().min(8, "Telefone invalido").max(20),
+  telefone: z.string().trim().max(20).refine((value) => {
+    const normalized = normalizePhone(value);
+    return normalized.length === 0 || normalized.length >= 10;
+  }, "Telefone invalido"),
   endereco: z.string().trim().min(3, "Informe o endereco").max(200),
   numero: z.string().trim().min(1, "Numero").max(20),
   complemento: z.string().trim().max(80).optional().or(z.literal("")),
@@ -58,12 +74,33 @@ const isOpenNow = (cfg: Configuracao) => {
 const precoEfetivo = (p: Produto) =>
   p.promocao && p.preco_promocional != null ? Number(p.preco_promocional) : Number(p.preco);
 
+const normalizeHexColor = (value?: string | null) => {
+  if (!value) return "#16a34a";
+  const normalized = value.trim();
+  return /^#[0-9A-Fa-f]{6}$/.test(normalized) ? normalized : "#16a34a";
+};
+
+const hexToRgb = (hex: string) => {
+  const normalized = normalizeHexColor(hex).replace("#", "");
+  return {
+    r: parseInt(normalized.slice(0, 2), 16),
+    g: parseInt(normalized.slice(2, 4), 16),
+    b: parseInt(normalized.slice(4, 6), 16),
+  };
+};
+
+const withAlpha = (hex: string, alpha: number) => {
+  const rgb = hexToRgb(hex);
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+};
+
 export default function CardapioPublico() {
   const { referencia } = useParams<{ referencia?: string }>();
   
   const [cfg, setCfg] = useState<Configuracao | null>(null);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [recompensas, setRecompensas] = useState<Recompensa[]>([]);
   const [bairros, setBairros] = useState<BairroTaxa[]>([]);
   const [topSellers, setTopSellers] = useState<Set<string>>(new Set());
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -84,10 +121,16 @@ export default function CardapioPublico() {
   const [forma, setForma] = useState<Forma>("pix");
   const [troco, setTroco] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fidelidadeBusy, setFidelidadeBusy] = useState(false);
+  const [fidelidadeBusca, setFidelidadeBusca] = useState<FidelidadeLookupResult | null>(null);
+  const [telefoneBuscado, setTelefoneBuscado] = useState("");
+  const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const produtosInicioRef = useRef<HTMLElement | null>(null);
+  const fidelidadeSectionRef = useRef<HTMLElement | null>(null);
+  const celebradosRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     (async () => {
@@ -97,10 +140,11 @@ export default function CardapioPublico() {
         cfgQuery = cfgQuery.eq("referencia", referencia);
       }
       
-      const [{ data: c }, { data: cat }, { data: prod }, { data: b }, { data: itens }] = await Promise.all([
+      const [{ data: c }, { data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
         cfgQuery.maybeSingle(),
         supabase.from("categorias").select("*").eq("ativo", true).order("nome"),
         supabase.from("produtos").select("*").eq("disponivel", true).order("nome"),
+        supabase.from("recompensas").select("*").eq("ativo", true).order("ordem").order("pedidos_necessarios"),
         supabase.from("bairros_taxas").select("*").eq("ativo", true).order("nome"),
         supabase.from("pedido_itens").select("produto_id, quantidade").limit(1000),
       ]);
@@ -109,6 +153,7 @@ export default function CardapioPublico() {
       const cs = (cat || []) as Categoria[];
       setCategorias(cs);
       setProdutos((prod || []) as Produto[]);
+      setRecompensas((rewards || []) as Recompensa[]);
       setBairros((b || []) as BairroTaxa[]);
       if (cs[0]) setActiveCat(cs[0].id);
 
@@ -144,12 +189,17 @@ export default function CardapioPublico() {
     };
   }, [cfg]);
 
+  const fidelidadeCor = useMemo(() => normalizeHexColor(cfg?.fidelidade_cor), [cfg?.fidelidade_cor]);
+
   const subtotal = cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
   const totalItens = cart.reduce((s, i) => s + i.quantidade, 0);
   const taxa = bairros.find((b) => b.id === bairroId)?.taxa ?? 0;
-  const total = subtotal + Number(taxa);
 
   const promocoes = useMemo(() => produtos.filter((p) => p.promocao), [produtos]);
+  const recompensasOrdenadas = useMemo(
+    () => [...recompensas].sort((left, right) => left.ordem - right.ordem || left.pedidos_necessarios - right.pedidos_necessarios),
+    [recompensas]
+  );
   const produtosFiltrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     if (!q) return produtos;
@@ -176,6 +226,24 @@ export default function CardapioPublico() {
   }, [cfg?.banner_url, promocoes, maisPedidos]);
 
   const categoriaById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
+  const fidelidadeCliente = fidelidadeBusca?.cliente ?? null;
+  const selectedReward = useMemo(
+    () => recompensasOrdenadas.find((reward) => reward.id === selectedRewardId) ?? null,
+    [recompensasOrdenadas, selectedRewardId]
+  );
+  const rewardBenefit = useMemo(
+    () => selectedReward ? calculateRewardBenefit(selectedReward, subtotal, produtos) : { desconto: 0, itemGratis: null, descricao: "" },
+    [selectedReward, subtotal, produtos]
+  );
+  const total = Math.max(subtotal + Number(taxa) - rewardBenefit.desconto, 0);
+  const recompensasDisponiveis = useMemo(() => {
+    if (!fidelidadeCliente) return [] as Recompensa[];
+    return recompensasOrdenadas.filter((reward) => isRewardAvailable(reward, fidelidadeCliente.total_pedidos));
+  }, [fidelidadeCliente, recompensasOrdenadas]);
+  const proximaRecompensa = useMemo(() => {
+    if (!fidelidadeCliente) return recompensasOrdenadas[0] ?? null;
+    return nextReward(recompensasOrdenadas, fidelidadeCliente.total_pedidos);
+  }, [fidelidadeCliente, recompensasOrdenadas]);
 
   const normalize = (value: string) =>
     value
@@ -201,6 +269,265 @@ export default function CardapioPublico() {
   const removeItem = (idx: number) => setCart((prev) => prev.filter((_, i) => i !== idx));
   const updateQty = (idx: number, delta: number) =>
     setCart((prev) => prev.map((it, i) => (i === idx ? { ...it, quantidade: Math.max(1, it.quantidade + delta) } : it)));
+
+  useEffect(() => {
+    const currentPhone = normalizePhone(tel);
+    if (!telefoneBuscado || currentPhone === telefoneBuscado) return;
+    setFidelidadeBusca(null);
+    setTelefoneBuscado("");
+    setSelectedRewardId(null);
+  }, [tel, telefoneBuscado]);
+
+  useEffect(() => {
+    if (!selectedReward || !fidelidadeCliente) return;
+    if (!isRewardAvailable(selectedReward, fidelidadeCliente.total_pedidos)) {
+      setSelectedRewardId(null);
+    }
+  }, [selectedReward, fidelidadeCliente]);
+
+  const buscarClienteFidelidade = async () => {
+    const telefoneNormalizado = normalizePhone(tel);
+    if (telefoneNormalizado.length < 10) {
+      return toast.error("Informe um telefone valido para consultar suas recompensas");
+    }
+
+    setFidelidadeBusy(true);
+    const { data, error } = await supabase.rpc("get_cliente_fidelidade", {
+      p_telefone: telefoneNormalizado,
+    });
+    setFidelidadeBusy(false);
+
+    if (error) {
+      return toast.error(error.message);
+    }
+
+    const payload = (data || { cliente: null, resgates_pendentes: [] }) as unknown as FidelidadeLookupResult;
+    setTelefoneBuscado(telefoneNormalizado);
+    setFidelidadeBusca(payload);
+    setSelectedRewardId(null);
+
+    if (payload.cliente) {
+      setNome((current) => current.trim() || payload.cliente?.nome || "");
+      const temDireito = recompensasOrdenadas.some((reward) => isRewardAvailable(reward, payload.cliente!.total_pedidos));
+      if (temDireito && !celebradosRef.current.has(telefoneNormalizado)) {
+        celebradosRef.current.add(telefoneNormalizado);
+        void confetti({
+          particleCount: 140,
+          spread: 80,
+          origin: { y: 0.65 },
+          colors: ["#f59e0b", "#fbbf24", "#fde68a", "#f97316"],
+        });
+      }
+      return toast.success(`Ola, ${payload.cliente.nome}! Programa de fidelidade carregado.`);
+    }
+
+    toast.message("Telefone ainda nao cadastrado", {
+      description: "Finalize o pedido para criar seu cadastro automaticamente.",
+    });
+  };
+
+  const scrollToFidelidade = () => {
+    fidelidadeSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const renderFidelidadeBox = (compact = false) => {
+    if (!cfg?.fidelidade_ativa) return null;
+
+    const telefoneIdentificado = telefoneBuscado.length >= 10;
+    const mostrarCatalogoRecompensas = !!fidelidadeCliente || telefoneIdentificado;
+
+    const titulo = fidelidadeCliente
+      ? `Ola, ${fidelidadeCliente.nome}! Voce tem ${fidelidadeCliente.total_pedidos} pedidos e ${recompensasDisponiveis.length} recompensa(s) disponivel(is).`
+      : "Informe seu telefone para ver quantos pedidos ja acumulou e quais recompensas estao liberadas.";
+
+    return (
+      <section
+        ref={compact ? undefined : fidelidadeSectionRef}
+        id={compact ? undefined : "fidelidade-section"}
+        className={cn(
+          "relative overflow-hidden rounded-[30px] border shadow-[0_24px_46px_-34px_rgba(6,95,70,0.45)]",
+          compact ? "p-4" : "p-5 sm:p-6"
+        )}
+        style={{
+          borderColor: withAlpha(fidelidadeCor, 0.45),
+          backgroundImage: `linear-gradient(135deg, ${withAlpha(fidelidadeCor, 0.12)}, ${withAlpha(fidelidadeCor, 0.2)})`,
+        }}
+      >
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-white/35 blur-2xl" />
+          <div className="absolute -left-12 bottom-0 h-36 w-36 rounded-full blur-xl" style={{ background: withAlpha(fidelidadeCor, 0.3) }} />
+        </div>
+
+        <div className="relative z-10 flex flex-col gap-4">
+          <div
+            className="rounded-3xl border bg-white/55 p-4 backdrop-blur-sm sm:p-5"
+            style={{ borderColor: withAlpha(fidelidadeCor, 0.38) }}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em]"
+                  style={{
+                    background: withAlpha(fidelidadeCor, 0.2),
+                    color: withAlpha(fidelidadeCor, 0.95),
+                  }}
+                >
+                  <Trophy className="h-3.5 w-3.5" /> Fidelidade Burger Hub
+                </div>
+                <h3 className={cn("font-bold tracking-tight text-zinc-900", compact ? "text-xl" : "text-3xl")}>Suas recompensas 🎁</h3>
+                <p className="max-w-2xl text-sm" style={{ color: withAlpha(fidelidadeCor, 0.9) }}>{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</p>
+              </div>
+              {proximaRecompensa && fidelidadeCliente && (
+                <div className="min-w-[230px] rounded-2xl border bg-zinc-950 px-4 py-3 text-white" style={{ borderColor: withAlpha(fidelidadeCor, 0.42) }}>
+                  <div className="text-[11px] uppercase tracking-[0.22em]" style={{ color: withAlpha(fidelidadeCor, 0.75) }}>Proxima meta</div>
+                  <div className="mt-1 font-semibold">{proximaRecompensa.nome}</div>
+                  <div className="mt-2 text-xs text-zinc-300">
+                    Faltam {rewardProgress(proximaRecompensa, fidelidadeCliente.total_pedidos).faltam} pedido(s)
+                  </div>
+                  <Progress
+                    value={rewardProgress(proximaRecompensa, fidelidadeCliente.total_pedidos).percentual}
+                    className="mt-2 h-2.5 bg-zinc-800"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={cn("grid gap-3", compact ? "md:grid-cols-[1fr_auto]" : "md:grid-cols-[1fr_auto] md:items-end")}>
+            <div className="space-y-2">
+              <Label>Seu telefone</Label>
+              <Input
+                value={tel}
+                onChange={(event) => setTel(event.target.value)}
+                maxLength={20}
+                placeholder="(11) 99999-9999"
+                className="bg-white/90"
+                style={{ borderColor: withAlpha(fidelidadeCor, 0.45) }}
+              />
+            </div>
+            <Button type="button" onClick={buscarClienteFidelidade} disabled={fidelidadeBusy} className="text-white shadow-md">
+              {fidelidadeBusy ? "Buscando..." : "Buscar"}
+            </Button>
+          </div>
+
+          <div className="rounded-2xl border bg-white/85 p-4 text-sm text-zinc-700" style={{ borderColor: withAlpha(fidelidadeCor, 0.28) }}>
+            {titulo}
+          </div>
+
+          {!fidelidadeCliente && normalizePhone(tel).length >= 10 && telefoneBuscado === normalizePhone(tel) && (
+            <div className="space-y-2 rounded-2xl border border-dashed bg-white/70 p-4" style={{ borderColor: withAlpha(fidelidadeCor, 0.45) }}>
+              <Label>Seu nome para cadastro automatico</Label>
+              <Input
+                value={nome}
+                onChange={(event) => setNome(event.target.value)}
+                maxLength={100}
+                placeholder="Como devemos te chamar?"
+                className="bg-white"
+                style={{ borderColor: withAlpha(fidelidadeCor, 0.45) }}
+              />
+              <p className="text-xs text-zinc-500">Se este telefone ainda nao existir, o cadastro sera criado ao confirmar o pedido.</p>
+            </div>
+          )}
+
+          {!mostrarCatalogoRecompensas ? (
+            <div
+              className="loyalty-shimmer rounded-3xl border bg-white/50 p-5 text-sm"
+              style={{ borderColor: withAlpha(fidelidadeCor, 0.45), color: withAlpha(fidelidadeCor, 0.9) }}
+            >
+              Digite seu telefone e toque em Buscar para desbloquear suas metas e recompensas.
+            </div>
+          ) : (
+            <div className={cn("grid gap-3", compact ? "grid-cols-1" : "md:grid-cols-2") }>
+              {recompensasOrdenadas.map((reward) => {
+                const disponivel = fidelidadeCliente ? isRewardAvailable(reward, fidelidadeCliente.total_pedidos) : false;
+                const progresso = rewardProgress(reward, fidelidadeCliente?.total_pedidos ?? 0);
+                const selecionado = selectedRewardId === reward.id;
+
+                return (
+                  <button
+                    key={reward.id}
+                    type="button"
+                    disabled={!disponivel}
+                    onClick={() => setSelectedRewardId((current) => current === reward.id ? null : reward.id)}
+                    className={cn(
+                      "rounded-3xl border p-4 text-left transition-all duration-300",
+                      disponivel
+                        ? selecionado
+                          ? "bg-white shadow-xl ring-2"
+                          : "bg-white/90 hover:-translate-y-0.5 hover:shadow-md"
+                        : "bg-white/60"
+                    )}
+                    style={{
+                      borderColor: disponivel
+                        ? selecionado
+                          ? withAlpha(fidelidadeCor, 0.65)
+                          : withAlpha(fidelidadeCor, 0.3)
+                        : withAlpha(fidelidadeCor, 0.2),
+                      boxShadow: selecionado ? `0 0 0 1px ${withAlpha(fidelidadeCor, 0.35)}` : undefined,
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl"
+                            style={{ background: withAlpha(fidelidadeCor, 0.16), color: withAlpha(fidelidadeCor, 0.9) }}
+                          >
+                            <Gift className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <div className="font-semibold text-zinc-900">{reward.nome}</div>
+                            <div className="text-xs text-zinc-500">{reward.descricao || "Beneficio disponivel no seu proximo pedido"}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <Badge
+                        className={cn(disponivel ? "bg-zinc-100" : "bg-zinc-100 text-zinc-700") }
+                        style={disponivel ? { background: withAlpha(fidelidadeCor, 0.15), color: withAlpha(fidelidadeCor, 0.95) } : undefined}
+                      >
+                        {disponivel ? "Disponivel ✅" : `${progresso.atual} de ${reward.pedidos_necessarios}`}
+                      </Badge>
+                    </div>
+
+                    {!disponivel && (
+                      <div className="mt-4 space-y-2">
+                        <Progress value={progresso.percentual} className="h-2.5" style={{ background: withAlpha(fidelidadeCor, 0.15) }} />
+                        <p className="text-xs text-zinc-600">{progresso.atual} de {reward.pedidos_necessarios} pedidos — faltam {progresso.faltam}!</p>
+                      </div>
+                    )}
+
+                    {disponivel && (
+                      <p className="mt-4 text-xs text-zinc-600">Selecione para aplicar neste pedido. Apenas uma recompensa pode ser usada por vez.</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedReward && (
+            <div className="rounded-3xl border bg-zinc-950 px-4 py-4 text-white shadow-xl" style={{ borderColor: withAlpha(fidelidadeCor, 0.62) }}>
+              <div className="flex items-center gap-2 text-sm uppercase tracking-[0.2em]" style={{ color: withAlpha(fidelidadeCor, 0.75) }}>
+                <Sparkles className="h-4 w-4" /> Recompensa selecionada
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold">{selectedReward.nome}</div>
+                  <div className="text-sm text-zinc-300">{rewardBenefit.descricao}</div>
+                </div>
+                {rewardBenefit.desconto > 0 && (
+                  <Badge style={{ background: withAlpha(fidelidadeCor, 0.16), color: withAlpha(fidelidadeCor, 0.95) }}>-{brl(rewardBenefit.desconto)} no total</Badge>
+                )}
+                {rewardBenefit.itemGratis && (
+                  <Badge style={{ background: withAlpha(fidelidadeCor, 0.16), color: withAlpha(fidelidadeCor, 0.95) }}>Item gratis: {rewardBenefit.itemGratis.nome}</Badge>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
 
   const scrollToCat = (id: string) => {
     setActiveCat(id);
@@ -258,14 +585,29 @@ export default function CardapioPublico() {
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     if (!cart.length) return toast.error("Carrinho vazio");
 
+    if (selectedReward && !fidelidadeCliente) {
+      return toast.error("Busque seu telefone para aplicar uma recompensa");
+    }
+
     const bairro = bairros.find((b) => b.id === bairroId);
     if (!bairro) return toast.error("Selecione o bairro");
+
+    const telefoneNormalizado = normalizePhone(tel);
+    const descontoFidelidade = rewardBenefit.desconto;
+    const itemGratis = rewardBenefit.itemGratis;
 
     setBusy(true);
 
     const { data: pedido, error: e1 } = await supabase
       .from("pedidos")
-      .insert({ tipo: "delivery", status: "pendente" })
+      .insert({
+        tipo: "delivery",
+        status: "pendente",
+        cliente_id: fidelidadeCliente?.id ?? null,
+        subtotal,
+        desconto: descontoFidelidade,
+        total: Math.max(subtotal + Number(bairro.taxa) - descontoFidelidade, 0),
+      })
       .select()
       .single();
     if (e1 || !pedido) {
@@ -280,6 +622,16 @@ export default function CardapioPublico() {
       preco_unitario: i.precoUnit,
       observacao: i.observacao || null,
     }));
+
+    if (itemGratis) {
+      itensRows.push({
+        pedido_id: pedido.id,
+        produto_id: itemGratis.id,
+        quantidade: 1,
+        preco_unitario: 0,
+        observacao: `Recompensa fidelidade: ${selectedReward?.nome || itemGratis.nome}`,
+      });
+    }
 
     const { data: insertedItens, error: e2 } = await supabase.from("pedido_itens").insert(itensRows).select("id");
     if (e2) {
@@ -312,7 +664,7 @@ export default function CardapioPublico() {
     const { error: e3 } = await supabase.from("entregas").insert({
       pedido_id: pedido.id,
       cliente_nome: nome,
-      cliente_telefone: tel,
+      cliente_telefone: tel.trim(),
       endereco: enderecoFull,
       bairro: bairro.nome,
       taxa_entrega: Number(bairro.taxa),
@@ -324,8 +676,59 @@ export default function CardapioPublico() {
       troco_para: trocoVal,
     });
 
+    if (e3) {
+      setBusy(false);
+      return toast.error(e3.message);
+    }
+
+    let clienteId = fidelidadeCliente?.id ?? null;
+    if (telefoneNormalizado) {
+      const { data: clienteRegistradoId, error: eCliente } = await supabase.rpc("register_cliente_pedido", {
+        p_pedido_id: pedido.id,
+        p_nome: nome,
+        p_telefone: telefoneNormalizado,
+      });
+
+      if (eCliente) {
+        setBusy(false);
+        return toast.error(eCliente.message);
+      }
+
+      clienteId = clienteRegistradoId;
+    }
+
+    if (selectedReward && clienteId) {
+      const { data: novoResgate, error: eResgate } = await supabase
+        .from("resgates")
+        .insert({
+          cliente_id: clienteId,
+          recompensa_id: selectedReward.id,
+          pedido_id: pedido.id,
+          status: "pendente",
+        })
+        .select("id")
+        .single();
+
+      if (eResgate) {
+        setBusy(false);
+        return toast.error(eResgate.message);
+      }
+
+      const { error: ePedidoUpdate } = await supabase
+        .from("pedidos")
+        .update({
+          cliente_id: clienteId,
+          recompensa_resgatada_id: novoResgate.id,
+        })
+        .eq("id", pedido.id);
+
+      if (ePedidoUpdate) {
+        setBusy(false);
+        return toast.error(ePedidoUpdate.message);
+      }
+    }
+
     setBusy(false);
-    if (e3) return toast.error(e3.message);
 
     setSucessoNumero(pedido.id.slice(0, 8).toUpperCase());
     setCart([]);
@@ -338,6 +741,9 @@ export default function CardapioPublico() {
     setBairroId("");
     setForma("pix");
     setTroco("");
+    setSelectedRewardId(null);
+    setFidelidadeBusca(null);
+    setTelefoneBuscado("");
   };
 
   if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
@@ -372,6 +778,15 @@ export default function CardapioPublico() {
             radial-gradient(circle at 25% 20%, rgba(255,255,255,0.55), transparent 42%),
             radial-gradient(circle at 90% 10%, rgba(255,255,255,0.35), transparent 33%),
             radial-gradient(circle at 10% 90%, rgba(0,0,0,0.03), transparent 35%);
+        }
+        .loyalty-shimmer {
+          background: linear-gradient(120deg, rgba(255,255,255,0.05) 10%, rgba(255,255,255,0.32) 35%, rgba(255,255,255,0.05) 60%);
+          background-size: 200% 100%;
+          animation: loyaltyShimmer 3.8s linear infinite;
+        }
+        @keyframes loyaltyShimmer {
+          from { background-position: 200% 0; }
+          to { background-position: -200% 0; }
         }
       `}</style>
 
@@ -534,6 +949,34 @@ export default function CardapioPublico() {
         </div>
       )}
 
+      {cfg.fidelidade_ativa && (
+        <div className="max-w-4xl mx-auto px-3 mt-3">
+          <div
+            className="relative overflow-hidden rounded-[30px] border px-4 py-4 text-white shadow-[0_20px_44px_-30px_rgba(5,46,22,0.85)] sm:px-5"
+            style={{
+              borderColor: withAlpha(fidelidadeCor, 0.55),
+              backgroundImage: `linear-gradient(120deg, ${withAlpha(fidelidadeCor, 0.96)}, ${withAlpha(fidelidadeCor, 0.78)})`,
+            }}
+          >
+            <div className="pointer-events-none absolute inset-0 opacity-20 loyalty-shimmer" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-white shadow-inner">
+                  <Trophy className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/80">Programa de fidelidade</p>
+                  <h2 className="text-lg font-bold tracking-tight text-white">{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</h2>
+                </div>
+              </div>
+              <Button type="button" onClick={scrollToFidelidade} className="bg-white hover:bg-white/90" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
+                Ver minhas recompensas
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav
         className={cn(
           "fixed top-0 left-0 right-0 z-40 border-y border-zinc-200 bg-[#f3f3f3]/95 backdrop-blur shadow-sm transition-all duration-300",
@@ -564,6 +1007,8 @@ export default function CardapioPublico() {
       </nav>
 
       <main ref={produtosInicioRef} className="max-w-4xl mx-auto px-3 py-5 space-y-6">
+        {renderFidelidadeBox()}
+
         <div className="flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold">Cardapio</h2>
           <div className="text-xs sm:text-sm text-zinc-600 flex items-center gap-1">
@@ -729,9 +1174,10 @@ export default function CardapioPublico() {
           </div>
 
           <div className="px-5 space-y-3 mt-2">
-            <h3 className="text-lg font-bold">Entrega</h3>
+            {renderFidelidadeBox(true)}
+
+            <h3 className="text-lg font-bold mt-6">Entrega</h3>
             <div className="space-y-2"><Label>Nome completo *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} /></div>
-            <div className="space-y-2"><Label>Telefone *</Label><Input value={tel} onChange={(e) => setTel(e.target.value)} maxLength={20} placeholder="(11) 99999-9999" /></div>
             <div className="space-y-2"><Label>Endereco *</Label><Input value={endereco} onChange={(e) => setEndereco(e.target.value)} maxLength={200} placeholder="Rua / Avenida" /></div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2"><Label>Numero *</Label><Input value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} /></div>
@@ -768,6 +1214,12 @@ export default function CardapioPublico() {
           <div className="border-t mt-6 pt-3 px-5 pb-6 space-y-2">
             <div className="text-xs md:text-sm space-y-0.5 md:space-y-1">
               <div className="flex justify-between"><span>Subtotal</span><span>{brl(subtotal)}</span></div>
+              {rewardBenefit.itemGratis && (
+                <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}><span>Item gratis</span><span>{rewardBenefit.itemGratis.nome}</span></div>
+              )}
+              {rewardBenefit.desconto > 0 && (
+                <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}><span>Desconto fidelidade</span><span>-{brl(rewardBenefit.desconto)}</span></div>
+              )}
               <div className="flex justify-between"><span>Taxa de entrega</span><span>{brl(Number(taxa))}</span></div>
               <div className="flex justify-between text-base md:text-lg font-extrabold"><span>Total</span><span className="brand-text">{brl(total)}</span></div>
             </div>

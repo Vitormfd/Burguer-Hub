@@ -22,6 +22,11 @@ interface DeliveryRow {
   status: EntregaStatus;
   criado_em: string;
   itens_total: number;
+  resgate: {
+    id: string;
+    nome: string;
+    status: "pendente" | "aplicado" | "cancelado";
+  } | null;
 }
 
 const statusCfg: Record<EntregaStatus, { label: string; icon: typeof Clock; color: string; next: EntregaStatus | null; nextLabel: string }> = {
@@ -50,15 +55,33 @@ export default function Delivery() {
     const pedidoIds = (pedidos || []).map((p) => p.id);
     if (!pedidoIds.length) { setRows([]); setLoading(false); return; }
 
-    const [{ data: entregas }, { data: itens }] = await Promise.all([
+    const [{ data: entregas }, { data: itens }, { data: resgates }] = await Promise.all([
       supabase.from("entregas").select("*").in("pedido_id", pedidoIds),
       supabase.from("pedido_itens").select("pedido_id, quantidade, preco_unitario").in("pedido_id", pedidoIds),
+      supabase.from("resgates").select("id, pedido_id, recompensa_id, status").in("pedido_id", pedidoIds),
     ]);
+
+    const rewardIds = Array.from(new Set((resgates || []).map((item) => item.recompensa_id)));
+    const { data: rewards } = rewardIds.length
+      ? await supabase.from("recompensas").select("id, nome").in("id", rewardIds)
+      : { data: [] as { id: string; nome: string }[] };
 
     const totals = new Map<string, number>();
     (itens || []).forEach((i) => {
       totals.set(i.pedido_id, (totals.get(i.pedido_id) || 0) + Number(i.preco_unitario) * i.quantidade);
     });
+
+    const rewardMap = new Map((rewards || []).map((reward) => [reward.id, reward.nome as string]));
+    const resgateMap = new Map(
+      (resgates || []).map((resgate) => [
+        resgate.pedido_id,
+        {
+          id: resgate.id,
+          nome: rewardMap.get(resgate.recompensa_id) || "Recompensa",
+          status: resgate.status as "pendente" | "aplicado" | "cancelado",
+        },
+      ])
+    );
 
     const list: DeliveryRow[] = (entregas || []).map((e) => {
       const ped = pedidos!.find((p) => p.id === e.pedido_id)!;
@@ -73,6 +96,7 @@ export default function Delivery() {
         status: e.status as EntregaStatus,
         criado_em: ped.criado_em,
         itens_total: totals.get(e.pedido_id) || 0,
+        resgate: resgateMap.get(e.pedido_id) || null,
       };
     }).sort((a, b) => +new Date(b.criado_em) - +new Date(a.criado_em));
 
@@ -87,6 +111,7 @@ export default function Delivery() {
       .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos", filter: "tipo=eq.delivery" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "pedido_itens" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "resgates" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load]);
@@ -168,6 +193,17 @@ export default function Delivery() {
     await load();
   };
 
+  const updateResgateStatus = async (row: DeliveryRow, status: "aplicado" | "cancelado") => {
+    if (!row.resgate) return;
+    const { error } = await supabase.from("resgates").update({ status }).eq("id", row.resgate.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(status === "aplicado" ? "Recompensa confirmada" : "Resgate cancelado");
+    await load();
+  };
+
   const counts = {
     aguardando: rows.filter((r) => r.status === "aguardando").length,
     saiu: rows.filter((r) => r.status === "saiu_para_entrega").length,
@@ -241,6 +277,24 @@ export default function Delivery() {
                     <span>{r.endereco}{r.bairro ? ` — ${r.bairro}` : ""}</span>
                   </div>
                 </div>
+
+                {r.resgate && (
+                  <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs uppercase tracking-wider text-amber-700">🎁 Recompensa aplicada</div>
+                        <div className="font-semibold text-amber-950">{r.resgate.nome}</div>
+                      </div>
+                      <Badge variant="outline">{r.resgate.status}</Badge>
+                    </div>
+                    {r.resgate.status === "pendente" && (
+                      <div className="mt-3 flex gap-2">
+                        <Button size="sm" onClick={() => updateResgateStatus(r, "aplicado")}>Confirmar aplicacao</Button>
+                        <Button size="sm" variant="outline" onClick={() => updateResgateStatus(r, "cancelado")}>Cancelar resgate</Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-2 pt-3 border-t text-sm">
                   <div><div className="text-xs text-muted-foreground">Itens</div><div className="font-semibold">{brl(r.itens_total)}</div></div>

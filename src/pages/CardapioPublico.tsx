@@ -753,9 +753,9 @@ export default function CardapioPublico() {
           <div className="px-5 space-y-3 mt-6 pb-36">
             <h3 className="text-lg font-bold">Pagamento</h3>
             <RadioGroup value={forma} onValueChange={(v) => setForma(v as Forma)}>
-              <div className="flex items-center gap-2 border rounded-md p-3"><RadioGroupItem id="pix" value="pix" /><Label htmlFor="pix" className="flex-1 cursor-pointer">PIX</Label></div>
-              <div className="flex items-center gap-2 border rounded-md p-3"><RadioGroupItem id="dinheiro" value="dinheiro" /><Label htmlFor="dinheiro" className="flex-1 cursor-pointer">Dinheiro</Label></div>
-              <div className="flex items-center gap-2 border rounded-md p-3"><RadioGroupItem id="cartao" value="cartao" /><Label htmlFor="cartao" className="flex-1 cursor-pointer flex items-center gap-2"><CreditCard className="w-4 h-4" /> Cartao na entrega</Label></div>
+              <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="pix" value="pix" /><Label htmlFor="pix" className="flex-1 cursor-pointer text-sm md:text-base">PIX</Label></div>
+              <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="dinheiro" value="dinheiro" /><Label htmlFor="dinheiro" className="flex-1 cursor-pointer text-sm md:text-base">Dinheiro</Label></div>
+              <div className="flex items-center gap-1.5 border rounded-md p-2 md:p-3"><RadioGroupItem id="cartao" value="cartao" /><Label htmlFor="cartao" className="flex-1 cursor-pointer flex items-center gap-1 md:gap-2"><CreditCard className="w-4 h-4" /><span className="text-sm md:text-base">Cartão na entrega</span></Label></div>
             </RadioGroup>
             {forma === "dinheiro" && (
               <div className="space-y-2">

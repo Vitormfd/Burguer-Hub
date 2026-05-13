@@ -208,6 +208,58 @@ export type Database = {
           },
         ]
       }
+      cupom_usos: {
+        Row: {
+          cliente_id: string | null
+          cupom_id: string
+          id: string
+          pedido_id: string
+          telefone_cliente: string | null
+          usado_em: string
+          valor_desconto_aplicado: number
+        }
+        Insert: {
+          cliente_id?: string | null
+          cupom_id: string
+          id?: string
+          pedido_id: string
+          telefone_cliente?: string | null
+          usado_em?: string
+          valor_desconto_aplicado?: number
+        }
+        Update: {
+          cliente_id?: string | null
+          cupom_id?: string
+          id?: string
+          pedido_id?: string
+          telefone_cliente?: string | null
+          usado_em?: string
+          valor_desconto_aplicado?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cupom_usos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cupom_usos_cupom_id_fkey"
+            columns: ["cupom_id"]
+            isOneToOne: false
+            referencedRelation: "cupons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cupom_usos_pedido_id_fkey"
+            columns: ["pedido_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clientes: {
         Row: {
           criado_em: string
@@ -218,6 +270,54 @@ export type Database = {
           total_pedidos: number
         }
         Insert: {
+      cupons: {
+        Row: {
+          ativo: boolean
+          codigo: string
+          criado_em: string
+          data_expiracao: string | null
+          data_inicio: string | null
+          descricao: string | null
+          id: string
+          limite_usos_total: number | null
+          tipo: Database["public"]["Enums"]["cupom_tipo"]
+          uso_unico_por_cliente: boolean
+          usos_realizados: number
+          valor: number | null
+          valor_minimo_pedido: number
+        }
+        Insert: {
+          ativo?: boolean
+          codigo: string
+          criado_em?: string
+          data_expiracao?: string | null
+          data_inicio?: string | null
+          descricao?: string | null
+          id?: string
+          limite_usos_total?: number | null
+          tipo: Database["public"]["Enums"]["cupom_tipo"]
+          uso_unico_por_cliente?: boolean
+          usos_realizados?: number
+          valor?: number | null
+          valor_minimo_pedido?: number
+        }
+        Update: {
+          ativo?: boolean
+          codigo?: string
+          criado_em?: string
+          data_expiracao?: string | null
+          data_inicio?: string | null
+          descricao?: string | null
+          id?: string
+          limite_usos_total?: number | null
+          tipo?: Database["public"]["Enums"]["cupom_tipo"]
+          uso_unico_por_cliente?: boolean
+          usos_realizados?: number
+          valor?: number | null
+          valor_minimo_pedido?: number
+        }
+        Relationships: []
+      }
           criado_em?: string
           id?: string
           nome: string
@@ -471,6 +571,7 @@ export type Database = {
         Row: {
           cliente_id: string | null
           conta_id: string | null
+          cupom_id: string | null
           criado_em: string
           desconto: number
           id: string
@@ -478,12 +579,14 @@ export type Database = {
           recompensa_resgatada_id: string | null
           status: Database["public"]["Enums"]["pedido_status"]
           subtotal: number
+          valor_desconto: number
           total: number
           tipo: Database["public"]["Enums"]["pedido_tipo"]
         }
         Insert: {
           cliente_id?: string | null
           conta_id?: string | null
+          cupom_id?: string | null
           criado_em?: string
           desconto?: number
           id?: string
@@ -491,12 +594,14 @@ export type Database = {
           recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
           subtotal?: number
+          valor_desconto?: number
           total?: number
           tipo: Database["public"]["Enums"]["pedido_tipo"]
         }
         Update: {
           cliente_id?: string | null
           conta_id?: string | null
+          cupom_id?: string | null
           criado_em?: string
           desconto?: number
           id?: string
@@ -504,6 +609,7 @@ export type Database = {
           recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
           subtotal?: number
+          valor_desconto?: number
           total?: number
           tipo?: Database["public"]["Enums"]["pedido_tipo"]
         }
@@ -527,6 +633,13 @@ export type Database = {
             columns: ["recompensa_resgatada_id"]
             isOneToOne: false
             referencedRelation: "resgates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pedidos_cupom_id_fkey"
+            columns: ["cupom_id"]
+            isOneToOne: false
+            referencedRelation: "cupons"
             referencedColumns: ["id"]
           },
         ]
@@ -783,6 +896,7 @@ export type Database = {
     Enums: {
       conta_status: "aberta" | "fechada"
       entrega_status: "aguardando" | "saiu_para_entrega" | "entregue"
+      cupom_tipo: "percentual" | "fixo" | "frete_gratis"
       mesa_status: "livre" | "ocupada" | "aguardando_pagamento"
       pedido_status: "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado"
       pedido_tipo: "mesa" | "delivery"
@@ -917,6 +1031,7 @@ export const Constants = {
     Enums: {
       conta_status: ["aberta", "fechada"],
       entrega_status: ["aguardando", "saiu_para_entrega", "entregue"],
+      cupom_tipo: ["percentual", "fixo", "frete_gratis"],
       mesa_status: ["livre", "ocupada", "aguardando_pagamento"],
       pedido_status: ["pendente", "em_preparo", "pronto", "entregue", "cancelado"],
       pedido_tipo: ["mesa", "delivery"],

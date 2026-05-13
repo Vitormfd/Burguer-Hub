@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, ChefHat, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet } from "lucide-react";
+import { Utensils, Truck, BookOpen, ChefHat, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +22,7 @@ const items = [
   { title: "Cardápio", url: "/admin/cardapio", icon: BookOpen },
   { title: "Adicionais", url: "/admin/adicionais", icon: ListChecks },
   { title: "Fidelidade", url: "/admin/fidelidade", icon: Trophy },
+  { title: "Cupons", url: "/admin/cupons", icon: TicketPercent },
   { title: "Financeiro", url: "/admin/financeiro", icon: Wallet },
   { title: "Cozinha", url: "/cozinha", icon: ChefHat },
   { title: "Relatórios", url: "/relatorios", icon: BarChart3 },

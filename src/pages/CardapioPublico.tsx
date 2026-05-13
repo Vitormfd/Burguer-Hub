@@ -33,7 +33,7 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import type { BairroTaxa, Categoria, Cliente, Configuracao, Produto, Recompensa } from "@/types/db";
+import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, Produto, Recompensa } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { CartItem } from "@/components/cardapio/cartTypes";
 import {
@@ -46,6 +46,26 @@ import {
 } from "@/lib/fidelidade";
 
 type Forma = "dinheiro" | "pix" | "cartao";
+
+type CouponValidationPayload = {
+  codigo: string;
+  telefone: string | null;
+  subtotal: number;
+  taxa_entrega: number;
+  commit: boolean;
+  pedido_id?: string;
+  cliente_id?: string | null;
+};
+
+interface CupomAplicado {
+  id: string;
+  codigo: string;
+  tipo: Cupom["tipo"];
+  valor: number | null;
+  valor_minimo_pedido: number;
+  valor_desconto_aplicado: number;
+  taxa_entrega_zerada: boolean;
+}
 
 const checkoutSchema = z.object({
   nome: z.string().trim().min(2, "Informe seu nome").max(100),
@@ -126,6 +146,9 @@ export default function CardapioPublico() {
   const [telefoneBuscado, setTelefoneBuscado] = useState("");
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
+  const [cupomCodigo, setCupomCodigo] = useState("");
+  const [cupomBusy, setCupomBusy] = useState(false);
+  const [cupomAplicado, setCupomAplicado] = useState<CupomAplicado | null>(null);
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const produtosInicioRef = useRef<HTMLElement | null>(null);
@@ -235,7 +258,9 @@ export default function CardapioPublico() {
     () => selectedReward ? calculateRewardBenefit(selectedReward, subtotal, produtos) : { desconto: 0, itemGratis: null, descricao: "" },
     [selectedReward, subtotal, produtos]
   );
-  const total = Math.max(subtotal + Number(taxa) - rewardBenefit.desconto, 0);
+  const descontoCupom = cupomAplicado?.valor_desconto_aplicado ?? 0;
+  const taxaEfetiva = cupomAplicado?.taxa_entrega_zerada ? 0 : Number(taxa);
+  const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
     return recompensasOrdenadas.filter((reward) => isRewardAvailable(reward, fidelidadeCliente.total_pedidos));
@@ -284,6 +309,109 @@ export default function CardapioPublico() {
       setSelectedRewardId(null);
     }
   }, [selectedReward, fidelidadeCliente]);
+
+  useEffect(() => {
+    if (!cupomAplicado) return;
+    setCupomAplicado(null);
+    setCupomCodigo("");
+  }, [subtotal, bairroId, tel]);
+
+  const validarCupom = async (payload: CouponValidationPayload) => {
+    const edgeResult = await supabase.functions.invoke("cupons-validar", {
+      body: payload,
+    });
+
+    if (edgeResult.data && !edgeResult.error) {
+      return edgeResult.data as {
+        cupom: { id: string; codigo: string; tipo: Cupom["tipo"]; valor: number | null; valor_minimo_pedido: number };
+        valor_desconto_aplicado: number;
+        taxa_entrega_zerada: boolean;
+      };
+    }
+
+    const backendMessage =
+      (edgeResult.data && typeof edgeResult.data === "object" && "error" in edgeResult.data
+        ? String((edgeResult.data as { error?: unknown }).error || "")
+        : "").trim();
+    const errorMessage = edgeResult.error?.message || "";
+    const functionUnavailable = /failed to send a request|failed to fetch|fetch failed|non-2xx/i.test(errorMessage);
+
+    if (backendMessage && !functionUnavailable) {
+      throw new Error(backendMessage);
+    }
+
+    if (!functionUnavailable) {
+      throw new Error(backendMessage || errorMessage || "Cupom inválido ou inexistente");
+    }
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc("aplicar_cupom_checkout", {
+      p_codigo: payload.codigo,
+      p_telefone_cliente: payload.telefone,
+      p_subtotal: payload.subtotal,
+      p_taxa_entrega: payload.taxa_entrega,
+      p_commit: payload.commit,
+      p_pedido_id: payload.pedido_id ?? null,
+      p_cliente_id: payload.cliente_id ?? null,
+    });
+    if (rpcError) {
+      const rpcBackendMessage = rpcError.message || "";
+      throw new Error(rpcBackendMessage || "Cupom inválido ou inexistente");
+    }
+
+    return rpcData as {
+      cupom: { id: string; codigo: string; tipo: Cupom["tipo"]; valor: number | null; valor_minimo_pedido: number };
+      valor_desconto_aplicado: number;
+      taxa_entrega_zerada: boolean;
+    };
+  };
+
+  const applyCoupon = async () => {
+    const codigo = cupomCodigo.trim().toUpperCase();
+
+    if (!codigo) {
+      return toast.error("Informe o código do cupom");
+    }
+
+    setCupomBusy(true);
+    let payload: Awaited<ReturnType<typeof validarCupom>>;
+
+    try {
+      payload = await validarCupom({
+        codigo,
+        telefone: normalizePhone(tel) || null,
+        subtotal,
+        taxa_entrega: Number(taxa),
+        commit: false,
+      });
+    } catch (error) {
+      setCupomBusy(false);
+      return toast.error(error instanceof Error ? error.message : "Erro ao validar cupom");
+    }
+
+    setCupomBusy(false);
+
+    if (!payload?.cupom) {
+      return toast.error("Cupom inválido ou inexistente");
+    }
+
+    setCupomAplicado({
+      id: payload.cupom.id,
+      codigo: payload.cupom.codigo,
+      tipo: payload.cupom.tipo,
+      valor: payload.cupom.valor,
+      valor_minimo_pedido: payload.cupom.valor_minimo_pedido,
+      valor_desconto_aplicado: Number(payload.valor_desconto_aplicado || 0),
+      taxa_entrega_zerada: !!payload.taxa_entrega_zerada,
+    });
+    setCupomCodigo(payload.cupom.codigo);
+    toast.success(`Cupom aplicado ✅ ${payload.cupom.codigo}`);
+  };
+
+  const removeCoupon = () => {
+    setCupomAplicado(null);
+    setCupomCodigo("");
+    toast.message("Cupom removido");
+  };
 
   const buscarClienteFidelidade = async () => {
     const telefoneNormalizado = normalizePhone(tel);
@@ -595,6 +723,9 @@ export default function CardapioPublico() {
     const telefoneNormalizado = normalizePhone(tel);
     const descontoFidelidade = rewardBenefit.desconto;
     const itemGratis = rewardBenefit.itemGratis;
+    const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
+    const taxaEntregaFinal = cupomAplicado?.taxa_entrega_zerada ? 0 : Number(bairro.taxa);
+    const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
 
     setBusy(true);
 
@@ -606,7 +737,9 @@ export default function CardapioPublico() {
         cliente_id: fidelidadeCliente?.id ?? null,
         subtotal,
         desconto: descontoFidelidade,
-        total: Math.max(subtotal + Number(bairro.taxa) - descontoFidelidade, 0),
+        cupom_id: cupomAplicado?.id ?? null,
+        valor_desconto: descontoCupomAplicado,
+        total: totalFinal,
       })
       .select()
       .single();
@@ -667,7 +800,7 @@ export default function CardapioPublico() {
       cliente_telefone: tel.trim(),
       endereco: enderecoFull,
       bairro: bairro.nome,
-      taxa_entrega: Number(bairro.taxa),
+      taxa_entrega: taxaEntregaFinal,
       status: "aguardando",
       origem: "online",
       numero,
@@ -697,6 +830,7 @@ export default function CardapioPublico() {
       clienteId = clienteRegistradoId;
     }
 
+    let recompensaResgatadaId: string | null = null;
     if (selectedReward && clienteId) {
       const { data: novoResgate, error: eResgate } = await supabase
         .from("resgates")
@@ -711,20 +845,59 @@ export default function CardapioPublico() {
 
       if (eResgate) {
         setBusy(false);
+        await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
+        await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
+        await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
+        await supabase.from("pedidos").delete().eq("id", pedido.id);
         return toast.error(eResgate.message);
       }
 
-      const { error: ePedidoUpdate } = await supabase
-        .from("pedidos")
-        .update({
-          cliente_id: clienteId,
-          recompensa_resgatada_id: novoResgate.id,
-        })
-        .eq("id", pedido.id);
+      recompensaResgatadaId = novoResgate.id;
+    }
 
-      if (ePedidoUpdate) {
+    const { error: ePedidoUpdate } = await supabase
+      .from("pedidos")
+      .update({
+        cliente_id: clienteId,
+        recompensa_resgatada_id: recompensaResgatadaId,
+        cupom_id: cupomAplicado?.id ?? null,
+        valor_desconto: descontoCupomAplicado,
+      })
+      .eq("id", pedido.id);
+
+    if (ePedidoUpdate) {
+      setBusy(false);
+      if (recompensaResgatadaId) {
+        await supabase.from("resgates").delete().eq("id", recompensaResgatadaId);
+      }
+      await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
+      await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
+      await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
+      await supabase.from("pedidos").delete().eq("id", pedido.id);
+      return toast.error(ePedidoUpdate.message);
+    }
+
+    if (cupomAplicado) {
+      try {
+        await validarCupom({
+          codigo: cupomAplicado.codigo,
+          telefone: telefoneNormalizado || null,
+          subtotal,
+          taxa_entrega: Number(bairro.taxa),
+          commit: true,
+          pedido_id: pedido.id,
+          cliente_id: clienteId,
+        });
+      } catch (error) {
         setBusy(false);
-        return toast.error(ePedidoUpdate.message);
+        if (recompensaResgatadaId) {
+          await supabase.from("resgates").delete().eq("id", recompensaResgatadaId);
+        }
+        await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
+        await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
+        await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
+        await supabase.from("pedidos").delete().eq("id", pedido.id);
+        return toast.error(error instanceof Error ? error.message : "Erro ao registrar cupom");
       }
     }
 
@@ -744,6 +917,8 @@ export default function CardapioPublico() {
     setSelectedRewardId(null);
     setFidelidadeBusca(null);
     setTelefoneBuscado("");
+    setCupomAplicado(null);
+    setCupomCodigo("");
   };
 
   if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
@@ -1220,7 +1395,54 @@ export default function CardapioPublico() {
               {rewardBenefit.desconto > 0 && (
                 <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}><span>Desconto fidelidade</span><span>-{brl(rewardBenefit.desconto)}</span></div>
               )}
-              <div className="flex justify-between"><span>Taxa de entrega</span><span>{brl(Number(taxa))}</span></div>
+              <div className="space-y-2 rounded-xl border bg-zinc-50 p-3">
+                {!cupomAplicado ? (
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Tem um cupom?</Label>
+                      <Input
+                        value={cupomCodigo}
+                        onChange={(event) => setCupomCodigo(event.target.value.toUpperCase())}
+                        placeholder="BURGER10"
+                        className="uppercase"
+                      />
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => void applyCoupon()} disabled={cupomBusy}>
+                      {cupomBusy ? "Aplicando..." : "Aplicar"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Badge className="border-emerald-500/25 bg-emerald-500/15 text-emerald-700">
+                      Cupom aplicado ✅ {cupomAplicado.codigo}
+                    </Badge>
+                    <Button type="button" variant="outline" size="sm" onClick={removeCoupon}>
+                      Remover
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {cupomAplicado?.tipo === "percentual" && (
+                <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
+                  <span>Desconto ({Number(cupomAplicado.valor || 0).toFixed(0)}%)</span>
+                  <span>-{brl(descontoCupom)}</span>
+                </div>
+              )}
+              {cupomAplicado?.tipo === "fixo" && (
+                <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
+                  <span>Desconto</span>
+                  <span>-{brl(descontoCupom)}</span>
+                </div>
+              )}
+              {cupomAplicado?.tipo === "frete_gratis" && (
+                <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
+                  <span>Frete</span>
+                  <span>Grátis 🎉</span>
+                </div>
+              )}
+              {cupomAplicado?.tipo !== "frete_gratis" && (
+                <div className="flex justify-between"><span>Taxa de entrega</span><span>{brl(taxaEfetiva)}</span></div>
+              )}
               <div className="flex justify-between text-base md:text-lg font-extrabold"><span>Total</span><span className="brand-text">{brl(total)}</span></div>
             </div>
 

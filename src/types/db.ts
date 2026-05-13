@@ -3,6 +3,7 @@ export type ContaStatus = "aberta" | "fechada";
 export type PedidoTipo = "mesa" | "delivery";
 export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado";
 export type RecompensaTipo = "item_gratis" | "desconto_percentual" | "desconto_fixo";
+export type CupomTipo = "percentual" | "fixo" | "frete_gratis";
 export type ResgateStatus = "pendente" | "aplicado" | "cancelado";
 
 export interface Mesa {
@@ -46,11 +47,13 @@ export interface Pedido {
   id: string;
   conta_id: string | null;
   cliente_id?: string | null;
+  cupom_id?: string | null;
   tipo: PedidoTipo;
   status: PedidoStatus;
   criado_em: string;
   subtotal?: number;
   desconto?: number;
+  valor_desconto?: number;
   total?: number;
   recompensa_resgatada_id?: string | null;
   observacoes_internas?: string | null;
@@ -141,6 +144,35 @@ export interface Recompensa {
   imagem_url: string | null;
   ordem: number;
   criado_em?: string;
+}
+
+export interface Cupom {
+  id: string;
+  codigo: string;
+  descricao: string | null;
+  tipo: CupomTipo;
+  valor: number | null;
+  valor_minimo_pedido: number;
+  limite_usos_total: number | null;
+  usos_realizados: number;
+  uso_unico_por_cliente: boolean;
+  data_inicio: string | null;
+  data_expiracao: string | null;
+  ativo: boolean;
+  criado_em: string;
+}
+
+export interface CupomUso {
+  id: string;
+  cupom_id: string;
+  cliente_id: string | null;
+  pedido_id: string;
+  telefone_cliente: string | null;
+  valor_desconto_aplicado: number;
+  usado_em: string;
+  cupom?: Cupom;
+  cliente?: Cliente | null;
+  pedido?: Pedido | null;
 }
 
 export interface Resgate {

@@ -28,6 +28,8 @@ export interface PrintDeliveryData {
   endereco: string;
   bairro?: string | null;
   taxa_entrega: number;
+  desconto?: number;
+  cupom_codigo?: string | null;
   forma_pagamento?: string | null;
   troco_para?: number | null;
   itens: PrintItem[];
@@ -99,6 +101,9 @@ export function printReceipt(data: PrintData): void {
     body += `<div class="sep"></div>`;
     body += `<div class="subtotal-line"><span>Subtotal</span><span>${brlPrint(data.subtotal)}</span></div>`;
     body += `<div class="subtotal-line"><span>Taxa de entrega</span><span>${brlPrint(data.taxa_entrega)}</span></div>`;
+    if (data.desconto && data.desconto > 0) {
+      body += `<div class="subtotal-line"><span>Desconto${data.cupom_codigo ? ` (${esc(data.cupom_codigo)})` : ""}</span><span>- ${brlPrint(data.desconto)}</span></div>`;
+    }
     body += `<div class="total-line"><span>TOTAL</span><span>${brlPrint(data.total)}</span></div>`;
     if (data.forma_pagamento) {
       const formaLabel: Record<string, string> = {

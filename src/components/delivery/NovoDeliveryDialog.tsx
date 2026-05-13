@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { brl } from "@/lib/format";
+import { printReceipt } from "@/lib/print";
 
 const deliverySchema = z.object({
   cliente_nome: z.string().trim().min(2, "Nome muito curto").max(100),
@@ -33,6 +34,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [bairro, setBairro] = useState("");
   const [taxa, setTaxa] = useState<string>("0");
   const [busy, setBusy] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(true);
 
   const reset = () => {
     setCart([]); setNome(""); setTel(""); setEndereco(""); setBairro(""); setTaxa("0");
@@ -101,6 +103,32 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     if (e3) return toast.error(e3.message);
 
     toast.success("Delivery cadastrado");
+
+    if (autoPrint) {
+      printReceipt({
+        tipo: "delivery",
+        cliente_nome: parsed.data.cliente_nome,
+        cliente_telefone: parsed.data.cliente_telefone,
+        endereco: parsed.data.endereco,
+        bairro: parsed.data.bairro || null,
+        taxa_entrega: parsed.data.taxa_entrega,
+        itens: items.map((item) => ({
+          nome: item.produto.nome,
+          quantidade: item.quantidade,
+          preco_unitario: item.precoUnit,
+          observacao: item.observacao || null,
+          adicionais: item.adicionais.map((a) => ({
+            nome: a.adicionalNome,
+            quantidade: a.quantidade,
+            preco_unitario: a.precoUnitario,
+          })),
+        })),
+        subtotal,
+        total: subtotal + taxaNum,
+        criado_em: new Date().toISOString(),
+      });
+    }
+
     reset();
     onCreated();
   };
@@ -152,11 +180,22 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
           heightClass="h-[35vh]"
         />
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={handleClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={handleConfirm} disabled={busy} size="lg">
-            {busy ? "Enviando..." : `Confirmar pedido — ${brl(subtotal + taxaNum)}`}
-          </Button>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoPrint}
+              onChange={(e) => setAutoPrint(e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            Imprimir automaticamente
+          </label>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleClose} disabled={busy}>Cancelar</Button>
+            <Button onClick={handleConfirm} disabled={busy} size="lg">
+              {busy ? "Enviando..." : `Confirmar pedido — ${brl(subtotal + taxaNum)}`}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

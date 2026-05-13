@@ -6,17 +6,20 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
+import { printReceipt } from "@/lib/print";
 
 interface Props {
   open: boolean;
   contaId: string;
+  mesaNumero?: number;
   onClose: () => void;
   onCreated: () => void;
 }
 
-export default function NovoPedidoDialog({ open, contaId, onClose, onCreated }: Props) {
+export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, onCreated }: Props) {
   const [cart, setCart] = useState<Cart>([]);
   const [busy, setBusy] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(true);
 
   useEffect(() => { if (open) setCart([]); }, [open]);
 
@@ -57,6 +60,30 @@ export default function NovoPedidoDialog({ open, contaId, onClose, onCreated }: 
     }
 
     toast.success("Pedido enviado para a cozinha");
+
+    if (autoPrint && mesaNumero != null) {
+      printReceipt({
+        tipo: "mesa",
+        mesa_numero: mesaNumero,
+        pedidos: [{
+          numero: 1,
+          criado_em: new Date().toISOString(),
+          itens: items.map((item) => ({
+            nome: item.produto.nome,
+            quantidade: item.quantidade,
+            preco_unitario: item.precoUnit,
+            observacao: item.observacao || null,
+            adicionais: item.adicionais.map((a) => ({
+              nome: a.adicionalNome,
+              quantidade: a.quantidade,
+              preco_unitario: a.precoUnitario,
+            })),
+          })),
+        }],
+        total: cartSubtotal(items),
+      });
+    }
+
     onCreated();
   };
 
@@ -69,11 +96,22 @@ export default function NovoPedidoDialog({ open, contaId, onClose, onCreated }: 
 
         <CardapioSelector cart={cart} onCartChange={setCart} />
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={handleConfirm} disabled={busy || !cart.length} size="lg">
-            {busy ? "Enviando..." : `Enviar (${cart.reduce((s, i) => s + i.quantidade, 0)} itens)`}
-          </Button>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoPrint}
+              onChange={(e) => setAutoPrint(e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            Imprimir automaticamente
+          </label>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+            <Button onClick={handleConfirm} disabled={busy || !cart.length} size="lg">
+              {busy ? "Enviando..." : `Enviar (${cart.reduce((s, i) => s + i.quantidade, 0)} itens)`}
+            </Button>
+          </div>
         </div>
         <span className="hidden">{cartSubtotal(cart)}</span>
       </DialogContent>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package } from "lucide-react";
+import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
+import { printReceipt } from "@/lib/print";
 
 type EntregaStatus = "aguardando" | "saiu_para_entrega" | "entregue";
 
@@ -89,6 +90,69 @@ export default function Delivery() {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load]);
+
+  const printDeliveryCard = useCallback(async (row: DeliveryRow) => {
+    const { data: itens } = await supabase
+      .from("pedido_itens")
+      .select("id, quantidade, preco_unitario, observacao, produto_id")
+      .eq("pedido_id", row.pedido_id);
+
+    const itensList = itens || [];
+    const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
+    const itemIds = itensList.map((i) => i.id);
+
+    const [{ data: produtos }, { data: itemAdicionais }] = await Promise.all([
+      prodIds.length
+        ? supabase.from("produtos").select("id, nome").in("id", prodIds)
+        : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
+      itemIds.length
+        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, quantidade, preco_unitario").in("pedido_item_id", itemIds)
+        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string; quantidade: number; preco_unitario: number }[] }),
+    ]);
+
+    const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
+    const { data: adicionais } = adicionalIds.length
+      ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
+      : { data: [] as { id: string; nome: string }[] };
+
+    const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
+    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome as string]));
+    const adPorItem = new Map<string, { nome: string; quantidade: number; preco_unitario: number }[]>();
+    (itemAdicionais || []).forEach((a) => {
+      const cur = adPorItem.get(a.pedido_item_id) ?? [];
+      cur.push({ nome: adicionalMap.get(a.adicional_id) ?? "Adicional", quantidade: a.quantidade, preco_unitario: Number(a.preco_unitario) });
+      adPorItem.set(a.pedido_item_id, cur);
+    });
+
+    const { data: entrega } = await supabase
+      .from("entregas")
+      .select("forma_pagamento, troco_para")
+      .eq("id", row.entrega_id)
+      .maybeSingle();
+
+    printReceipt({
+      tipo: "delivery",
+      cliente_nome: row.cliente_nome,
+      cliente_telefone: row.cliente_telefone,
+      endereco: row.endereco,
+      bairro: row.bairro,
+      taxa_entrega: row.taxa_entrega,
+      forma_pagamento: (entrega as { forma_pagamento?: string | null } | null)?.forma_pagamento ?? null,
+      troco_para: (entrega as { troco_para?: number | null } | null)?.troco_para != null
+        ? Number((entrega as { troco_para: number }).troco_para)
+        : null,
+      itens: itensList.map((i) => ({
+        nome: i.produto_id ? prodMap.get(i.produto_id) ?? "Item" : "Item",
+        quantidade: i.quantidade,
+        preco_unitario: Number(i.preco_unitario),
+        observacao: i.observacao,
+        adicionais: adPorItem.get(i.id) ?? [],
+      })),
+      subtotal: row.itens_total,
+      total: row.itens_total + row.taxa_entrega,
+      criado_em: row.criado_em,
+    });
+  }, []);
 
   const advance = async (row: DeliveryRow) => {
     const cfg = statusCfg[row.status];
@@ -189,6 +253,14 @@ export default function Delivery() {
                     {cfg.nextLabel}
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-1"
+                  onClick={() => printDeliveryCard(r)}
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir notinha
+                </Button>
               </Card>
             );
           })}

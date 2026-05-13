@@ -15,9 +15,11 @@ import {
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoPedidoDialog from "./NovoPedidoDialog";
-import { Plus, Receipt, Clock } from "lucide-react";
+import { Plus, Receipt, Clock, Printer } from "lucide-react";
+import { printReceipt } from "@/lib/print";
 
-type ItemDetalhado = PedidoItem & { produto: Produto | null };
+type ItemAdicional = { nome: string; quantidade: number; preco_unitario: number };
+type ItemDetalhado = PedidoItem & { produto: Produto | null; adicionais: ItemAdicional[] };
 type PedidoComItens = Pedido & { itens: ItemDetalhado[] };
 
 const statusLabel: Record<Pedido["status"], { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -53,17 +55,46 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     const ids = pedList.map((p) => p.id);
     const { data: itens } = await supabase
       .from("pedido_itens").select("*").in("pedido_id", ids);
-    const prodIds = Array.from(new Set((itens || []).map((i) => i.produto_id).filter(Boolean))) as string[];
-    const { data: prods } = prodIds.length
-      ? await supabase.from("produtos").select("*").in("id", prodIds)
-      : { data: [] };
+    const itensList = (itens || []) as PedidoItem[];
+    const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
+    const itemIds = itensList.map((i) => i.id);
+
+    const [{ data: prods }, { data: itemAdicionais }] = await Promise.all([
+      prodIds.length
+        ? supabase.from("produtos").select("*").in("id", prodIds)
+        : Promise.resolve({ data: [] as Produto[] }),
+      itemIds.length
+        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, quantidade, preco_unitario").in("pedido_item_id", itemIds)
+        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string; quantidade: number; preco_unitario: number }[] }),
+    ]);
+
+    const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
+    const { data: adicionais } = adicionalIds.length
+      ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
+      : { data: [] as { id: string; nome: string }[] };
+
     const prodMap = new Map((prods || []).map((p) => [p.id, p as Produto]));
+    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome]));
+    const adPorItem = new Map<string, ItemAdicional[]>();
+    (itemAdicionais || []).forEach((row) => {
+      const cur = adPorItem.get(row.pedido_item_id) ?? [];
+      cur.push({
+        nome: adicionalMap.get(row.adicional_id) ?? "Adicional",
+        quantidade: row.quantidade,
+        preco_unitario: Number(row.preco_unitario),
+      });
+      adPorItem.set(row.pedido_item_id, cur);
+    });
 
     setPedidos(pedList.map((p) => ({
       ...p,
-      itens: ((itens || []) as PedidoItem[])
+      itens: itensList
         .filter((i) => i.pedido_id === p.id)
-        .map((i) => ({ ...i, produto: i.produto_id ? prodMap.get(i.produto_id) ?? null : null })),
+        .map((i) => ({
+          ...i,
+          produto: i.produto_id ? prodMap.get(i.produto_id) ?? null : null,
+          adicionais: adPorItem.get(i.id) ?? [],
+        })),
     })));
   }, [mesa]);
 
@@ -84,6 +115,26 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     (s, p) => s + p.itens.reduce((si, i) => si + Number(i.preco_unitario) * i.quantidade, 0),
     0
   );
+
+  const handlePrint = () => {
+    if (!mesa || !pedidos.length) return;
+    printReceipt({
+      tipo: "mesa",
+      mesa_numero: mesa.numero,
+      pedidos: pedidos.map((p, idx) => ({
+        numero: idx + 1,
+        criado_em: p.criado_em,
+        itens: p.itens.map((i) => ({
+          nome: i.produto?.nome ?? "Item",
+          quantidade: i.quantidade,
+          preco_unitario: Number(i.preco_unitario),
+          observacao: i.observacao,
+          adicionais: i.adicionais,
+        })),
+      })),
+      total,
+    });
+  };
 
   const handleFechar = async () => {
     if (!conta || !mesa) return;
@@ -145,13 +196,18 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                     <ul className="space-y-2">
                       {p.itens.map((i) => (
                         <li key={i.id} className="flex justify-between gap-3 text-sm">
-                          <div>
+                          <div className="flex-1">
                             <div>
                               <span className="font-medium">{i.quantidade}×</span>{" "}
                               {i.produto?.nome ?? "Produto removido"}
                             </div>
+                            {i.adicionais.map((a, ai) => (
+                              <div key={ai} className="text-xs text-muted-foreground pl-3">
+                                +{a.quantidade}x {a.nome}
+                              </div>
+                            ))}
                             {i.observacao && (
-                              <div className="text-xs text-muted-foreground italic">↳ {i.observacao}</div>
+                              <div className="text-xs text-muted-foreground italic pl-3">↳ {i.observacao}</div>
                             )}
                           </div>
                           <span className="text-muted-foreground whitespace-nowrap">
@@ -174,9 +230,12 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               <span className="text-sm uppercase tracking-wider text-muted-foreground font-semibold">Total</span>
               <span className="font-display text-4xl text-primary">{brl(total)}</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button variant="outline" onClick={() => setNovoOpen(true)} disabled={!conta}>
                 <Plus className="h-4 w-4 mr-1" /> Novo pedido
+              </Button>
+              <Button variant="outline" onClick={handlePrint} disabled={!conta || !pedidos.length}>
+                <Printer className="h-4 w-4 mr-1" /> Imprimir
               </Button>
               <Button onClick={() => setConfirmFechar(true)} disabled={!conta || !pedidos.length}>
                 Fechar conta
@@ -190,6 +249,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
         <NovoPedidoDialog
           open={novoOpen}
           contaId={conta.id}
+          mesaNumero={mesa?.numero}
           onClose={() => setNovoOpen(false)}
           onCreated={() => { setNovoOpen(false); load(); }}
         />

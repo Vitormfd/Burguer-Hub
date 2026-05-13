@@ -18,10 +18,12 @@ export default function Configuracoes() {
   const [bairros, setBairros] = useState<BairroTaxa[]>([]);
   const [novoBairro, setNovoBairro] = useState("");
   const [novaTaxa, setNovaTaxa] = useState("");
+  const [novaImagemCarrossel, setNovaImagemCarrossel] = useState("");
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState<"logo" | "banner" | null>(null);
+  const [uploading, setUploading] = useState<"logo" | "banner" | "carrossel" | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
+  const carrosselRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (kind: "logo" | "banner", file: File) => {
     if (!cfg) return;
@@ -48,10 +50,64 @@ export default function Configuracoes() {
       supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
       supabase.from("bairros_taxas").select("*").order("nome"),
     ]);
-    if (c) setCfg(c as Configuracao);
+    if (c) {
+      const cfgData = c as Configuracao;
+      setCfg({
+        ...cfgData,
+        carrossel_imagens: cfgData.carrossel_imagens || [],
+      });
+    }
     setBairros((b || []) as BairroTaxa[]);
   };
   useEffect(() => { load(); }, []);
+
+  const uploadCarouselImage = async (file: File) => {
+    if (!cfg) return;
+    if (file.size > 5 * 1024 * 1024) return toast.error("Arquivo deve ter até 5MB");
+
+    setUploading("carrossel");
+    const ext = file.name.split(".").pop() || "png";
+    const path = `carrossel-${cfg.id}-${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage.from("loja").upload(path, file, {
+      upsert: true,
+      contentType: file.type,
+    });
+    if (upErr) {
+      setUploading(null);
+      return toast.error(upErr.message);
+    }
+
+    const { data } = supabase.storage.from("loja").getPublicUrl(path);
+    const url = data.publicUrl;
+    setCfg({
+      ...cfg,
+      carrossel_imagens: [...(cfg.carrossel_imagens || []), url],
+    });
+    setUploading(null);
+    toast.success("Imagem adicionada ao carrossel");
+  };
+
+  const addCarouselByUrl = () => {
+    if (!cfg) return;
+    const url = novaImagemCarrossel.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) return toast.error("Informe uma URL válida iniciando com http:// ou https://");
+
+    const atuais = cfg.carrossel_imagens || [];
+    if (atuais.includes(url)) return toast.error("Essa imagem já está no carrossel");
+
+    setCfg({ ...cfg, carrossel_imagens: [...atuais, url] });
+    setNovaImagemCarrossel("");
+  };
+
+  const removeCarouselImage = (url: string) => {
+    if (!cfg) return;
+    setCfg({
+      ...cfg,
+      carrossel_imagens: (cfg.carrossel_imagens || []).filter((item) => item !== url),
+    });
+  };
 
   const save = async () => {
     if (!cfg) return;
@@ -69,6 +125,7 @@ export default function Configuracoes() {
         seo_titulo: cfg.seo_titulo,
         seo_descricao: cfg.seo_descricao,
         tempo_entrega_min: cfg.tempo_entrega_min ?? "30-45 min",
+        carrossel_imagens: cfg.carrossel_imagens || [],
       })
       .eq("id", cfg.id);
     setBusy(false);
@@ -160,6 +217,62 @@ export default function Configuracoes() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="space-y-3 md:col-span-2">
+            <Label>Imagens do carrossel do topo</Label>
+            <p className="text-xs text-muted-foreground">
+              Essas imagens são exibidas no carrossel grande da página pública.
+            </p>
+
+            {(cfg.carrossel_imagens || []).length === 0 ? (
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Nenhuma imagem adicionada no carrossel ainda.
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {(cfg.carrossel_imagens || []).map((url, idx) => (
+                  <div key={`${url}-${idx}`} className="relative rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
+                    <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="destructive"
+                      className="absolute top-1 right-1 h-7 w-7"
+                      onClick={() => removeCarouselImage(url)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={carrosselRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadCarouselImage(f);
+                  e.target.value = "";
+                }}
+              />
+              <Button type="button" variant="outline" onClick={() => carrosselRef.current?.click()} disabled={uploading === "carrossel"}>
+                <Upload className="w-4 h-4 mr-1" /> {uploading === "carrossel" ? "Enviando..." : "Adicionar imagem"}
+              </Button>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={novaImagemCarrossel}
+                onChange={(e) => setNovaImagemCarrossel(e.target.value)}
+                placeholder="ou cole uma URL da imagem https://..."
+              />
+              <Button type="button" variant="secondary" onClick={addCarouselByUrl}>Adicionar URL</Button>
+            </div>
           </div>
         </div>
       </Card>

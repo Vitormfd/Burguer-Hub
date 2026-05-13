@@ -98,6 +98,7 @@ export interface Configuracao {
   nome_loja: string;
   logo_url: string | null;
   banner_url: string | null;
+  carrossel_imagens: string[];
   cor_primaria: string;
   ativo: boolean;
   hora_abertura: string;

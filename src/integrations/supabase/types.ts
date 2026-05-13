@@ -113,6 +113,7 @@ export type Database = {
         Row: {
           ativo: boolean
           banner_url: string | null
+          carrossel_imagens: string[]
           cor_primaria: string
           created_at: string
           hora_abertura: string
@@ -128,6 +129,7 @@ export type Database = {
         Insert: {
           ativo?: boolean
           banner_url?: string | null
+          carrossel_imagens?: string[]
           cor_primaria?: string
           created_at?: string
           hora_abertura?: string
@@ -143,6 +145,7 @@ export type Database = {
         Update: {
           ativo?: boolean
           banner_url?: string | null
+          carrossel_imagens?: string[]
           cor_primaria?: string
           created_at?: string
           hora_abertura?: string

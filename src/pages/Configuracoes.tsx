@@ -116,6 +116,7 @@ export default function Configuracoes() {
       .from("configuracoes")
       .update({
         nome_loja: cfg.nome_loja,
+        referencia: cfg.referencia,
         logo_url: cfg.logo_url,
         banner_url: cfg.banner_url,
         cor_primaria: cfg.cor_primaria,
@@ -169,6 +170,20 @@ export default function Configuracoes() {
           <div className="space-y-2">
             <Label>Nome da loja</Label>
             <Input value={cfg.nome_loja} maxLength={80} onChange={(e) => setCfg({ ...cfg, nome_loja: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label>Slug/Referência (URL pública)</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">dominio.com/</span>
+              <Input 
+                value={cfg.referencia || ""} 
+                onChange={(e) => setCfg({ ...cfg, referencia: e.target.value.toLowerCase().replace(/[^a-z0-9\-]/g, "") || null })} 
+                placeholder="seu-restaurante"
+                maxLength={50}
+              />
+              <span className="text-sm text-muted-foreground">/cardapio</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Use apenas letras minúsculas, números e hífen. Este é o identificador único para sua loja.</p>
           </div>
           <div className="space-y-2">
             <Label>Cor principal</Label>

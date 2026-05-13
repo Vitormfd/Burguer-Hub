@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,8 @@ const precoEfetivo = (p: Produto) =>
   p.promocao && p.preco_promocional != null ? Number(p.preco_promocional) : Number(p.preco);
 
 export default function CardapioPublico() {
+  const { referencia } = useParams<{ referencia?: string }>();
+  
   const [cfg, setCfg] = useState<Configuracao | null>(null);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -88,8 +91,14 @@ export default function CardapioPublico() {
 
   useEffect(() => {
     (async () => {
+      let cfgQuery = supabase.from("configuracoes").select("*");
+      
+      if (referencia) {
+        cfgQuery = cfgQuery.eq("referencia", referencia);
+      }
+      
       const [{ data: c }, { data: cat }, { data: prod }, { data: b }, { data: itens }] = await Promise.all([
-        supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
+        cfgQuery.maybeSingle(),
         supabase.from("categorias").select("*").eq("ativo", true).order("nome"),
         supabase.from("produtos").select("*").eq("disponivel", true).order("nome"),
         supabase.from("bairros_taxas").select("*").eq("ativo", true).order("nome"),
@@ -114,7 +123,7 @@ export default function CardapioPublico() {
         .map(([id]) => id);
       setTopSellers(new Set(top));
     })();
-  }, []);
+  }, [referencia]);
 
   useEffect(() => {
     if (!cfg) return;

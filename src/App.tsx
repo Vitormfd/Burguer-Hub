@@ -26,6 +26,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
+            <Route path="/:referencia/cardapio" element={<CardapioPublico />} />
             <Route path="/cardapio" element={<CardapioPublico />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/cozinha" element={<Cozinha />} />

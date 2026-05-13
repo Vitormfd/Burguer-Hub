@@ -96,6 +96,7 @@ export interface PedidoItemAdicional {
 export interface Configuracao {
   id: string;
   nome_loja: string;
+  referencia: string | null;
   logo_url: string | null;
   banner_url: string | null;
   carrossel_imagens: string[];

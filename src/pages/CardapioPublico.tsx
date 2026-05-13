@@ -472,11 +472,11 @@ export default function CardapioPublico() {
               )}
             </div>
 
-            <h2 className="text-[14px] sm:text-[15px] font-semibold mb-2 text-center tracking-tight">Mais Pedidos</h2>
-            <div className="mx-auto w-full max-w-[620px] flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <h2 className="text-[16px] sm:text-[17px] font-semibold mb-2 text-center tracking-tight">Mais Pedidos</h2>
+            <div className="mx-auto w-full max-w-[700px] flex gap-3 overflow-x-auto no-scrollbar pb-1">
               {maisPedidos.map((p, i) => (
-                <article key={`top-${p.id}`} onClick={() => aberta && openAdd(p)} className="shrink-0 w-[112px] cursor-pointer">
-                  <div className="relative h-16 rounded-md overflow-hidden bg-zinc-200 shadow-sm">
+                <article key={`top-${p.id}`} onClick={() => aberta && openAdd(p)} className="shrink-0 w-[132px] cursor-pointer">
+                  <div className="relative h-[76px] rounded-md overflow-hidden bg-zinc-200 shadow-sm">
                     {p.imagem_url ? (
                       <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" loading="lazy" />
                     ) : (
@@ -485,14 +485,14 @@ export default function CardapioPublico() {
                     {i === 0 && <span className="absolute top-1.5 left-1.5 bg-amber-100 text-amber-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">🔥 O favorito!</span>}
                   </div>
                   <div className="pt-1 px-0.5">
-                    <h3 className="font-semibold text-[10px] leading-4 line-clamp-2 min-h-[24px] uppercase tracking-tight text-zinc-800">{p.nome}</h3>
+                    <h3 className="font-semibold text-[12px] leading-4 line-clamp-2 min-h-[24px] uppercase tracking-tight text-zinc-800">{p.nome}</h3>
                     {p.promocao && p.preco_promocional != null ? (
                       <>
-                        <p className="text-[9px] text-zinc-500 mt-0.5">A partir de</p>
-                        <p className="text-[15px] font-semibold">{brl(precoEfetivo(p))}</p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">A partir de</p>
+                        <p className="text-[17px] font-semibold">{brl(precoEfetivo(p))}</p>
                       </>
                     ) : (
-                      <p className="text-[15px] font-semibold mt-0.5">{brl(precoEfetivo(p))}</p>
+                      <p className="text-[17px] font-semibold mt-0.5">{brl(precoEfetivo(p))}</p>
                     )}
                   </div>
                 </article>

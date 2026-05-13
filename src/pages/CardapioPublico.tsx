@@ -69,6 +69,7 @@ export default function CardapioPublico() {
   const [activeCat, setActiveCat] = useState<string>("");
   const [busca, setBusca] = useState("");
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [showStickyCats, setShowStickyCats] = useState(false);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [nome, setNome] = useState("");
@@ -83,6 +84,7 @@ export default function CardapioPublico() {
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const produtosInicioRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -219,6 +221,19 @@ export default function CardapioPublico() {
       setBannerIndex(0);
     }
   }, [bannerIndex, bannerSlides.length]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const target = produtosInicioRef.current;
+      if (!target) return;
+      const trigger = target.offsetTop - 120;
+      setShowStickyCats(window.scrollY >= trigger);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const fazerPedido = async () => {
     const parsed = checkoutSchema.safeParse({
@@ -510,7 +525,12 @@ export default function CardapioPublico() {
         </div>
       )}
 
-      <nav className="sticky top-0 z-30 border-y border-zinc-200 bg-[#f3f3f3]/95 backdrop-blur">
+      <nav
+        className={cn(
+          "fixed top-0 left-0 right-0 z-40 border-y border-zinc-200 bg-[#f3f3f3]/95 backdrop-blur shadow-sm transition-all duration-300",
+          showStickyCats ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"
+        )}
+      >
         <div className="max-w-4xl mx-auto px-3 overflow-x-auto no-scrollbar">
           <div className="flex items-center min-w-max">
             {categorias.map((c) => {
@@ -534,7 +554,7 @@ export default function CardapioPublico() {
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-3 py-5 space-y-6">
+      <main ref={produtosInicioRef} className="max-w-4xl mx-auto px-3 py-5 space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold">Cardapio</h2>
           <div className="text-xs sm:text-sm text-zinc-600 flex items-center gap-1">
@@ -574,8 +594,8 @@ export default function CardapioPublico() {
         {categorias.map((c) => {
           const itens = produtosFiltrados.filter((p) => p.categoria_id === c.id);
           return (
-            <section key={c.id} ref={(el) => (sectionRefs.current[c.id] = el)} className="scroll-mt-28">
-              <h3 className="text-[22px] sm:text-[24px] font-semibold mb-3 text-center text-zinc-700 uppercase">
+            <section key={c.id} ref={(el) => (sectionRefs.current[c.id] = el)} className="scroll-mt-24">
+              <h3 className="text-[20px] sm:text-[22px] font-semibold mb-2.5 text-center text-zinc-700 uppercase">
                 {(c.emoji || c.icone) && <span className="mr-1">{c.emoji || c.icone}</span>}
                 {c.nome}
               </h3>
@@ -591,24 +611,24 @@ export default function CardapioPublico() {
                       <article
                         key={p.id}
                         onClick={() => aberta && openAdd(p)}
-                        className="px-3 sm:px-4 py-3.5 sm:py-4 cursor-pointer hover:bg-zinc-50/70"
+                        className="px-3 sm:px-3.5 py-3 sm:py-3.5 cursor-pointer hover:bg-zinc-50/70"
                       >
-                        <div className="grid grid-cols-[1fr_84px] sm:grid-cols-[1fr_96px] gap-3 sm:gap-4 items-start">
+                        <div className="grid grid-cols-[1fr_76px] sm:grid-cols-[1fr_88px] gap-2.5 sm:gap-3 items-start">
                           <div className="min-w-0">
                             <div className="flex items-center flex-wrap gap-2">
-                              <h4 className="font-semibold text-[15px] sm:text-base leading-tight line-clamp-1 uppercase text-zinc-700">{p.nome}</h4>
+                              <h4 className="font-semibold text-[14px] sm:text-[15px] leading-tight line-clamp-1 uppercase text-zinc-700">{p.nome}</h4>
                               {isTop && <Badge className="bg-amber-100 text-amber-700 rounded-full text-xs">Mais pedido</Badge>}
                             </div>
-                            <p className="text-[12px] sm:text-[13px] text-zinc-500 mt-1.5 line-clamp-2">{p.descricao || "Sem descricao"}</p>
-                            <div className="mt-1.5 inline-flex rounded-full bg-zinc-200/80 text-zinc-600 px-2 py-0.5 text-[10px] font-medium">Serve 1 pessoa</div>
-                            <div className="mt-3 flex items-end gap-1.5 text-zinc-600">
-                              <span className="text-[15px] leading-none">A partir de</span>
+                            <p className="text-[11px] sm:text-[12px] text-zinc-500 mt-1 line-clamp-2">{p.descricao || "Sem descricao"}</p>
+                            <div className="mt-1 inline-flex rounded-full bg-zinc-200/80 text-zinc-600 px-2 py-0.5 text-[9px] font-medium">Serve 1 pessoa</div>
+                            <div className="mt-2.5 flex items-end gap-1.5 text-zinc-600">
+                              <span className="text-[14px] leading-none">A partir de</span>
                               {isPromo && <span className="text-xs line-through text-zinc-400 mb-0.5">{brl(Number(p.preco))}</span>}
-                              <span className="font-semibold text-[20px] leading-none text-zinc-700">{brl(precoEfetivo(p))}</span>
+                              <span className="font-semibold text-[18px] leading-none text-zinc-700">{brl(precoEfetivo(p))}</span>
                             </div>
                           </div>
 
-                          <div className="w-[84px] h-[84px] sm:w-[96px] sm:h-[96px] rounded-lg overflow-hidden bg-zinc-100 justify-self-end mt-1">
+                          <div className="w-[76px] h-[76px] sm:w-[88px] sm:h-[88px] rounded-lg overflow-hidden bg-zinc-100 justify-self-end mt-1">
                             {p.imagem_url ? (
                               <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" loading="lazy" />
                             ) : (

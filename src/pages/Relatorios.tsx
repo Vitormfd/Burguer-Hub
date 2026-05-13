@@ -3,11 +3,13 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   BarChart3, TrendingUp, TrendingDown, Info, ChevronRight,
-  Sparkles, Utensils, Truck, ShoppingBag,
+  Utensils, Truck, ShoppingBag, Calendar as CalendarIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -97,6 +99,9 @@ export default function Relatorios() {
   const [today, setToday] = useState<TodayKpi>(emptyToday);
   const [data, setData] = useState<RangeKpi>(emptyRange);
   const [loading, setLoading] = useState(true);
+  const [customDateStart, setCustomDateStart] = useState<Date | undefined>(undefined);
+  const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>(undefined);
+  const [isCustom, setIsCustom] = useState(false);
 
   const loadToday = useCallback(async () => {
     const ini = startOfDay(new Date()).toISOString();
@@ -167,13 +172,56 @@ export default function Relatorios() {
     setLoading(false);
   }, []);
 
+  const loadCustomRange = useCallback(async (dateStart: Date, dateEnd: Date) => {
+    setLoading(true);
+    const ini = startOfDay(dateStart).toISOString();
+    const fim = endOfDay(dateEnd).toISOString();
+    
+    // Para período anterior, use a mesma duração
+    const duration = dateEnd.getTime() - dateStart.getTime();
+    const iniPrev = startOfDay(new Date(dateStart.getTime() - duration)).toISOString();
+    const fimPrev = endOfDay(new Date(dateStart.getTime() - 86400000)).toISOString();
+
+    const [cur, prev] = await Promise.all([
+      fetchRangeData(ini, fim),
+      fetchRangeData(iniPrev, fimPrev),
+    ]);
+
+    const prodIds = Array.from(cur.acc.keys()).filter((k) => k !== "—");
+    const { data: produtos } = prodIds.length
+      ? await supabase.from("produtos").select("id, nome").in("id", prodIds)
+      : { data: [] };
+    const nameMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
+    const topProdutos = Array.from(cur.acc.entries())
+      .map(([pid, v]) => ({ nome: pid === "—" ? "Produto removido" : (nameMap.get(pid) ?? "—"), ...v }))
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 5);
+
+    setData({
+      faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
+      faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
+      delivery: cur.delivery, mesa: cur.mesa,
+      topProdutos,
+    });
+    setLoading(false);
+  }, []);
+
   useEffect(() => { loadToday(); }, [loadToday]);
-  useEffect(() => { loadRange(range); }, [range, loadRange]);
+  useEffect(() => { 
+    if (isCustom && customDateStart && customDateEnd) {
+      loadCustomRange(customDateStart, customDateEnd);
+    } else {
+      loadRange(range);
+    }
+  }, [range, loadRange, isCustom, customDateStart, customDateEnd, loadCustomRange]);
 
   const periodLabel = useMemo(() => {
+    if (isCustom && customDateStart && customDateEnd) {
+      return `${format(customDateStart, "dd/MM/yyyy")} a ${format(customDateEnd, "dd/MM/yyyy")}`;
+    }
     const ini = subDays(new Date(), range - 1);
     return `${format(ini, "dd/MM/yyyy")} a ${format(new Date(), "dd/MM/yyyy")}`;
-  }, [range]);
+  }, [range, isCustom, customDateStart, customDateEnd]);
 
   const trendPct = (cur: number, prev: number) => {
     if (prev === 0) return cur === 0 ? 0 : 100;
@@ -195,27 +243,6 @@ export default function Relatorios() {
         </p>
       </div>
 
-      {/* Hero banner */}
-      <Card className="overflow-hidden border-0 shadow-elegant">
-        <div className="relative bg-gradient-hero p-8 flex flex-wrap items-center justify-between gap-6">
-          <div className="flex items-center gap-5 text-primary-foreground">
-            <div className="w-20 h-20 rounded-full bg-primary/20 backdrop-blur flex items-center justify-center">
-              <Sparkles className="w-10 h-10 text-primary-glow" />
-            </div>
-            <div>
-              <h2 className="font-display text-3xl">Pare de perder dinheiro no seu estoque</h2>
-              <p className="text-primary-foreground/80 max-w-xl text-sm mt-1">
-                Com Gestão Avançada você transforma seu controle de estoque em lucro.
-                Reduza o desperdício, calcule o CMV e aumente a rentabilidade de cada prato.
-              </p>
-            </div>
-          </div>
-          <Button size="lg" className="bg-primary hover:bg-primary-glow shadow-elegant">
-            Quero lucrar mais
-          </Button>
-        </div>
-      </Card>
-
       {/* Today KPIs com top color bar */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <TodayCard color="hsl(210 90% 50%)" label="Faturamento de hoje" value={brl(today.faturamento)} icon={<Info className="w-4 h-4 opacity-70" />} />
@@ -227,19 +254,90 @@ export default function Relatorios() {
       {/* Period selector */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="text-sm text-muted-foreground">{periodLabel}</div>
-        <div className="inline-flex rounded-lg border bg-card p-1 shadow-soft">
-          {([7, 15, 30] as Range[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={cn(
-                "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
-                range === r ? "bg-primary text-primary-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Últimos {r} dias
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg border bg-card p-1 shadow-soft">
+            {([7, 15, 30] as Range[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => { setIsCustom(false); setRange(r); }}
+                className={cn(
+                  "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+                  !isCustom && range === r ? "bg-primary text-primary-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Últimos {r} dias
+              </button>
+            ))}
+          </div>
+
+          {/* Custom date range picker */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "gap-2",
+                  isCustom && "bg-primary text-primary-foreground"
+                )}
+              >
+                <CalendarIcon className="w-4 h-4" />
+                Período customizado
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 flex flex-col" align="end">
+              <div className="p-4 border-b">
+                <p className="text-sm font-medium mb-3">Selecione o período</p>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground mb-2">Data inicial</p>
+                    <Calendar
+                      mode="single"
+                      selected={customDateStart}
+                      onSelect={(date) => setCustomDateStart(date)}
+                      locale={ptBR}
+                      disabled={(date) => customDateEnd ? date > customDateEnd : false}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground mb-2">Data final</p>
+                    <Calendar
+                      mode="single"
+                      selected={customDateEnd}
+                      onSelect={(date) => setCustomDateEnd(date)}
+                      locale={ptBR}
+                      disabled={(date) => customDateStart ? date < customDateStart : false}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="p-3 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setCustomDateStart(undefined);
+                    setCustomDateEnd(undefined);
+                    setIsCustom(false);
+                  }}
+                  className="flex-1"
+                >
+                  Limpar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (customDateStart && customDateEnd) {
+                      setIsCustom(true);
+                    }
+                  }}
+                  disabled={!customDateStart || !customDateEnd}
+                  className="flex-1"
+                >
+                  Aplicar
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

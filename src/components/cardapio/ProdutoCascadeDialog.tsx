@@ -215,16 +215,6 @@ export default function ProdutoCascadeDialog({
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
-
-              <div className="space-y-2">
-                <Label>Observacao</Label>
-                <Textarea
-                  value={obs}
-                  onChange={(e) => setObs(e.target.value)}
-                  maxLength={200}
-                  placeholder="Ex.: sem cebola"
-                />
-              </div>
             </div>
           )}
 
@@ -304,6 +294,18 @@ export default function ProdutoCascadeDialog({
               )}
             </div>
           ))}
+
+          {!loading && produto && (
+            <div className="space-y-2">
+              <Label>Observacao</Label>
+              <Textarea
+                value={obs}
+                onChange={(e) => setObs(e.target.value)}
+                maxLength={200}
+                placeholder="Ex.: sem cebola"
+              />
+            </div>
+          )}
 
           {!loading && (
             <div className="border rounded-xl p-4 space-y-2">

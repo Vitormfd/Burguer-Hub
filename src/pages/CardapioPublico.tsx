@@ -750,7 +750,7 @@ export default function CardapioPublico() {
             </div>
           </div>
 
-          <div className="px-5 space-y-3 mt-6 pb-36">
+          <div className="px-5 space-y-3 mt-6">
             <h3 className="text-lg font-bold">Pagamento</h3>
             <RadioGroup value={forma} onValueChange={(v) => setForma(v as Forma)}>
               <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="pix" value="pix" /><Label htmlFor="pix" className="flex-1 cursor-pointer text-sm md:text-base">PIX</Label></div>
@@ -765,11 +765,11 @@ export default function CardapioPublico() {
             )}
           </div>
 
-          <div className="fixed bottom-0 right-0 w-full sm:w-[var(--radix-sheet-content-width)] border-t bg-white/95 backdrop-blur px-5 py-4 space-y-2">
-            <div className="text-sm space-y-1">
+          <div className="border-t mt-6 pt-3 px-5 pb-6 space-y-2">
+            <div className="text-xs md:text-sm space-y-0.5 md:space-y-1">
               <div className="flex justify-between"><span>Subtotal</span><span>{brl(subtotal)}</span></div>
               <div className="flex justify-between"><span>Taxa de entrega</span><span>{brl(Number(taxa))}</span></div>
-              <div className="flex justify-between text-xl font-extrabold pt-1"><span>Total</span><span className="brand-text">{brl(total)}</span></div>
+              <div className="flex justify-between text-base md:text-lg font-extrabold"><span>Total</span><span className="brand-text">{brl(total)}</span></div>
             </div>
 
             <Button className="w-full text-white hover:opacity-90 font-bold" size="lg" disabled={busy} onClick={fazerPedido}>

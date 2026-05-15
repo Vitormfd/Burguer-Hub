@@ -221,7 +221,8 @@ export default function CardapioPublico() {
   const subtotal = cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
   const totalItens = cart.reduce((s, i) => s + i.quantidade, 0);
   const taxa = bairros.find((b) => b.id === bairroId)?.taxa ?? 0;
-  const retiradaAtiva = !!cfg?.retirada_ativa;
+  // Exibe retirada quando: a coluna não existe ainda no banco (undefined) OU está explicitamente ativa
+  const retiradaAtiva = cfg?.retirada_ativa !== false;
   const tempoEstimadoRetirada = Math.max(Number(cfg?.tempo_estimado_retirada ?? 25), 1);
 
   const promocoes = useMemo(() => produtos.filter((p) => p.promocao), [produtos]);
@@ -324,10 +325,10 @@ export default function CardapioPublico() {
   }, [subtotal, bairroId, tel, tipoEntrega]);
 
   useEffect(() => {
-    if (!retiradaAtiva && tipoEntrega === "retirada") {
+    if (cfg?.retirada_ativa === false && tipoEntrega === "retirada") {
       setTipoEntrega("delivery");
     }
-  }, [retiradaAtiva, tipoEntrega]);
+  }, [cfg?.retirada_ativa, tipoEntrega]);
 
   const validarCupom = async (payload: CouponValidationPayload) => {
     const edgeResult = await supabase.functions.invoke("cupons-validar", {
@@ -727,7 +728,7 @@ export default function CardapioPublico() {
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     if (!cart.length) return toast.error("Carrinho vazio");
 
-    if (tipoEntrega === "retirada" && !retiradaAtiva) {
+    if (tipoEntrega === "retirada" && cfg?.retirada_ativa === false) {
       return toast.error("A retirada no balcão está desativada no momento");
     }
 

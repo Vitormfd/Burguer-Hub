@@ -50,6 +50,38 @@ export default function Cozinha() {
     return () => clearInterval(t);
   }, []);
 
+  const notifyItemCancelado = useCallback(async (payload: any) => {
+    const current = payload?.new;
+    const previous = payload?.old;
+    if (!current?.cancelado || previous?.cancelado) return;
+
+    const [{ data: produto }, { data: pedido }] = await Promise.all([
+      current.produto_id
+        ? supabase.from("produtos").select("nome").eq("id", current.produto_id).maybeSingle()
+        : Promise.resolve({ data: null as { nome: string } | null }),
+      supabase.from("pedidos").select("tipo, conta_id").eq("id", current.pedido_id).maybeSingle(),
+    ]);
+
+    let rotulo = "Pedido";
+    if (pedido?.tipo === "mesa" && pedido.conta_id) {
+      const { data: conta } = await supabase.from("contas").select("mesa_id").eq("id", pedido.conta_id).maybeSingle();
+      if (conta?.mesa_id) {
+        const { data: mesa } = await supabase.from("mesas").select("numero").eq("id", conta.mesa_id).maybeSingle();
+        rotulo = mesa?.numero != null ? `Mesa ${String(mesa.numero).padStart(2, "0")}` : "Mesa";
+      }
+    } else {
+      const { data: entrega } = await supabase
+        .from("entregas")
+        .select("cliente_nome")
+        .eq("pedido_id", current.pedido_id)
+        .maybeSingle();
+      rotulo = entrega?.cliente_nome ? `Delivery ${entrega.cliente_nome}` : "Delivery";
+    }
+
+    const nomeItem = produto?.nome || "Item";
+    toast.error(`⚠️ Item cancelado: ${nomeItem} — ${rotulo}`);
+  }, []);
+
   const load = useCallback(async () => {
     const { data: pedidos, error } = await supabase
       .from("pedidos")
@@ -63,13 +95,15 @@ export default function Cozinha() {
     const contaIds = Array.from(new Set(pedidos.map((p) => p.conta_id).filter(Boolean))) as string[];
 
     const [{ data: itens }, { data: contas }, { data: entregas }] = await Promise.all([
-      supabase.from("pedido_itens").select("id, pedido_id, quantidade, observacao, produto_id").in("pedido_id", ids),
+      supabase.from("pedido_itens").select("id, pedido_id, quantidade, observacao, produto_id, cancelado").in("pedido_id", ids),
       contaIds.length ? supabase.from("contas").select("id, mesa_id").in("id", contaIds) : Promise.resolve({ data: [] as any[] }),
       supabase.from("entregas").select("pedido_id, cliente_nome, origem").in("pedido_id", ids),
     ]);
 
-    const itemIds = (itens || []).map((i) => i.id);
-    const prodIds = Array.from(new Set((itens || []).map((i) => i.produto_id).filter(Boolean))) as string[];
+    const itensAtivos = (itens || []).filter((i) => !i.cancelado);
+
+    const itemIds = itensAtivos.map((i) => i.id);
+    const prodIds = Array.from(new Set(itensAtivos.map((i) => i.produto_id).filter(Boolean))) as string[];
     const mesaIds = Array.from(new Set((contas || []).map((c) => c.mesa_id).filter(Boolean))) as string[];
     const { data: itemAdicionais } = itemIds.length
       ? await supabase
@@ -116,7 +150,7 @@ export default function Cozinha() {
         rotulo = e?.cliente_nome ?? "Delivery";
         online = e?.origem === "online";
       }
-      const its = (itens || [])
+      const its = itensAtivos
         .filter((i) => i.pedido_id === p.id)
         .map<KdsItem>((i) => ({
           id: i.id,
@@ -134,7 +168,7 @@ export default function Cozinha() {
         online,
         itens: its,
       };
-    });
+    }).filter((card) => card.itens.length > 0);
 
     setCards(list);
   }, []);
@@ -145,12 +179,17 @@ export default function Cozinha() {
     const ch = supabase
       .channel("kds-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedido_itens" }, () => load())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pedido_itens" }, (payload) => {
+        void notifyItemCancelado(payload);
+        void load();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedido_itens" }, () => load())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pedido_itens" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "pedido_item_adicionais" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [session, load]);
+  }, [session, load, notifyItemCancelado]);
 
   const advance = async (c: KdsCard, next: Status) => {
     const { error } = await supabase.from("pedidos").update({ status: next }).eq("id", c.pedido_id);

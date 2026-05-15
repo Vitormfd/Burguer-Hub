@@ -37,11 +37,33 @@ interface RangeKpi {
   topProdutos: { nome: string; quantidade: number; receita: number }[];
 }
 
+interface CancelamentoDetalhe {
+  hora: string;
+  mesa: string;
+  item: string;
+  motivo: string;
+  valor: number;
+}
+
+interface CancelamentosHojeKpi {
+  totalItens: number;
+  valorTotal: number;
+  motivoMaisFrequente: string;
+  detalhes: CancelamentoDetalhe[];
+}
+
 const emptyToday: TodayKpi = { faturamento: 0, emAnalise: 0, emProducao: 0, pronto: 0 };
 const emptyRange: RangeKpi = {
   faturamento: 0, pedidos: 0, ticket: 0,
   faturamentoPrev: 0, pedidosPrev: 0, ticketPrev: 0,
   delivery: 0, mesa: 0, topProdutos: [],
+};
+
+const emptyCancelamentos: CancelamentosHojeKpi = {
+  totalItens: 0,
+  valorTotal: 0,
+  motivoMaisFrequente: "—",
+  detalhes: [],
 };
 
 async function fetchRangeData(ini: string, fim: string) {
@@ -99,6 +121,7 @@ export default function Relatorios() {
   const [today, setToday] = useState<TodayKpi>(emptyToday);
   const [data, setData] = useState<RangeKpi>(emptyRange);
   const [loading, setLoading] = useState(true);
+  const [cancelamentosHoje, setCancelamentosHoje] = useState<CancelamentosHojeKpi>(emptyCancelamentos);
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>(undefined);
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>(undefined);
   const [isCustom, setIsCustom] = useState(false);
@@ -172,6 +195,95 @@ export default function Relatorios() {
     setLoading(false);
   }, []);
 
+  const loadCancelamentosHoje = useCallback(async () => {
+    const ini = startOfDay(new Date()).toISOString();
+    const fim = endOfDay(new Date()).toISOString();
+
+    const { data: itens, error } = await supabase
+      .from("pedido_itens")
+      .select("pedido_id, produto_id, quantidade, preco_unitario, cancelado_em, motivo_cancelamento")
+      .eq("cancelado", true)
+      .gte("cancelado_em", ini)
+      .lte("cancelado_em", fim);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (!itens?.length) {
+      setCancelamentosHoje(emptyCancelamentos);
+      return;
+    }
+
+    const pedidoIds = Array.from(new Set(itens.map((i) => i.pedido_id)));
+    const produtoIds = Array.from(new Set(itens.map((i) => i.produto_id).filter(Boolean))) as string[];
+
+    const [{ data: pedidos }, { data: produtos }] = await Promise.all([
+      supabase.from("pedidos").select("id, conta_id").in("id", pedidoIds),
+      produtoIds.length
+        ? supabase.from("produtos").select("id, nome").in("id", produtoIds)
+        : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
+    ]);
+
+    const contaIds = Array.from(new Set((pedidos || []).map((p) => p.conta_id).filter(Boolean))) as string[];
+    const { data: contas } = contaIds.length
+      ? await supabase.from("contas").select("id, mesa_id").in("id", contaIds)
+      : { data: [] as { id: string; mesa_id: string | null }[] };
+
+    const mesaIds = Array.from(new Set((contas || []).map((c) => c.mesa_id).filter(Boolean))) as string[];
+    const { data: mesas } = mesaIds.length
+      ? await supabase.from("mesas").select("id, numero").in("id", mesaIds)
+      : { data: [] as { id: string; numero: number }[] };
+
+    const pedidoContaMap = new Map((pedidos || []).map((p) => [p.id, p.conta_id as string | null]));
+    const contaMesaMap = new Map((contas || []).map((c) => [c.id, c.mesa_id as string | null]));
+    const mesaNumeroMap = new Map((mesas || []).map((m) => [m.id, m.numero]));
+    const produtoMap = new Map((produtos || []).map((p) => [p.id, p.nome]));
+
+    const motivoBase = (motivo: string | null) => {
+      const value = motivo || "Não informado";
+      const [base] = value.split("| Obs:");
+      return base.trim() || "Não informado";
+    };
+
+    const freq = new Map<string, number>();
+    let totalItens = 0;
+    let valorTotal = 0;
+
+    const detalhes: CancelamentoDetalhe[] = itens
+      .map((item) => {
+        totalItens += item.quantidade;
+        const subtotal = Number(item.preco_unitario) * item.quantidade;
+        valorTotal += subtotal;
+
+        const base = motivoBase(item.motivo_cancelamento);
+        freq.set(base, (freq.get(base) || 0) + item.quantidade);
+
+        const contaId = pedidoContaMap.get(item.pedido_id);
+        const mesaId = contaId ? contaMesaMap.get(contaId) : null;
+        const numeroMesa = mesaId ? mesaNumeroMap.get(mesaId) : null;
+
+        return {
+          hora: item.cancelado_em ? new Date(item.cancelado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—",
+          mesa: numeroMesa != null ? `Mesa ${String(numeroMesa).padStart(2, "0")}` : "—",
+          item: item.produto_id ? (produtoMap.get(item.produto_id) || "Produto removido") : "Produto removido",
+          motivo: base,
+          valor: subtotal,
+        };
+      })
+      .sort((a, b) => b.hora.localeCompare(a.hora));
+
+    const motivoMaisFrequente = Array.from(freq.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+
+    setCancelamentosHoje({
+      totalItens,
+      valorTotal,
+      motivoMaisFrequente,
+      detalhes,
+    });
+  }, []);
+
   const loadCustomRange = useCallback(async (dateStart: Date, dateEnd: Date) => {
     setLoading(true);
     const ini = startOfDay(dateStart).toISOString();
@@ -207,6 +319,7 @@ export default function Relatorios() {
   }, []);
 
   useEffect(() => { loadToday(); }, [loadToday]);
+  useEffect(() => { loadCancelamentosHoje(); }, [loadCancelamentosHoje]);
   useEffect(() => { 
     if (isCustom && customDateStart && customDateEnd) {
       loadCustomRange(customDateStart, customDateEnd);
@@ -250,6 +363,29 @@ export default function Relatorios() {
         <TodayCard color="hsl(45 95% 55%)" label="Em produção agora" value={String(today.emProducao)} />
         <TodayCard color="hsl(142 65% 45%)" label="Pronto para entrega" value={String(today.pronto)} />
       </div>
+
+      <Card className="p-5 shadow-soft border-destructive/20">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="font-display text-2xl text-destructive">Cancelamentos hoje</h2>
+            <p className="text-sm text-muted-foreground">Visão rápida dos cancelamentos do dia</p>
+          </div>
+          <div className="flex items-center gap-6">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Itens cancelados</div>
+              <div className="font-display text-3xl text-destructive">{cancelamentosHoje.totalItens}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Valor cancelado</div>
+              <div className="font-display text-3xl text-destructive">{brl(cancelamentosHoje.valorTotal)}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Motivo mais frequente</div>
+              <div className="text-sm font-semibold">{cancelamentosHoje.motivoMaisFrequente}</div>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Period selector */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -420,6 +556,38 @@ export default function Relatorios() {
                   </TableCell>
                   <TableCell className="text-right font-semibold">{p.quantidade}</TableCell>
                   <TableCell className="text-right text-primary font-semibold">{brl(p.receita)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      <Card className="shadow-card">
+        <div className="p-5 border-b">
+          <h2 className="font-display text-2xl">Detalhamento de cancelamentos do dia</h2>
+        </div>
+        {cancelamentosHoje.detalhes.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">Nenhum cancelamento registrado hoje.</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-24">Hora</TableHead>
+                <TableHead className="w-28">Mesa</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead>Motivo</TableHead>
+                <TableHead className="text-right w-32">Valor</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cancelamentosHoje.detalhes.map((linha, idx) => (
+                <TableRow key={`${linha.hora}-${linha.item}-${idx}`}>
+                  <TableCell>{linha.hora}</TableCell>
+                  <TableCell>{linha.mesa}</TableCell>
+                  <TableCell className="font-medium">{linha.item}</TableCell>
+                  <TableCell>{linha.motivo}</TableCell>
+                  <TableCell className="text-right text-destructive font-semibold">{brl(linha.valor)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

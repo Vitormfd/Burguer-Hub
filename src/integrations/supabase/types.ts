@@ -527,7 +527,10 @@ export type Database = {
       }
       pedido_itens: {
         Row: {
+          cancelado: boolean
+          cancelado_em: string | null
           id: string
+          motivo_cancelamento: string | null
           observacao: string | null
           pedido_id: string
           preco_unitario: number
@@ -535,7 +538,10 @@ export type Database = {
           quantidade: number
         }
         Insert: {
+          cancelado?: boolean
+          cancelado_em?: string | null
           id?: string
+          motivo_cancelamento?: string | null
           observacao?: string | null
           pedido_id: string
           preco_unitario?: number
@@ -543,7 +549,10 @@ export type Database = {
           quantidade?: number
         }
         Update: {
+          cancelado?: boolean
+          cancelado_em?: string | null
           id?: string
+          motivo_cancelamento?: string | null
           observacao?: string | null
           pedido_id?: string
           preco_unitario?: number
@@ -569,12 +578,15 @@ export type Database = {
       }
       pedidos: {
         Row: {
+          cancelado_em: string | null
+          cancelado_por: string | null
           cliente_id: string | null
           conta_id: string | null
           cupom_id: string | null
           criado_em: string
           desconto: number
           id: string
+          motivo_cancelamento: string | null
           observacoes_internas: string | null
           recompensa_resgatada_id: string | null
           status: Database["public"]["Enums"]["pedido_status"]
@@ -584,12 +596,15 @@ export type Database = {
           tipo: Database["public"]["Enums"]["pedido_tipo"]
         }
         Insert: {
+          cancelado_em?: string | null
+          cancelado_por?: string | null
           cliente_id?: string | null
           conta_id?: string | null
           cupom_id?: string | null
           criado_em?: string
           desconto?: number
           id?: string
+          motivo_cancelamento?: string | null
           observacoes_internas?: string | null
           recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
@@ -599,12 +614,15 @@ export type Database = {
           tipo: Database["public"]["Enums"]["pedido_tipo"]
         }
         Update: {
+          cancelado_em?: string | null
+          cancelado_por?: string | null
           cliente_id?: string | null
           conta_id?: string | null
           cupom_id?: string | null
           criado_em?: string
           desconto?: number
           id?: string
+          motivo_cancelamento?: string | null
           observacoes_internas?: string | null
           recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]

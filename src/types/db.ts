@@ -57,6 +57,9 @@ export interface Pedido {
   total?: number;
   recompensa_resgatada_id?: string | null;
   observacoes_internas?: string | null;
+  cancelado_em?: string | null;
+  motivo_cancelamento?: string | null;
+  cancelado_por?: string | null;
 }
 
 export interface PedidoItem {
@@ -66,6 +69,9 @@ export interface PedidoItem {
   quantidade: number;
   preco_unitario: number;
   observacao: string | null;
+  cancelado?: boolean;
+  cancelado_em?: string | null;
+  motivo_cancelamento?: string | null;
 }
 
 export interface GrupoAdicional {

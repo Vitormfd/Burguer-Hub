@@ -21,7 +21,7 @@ export interface PrintMesaData {
 }
 
 export interface PrintDeliveryData {
-  tipo: "delivery";
+  tipo: "delivery" | "retirada";
   loja_nome?: string;
   cliente_nome: string;
   cliente_telefone: string;
@@ -91,16 +91,20 @@ export function printReceipt(data: PrintData): void {
     body += `<div class="sep"></div>`;
     body += `<div class="total-line"><span>TOTAL</span><span>${brlPrint(data.total)}</span></div>`;
   } else {
-    body += `<div class="section-title">DELIVERY</div>`;
+    body += `<div class="section-title">${data.tipo === "retirada" ? "RETIRADA" : "DELIVERY"}</div>`;
     body += `<div class="info-line"><b>${esc(data.cliente_nome)}</b></div>`;
     body += `<div class="info-line">${esc(data.cliente_telefone)}</div>`;
-    const addr = esc(data.endereco) + (data.bairro ? ` &mdash; ${esc(data.bairro)}` : "");
-    body += `<div class="info-line">${addr}</div>`;
+    if (data.tipo === "delivery") {
+      const addr = esc(data.endereco) + (data.bairro ? ` &mdash; ${esc(data.bairro)}` : "");
+      body += `<div class="info-line">${addr}</div>`;
+    } else {
+      body += `<div class="info-line">Retirada no balcão</div>`;
+    }
     body += `<div class="sep-dashed"></div>`;
     body += renderItems(data.itens);
     body += `<div class="sep"></div>`;
     body += `<div class="subtotal-line"><span>Subtotal</span><span>${brlPrint(data.subtotal)}</span></div>`;
-    body += `<div class="subtotal-line"><span>Taxa de entrega</span><span>${brlPrint(data.taxa_entrega)}</span></div>`;
+    body += `<div class="subtotal-line"><span>${data.tipo === "retirada" ? "Taxa" : "Taxa de entrega"}</span><span>${brlPrint(data.taxa_entrega)}</span></div>`;
     if (data.desconto && data.desconto > 0) {
       body += `<div class="subtotal-line"><span>Desconto${data.cupom_codigo ? ` (${esc(data.cupom_codigo)})` : ""}</span><span>- ${brlPrint(data.desconto)}</span></div>`;
     }

@@ -5,12 +5,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChefHat, Clock, Flame, ArrowLeft, Utensils, Truck } from "lucide-react";
+import { ChefHat, Clock, Flame, ArrowLeft, Utensils, Truck, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 type Status = "pendente" | "em_preparo" | "pronto" | "entregue";
-type Tipo = "mesa" | "delivery";
+type Tipo = "mesa" | "delivery" | "retirada";
 
 interface KdsItem {
   id: string;
@@ -59,7 +59,7 @@ export default function Cozinha() {
       current.produto_id
         ? supabase.from("produtos").select("nome").eq("id", current.produto_id).maybeSingle()
         : Promise.resolve({ data: null as { nome: string } | null }),
-      supabase.from("pedidos").select("tipo, conta_id").eq("id", current.pedido_id).maybeSingle(),
+      supabase.from("pedidos").select("tipo, conta_id, tipo_entrega").eq("id", current.pedido_id).maybeSingle(),
     ]);
 
     let rotulo = "Pedido";
@@ -75,7 +75,8 @@ export default function Cozinha() {
         .select("cliente_nome")
         .eq("pedido_id", current.pedido_id)
         .maybeSingle();
-      rotulo = entrega?.cliente_nome ? `Delivery ${entrega.cliente_nome}` : "Delivery";
+      const tipoEntrega = pedido?.tipo_entrega === "retirada" ? "Retirada" : "Delivery";
+      rotulo = entrega?.cliente_nome ? `${tipoEntrega} ${entrega.cliente_nome}` : tipoEntrega;
     }
 
     const nomeItem = produto?.nome || "Item";
@@ -85,7 +86,7 @@ export default function Cozinha() {
   const load = useCallback(async () => {
     const { data: pedidos, error } = await supabase
       .from("pedidos")
-      .select("id, tipo, status, criado_em, conta_id")
+      .select("id, tipo, tipo_entrega, status, criado_em, conta_id")
       .in("status", ["pendente", "em_preparo"])
       .order("criado_em", { ascending: true });
     if (error) { toast.error(error.message); return; }
@@ -141,13 +142,15 @@ export default function Cozinha() {
     const list: KdsCard[] = pedidos.map((p) => {
       let rotulo = "—";
       let online = false;
+      let tipo = p.tipo as Tipo;
       if (p.tipo === "mesa") {
         const mesaId = p.conta_id ? contaToMesa.get(p.conta_id) : null;
         const num = mesaId ? mesaMap.get(mesaId) : null;
         rotulo = num != null ? `Mesa ${String(num).padStart(2, "0")}` : "Mesa";
       } else {
         const e = entregaMap.get(p.id) as any;
-        rotulo = e?.cliente_nome ?? "Delivery";
+        tipo = p.tipo_entrega === "retirada" ? "retirada" : "delivery";
+        rotulo = e?.cliente_nome ?? (tipo === "retirada" ? "Retirada" : "Delivery");
         online = e?.origem === "online";
       }
       const its = itensAtivos
@@ -161,7 +164,7 @@ export default function Cozinha() {
         }));
       return {
         pedido_id: p.id,
-        tipo: p.tipo as Tipo,
+        tipo,
         status: p.status as Status,
         criado_em: p.criado_em,
         rotulo,
@@ -275,9 +278,10 @@ function KdsCardView({
   _tick: number;
 }) {
   const isMesa = card.tipo === "mesa";
-  const Icon = isMesa ? Utensils : Truck;
+  const isRetirada = card.tipo === "retirada";
+  const Icon = isMesa ? Utensils : (isRetirada ? Store : Truck);
 
-  // Mesa = âmbar, Delivery = azul
+  // Mesa = âmbar, Delivery = azul, Retirada = verde escuro
   const palette = isMesa
     ? {
         head: "bg-amber-500 text-amber-950",
@@ -285,6 +289,13 @@ function KdsCardView({
         accent: "text-amber-700 dark:text-amber-300",
         chipBg: "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300",
       }
+    : isRetirada
+      ? {
+          head: "bg-emerald-800 text-emerald-50",
+          ring: "ring-emerald-700/30",
+          accent: "text-emerald-700 dark:text-emerald-300",
+          chipBg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
+        }
     : {
         head: "bg-sky-500 text-sky-950",
         ring: "ring-sky-500/30",
@@ -308,6 +319,11 @@ function KdsCardView({
           <span className="font-display text-2xl truncate leading-none">{card.rotulo}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          {isRetirada && (
+            <Badge className="bg-emerald-100 text-emerald-800 text-[10px] uppercase tracking-wider border-0">
+              RETIRADA
+            </Badge>
+          )}
           {card.online && (
             <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[10px] uppercase tracking-wider border-0">
               Delivery Online

@@ -3,6 +3,26 @@ ALTER TABLE public.pedidos
   ADD COLUMN IF NOT EXISTS motivo_cancelamento text,
   ADD COLUMN IF NOT EXISTS cancelado_por text;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type
+    WHERE typname = 'tipo_entrega'
+      AND typnamespace = 'public'::regnamespace
+  ) THEN
+    CREATE TYPE public.tipo_entrega AS ENUM ('delivery', 'retirada');
+  END IF;
+END;
+$$;
+
+ALTER TABLE public.pedidos
+  ADD COLUMN IF NOT EXISTS tipo_entrega public.tipo_entrega NOT NULL DEFAULT 'delivery';
+
+ALTER TABLE public.configuracoes
+  ADD COLUMN IF NOT EXISTS retirada_ativa boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS tempo_estimado_retirada integer NOT NULL DEFAULT 25;
+
 ALTER TABLE public.pedido_itens
   ADD COLUMN IF NOT EXISTS cancelado boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cancelado_em timestamptz,

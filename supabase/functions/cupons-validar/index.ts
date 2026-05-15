@@ -6,12 +6,14 @@ const corsHeaders = {
 };
 
 type CupomTipo = "percentual" | "fixo" | "frete_gratis";
+type TipoEntrega = "delivery" | "retirada";
 
 interface ValidatePayload {
   codigo?: string;
   telefone?: string | null;
   subtotal?: number;
   taxa_entrega?: number;
+  tipo_entrega?: TipoEntrega;
   commit?: boolean;
   pedido_id?: string;
   cliente_id?: string | null;
@@ -54,7 +56,8 @@ Deno.serve(async (req) => {
     const payload = (await req.json().catch(() => null)) as ValidatePayload | null;
     const codigo = (payload?.codigo || "").trim().toUpperCase();
     const subtotal = Number(payload?.subtotal || 0);
-    const taxaEntrega = Number(payload?.taxa_entrega || 0);
+    const tipoEntrega: TipoEntrega = payload?.tipo_entrega === "retirada" ? "retirada" : "delivery";
+    const taxaEntrega = tipoEntrega === "retirada" ? 0 : Number(payload?.taxa_entrega || 0);
     const telefone = normalizePhone(payload?.telefone);
 
     if (!codigo) {
@@ -160,7 +163,7 @@ Deno.serve(async (req) => {
         valor_minimo_pedido: Number(cupom.valor_minimo_pedido || 0),
       },
       valor_desconto_aplicado: Number(valorDescontoAplicado.toFixed(2)),
-      taxa_entrega_zerada: cupom.tipo === "frete_gratis",
+      taxa_entrega_zerada: cupom.tipo === "frete_gratis" && tipoEntrega === "delivery",
     });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Erro inesperado" }, 500);

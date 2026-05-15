@@ -125,8 +125,10 @@ export type Database = {
           logo_url: string | null
           nome_loja: string
           referencia: string | null
+          retirada_ativa: boolean
           seo_descricao: string
           seo_titulo: string
+          tempo_estimado_retirada: number
           tempo_entrega_min: string
           updated_at: string
         }
@@ -145,8 +147,10 @@ export type Database = {
           logo_url?: string | null
           nome_loja?: string
           referencia?: string | null
+          retirada_ativa?: boolean
           seo_descricao?: string
           seo_titulo?: string
+          tempo_estimado_retirada?: number
           tempo_entrega_min?: string
           updated_at?: string
         }
@@ -165,8 +169,10 @@ export type Database = {
           logo_url?: string | null
           nome_loja?: string
           referencia?: string | null
+          retirada_ativa?: boolean
           seo_descricao?: string
           seo_titulo?: string
+          tempo_estimado_retirada?: number
           tempo_entrega_min?: string
           updated_at?: string
         }
@@ -591,6 +597,7 @@ export type Database = {
           recompensa_resgatada_id: string | null
           status: Database["public"]["Enums"]["pedido_status"]
           subtotal: number
+          tipo_entrega: Database["public"]["Enums"]["tipo_entrega"]
           valor_desconto: number
           total: number
           tipo: Database["public"]["Enums"]["pedido_tipo"]
@@ -609,6 +616,7 @@ export type Database = {
           recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
           subtotal?: number
+          tipo_entrega?: Database["public"]["Enums"]["tipo_entrega"]
           valor_desconto?: number
           total?: number
           tipo: Database["public"]["Enums"]["pedido_tipo"]
@@ -627,6 +635,7 @@ export type Database = {
           recompensa_resgatada_id?: string | null
           status?: Database["public"]["Enums"]["pedido_status"]
           subtotal?: number
+          tipo_entrega?: Database["public"]["Enums"]["tipo_entrega"]
           valor_desconto?: number
           total?: number
           tipo?: Database["public"]["Enums"]["pedido_tipo"]
@@ -918,6 +927,7 @@ export type Database = {
       mesa_status: "livre" | "ocupada" | "aguardando_pagamento"
       pedido_status: "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado"
       pedido_tipo: "mesa" | "delivery"
+      tipo_entrega: "delivery" | "retirada"
       recompensa_tipo: "item_gratis" | "desconto_percentual" | "desconto_fixo"
       resgate_status: "pendente" | "aplicado" | "cancelado"
     }
@@ -1053,6 +1063,7 @@ export const Constants = {
       mesa_status: ["livre", "ocupada", "aguardando_pagamento"],
       pedido_status: ["pendente", "em_preparo", "pronto", "entregue", "cancelado"],
       pedido_tipo: ["mesa", "delivery"],
+      tipo_entrega: ["delivery", "retirada"],
       recompensa_tipo: ["item_gratis", "desconto_percentual", "desconto_fixo"],
       resgate_status: ["pendente", "aplicado", "cancelado"],
     },

@@ -1,6 +1,7 @@
 export type MesaStatus = "livre" | "ocupada" | "aguardando_pagamento";
 export type ContaStatus = "aberta" | "fechada";
 export type PedidoTipo = "mesa" | "delivery";
+export type TipoEntrega = "delivery" | "retirada";
 export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado";
 export type RecompensaTipo = "item_gratis" | "desconto_percentual" | "desconto_fixo";
 export type CupomTipo = "percentual" | "fixo" | "frete_gratis";
@@ -57,6 +58,7 @@ export interface Pedido {
   total?: number;
   recompensa_resgatada_id?: string | null;
   observacoes_internas?: string | null;
+  tipo_entrega?: TipoEntrega;
   cancelado_em?: string | null;
   motivo_cancelamento?: string | null;
   cancelado_por?: string | null;
@@ -124,6 +126,8 @@ export interface Configuracao {
   seo_titulo: string;
   seo_descricao: string;
   tempo_entrega_min?: string;
+  retirada_ativa?: boolean;
+  tempo_estimado_retirada?: number;
   fidelidade_ativa?: boolean;
   fidelidade_texto?: string;
   fidelidade_cor?: string;

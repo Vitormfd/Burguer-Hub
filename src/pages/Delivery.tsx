@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer } from "lucide-react";
+import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,10 +10,13 @@ import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
 import { printReceipt } from "@/lib/print";
 
 type EntregaStatus = "aguardando" | "saiu_para_entrega" | "entregue";
+type EntregaTipo = "delivery" | "retirada";
+type FiltroTipo = "todos" | EntregaTipo;
 
 interface DeliveryRow {
   entrega_id: string;
   pedido_id: string;
+  tipo_entrega: EntregaTipo;
   cliente_nome: string;
   cliente_telefone: string;
   endereco: string;
@@ -29,16 +32,25 @@ interface DeliveryRow {
   } | null;
 }
 
-const statusCfg: Record<EntregaStatus, { label: string; icon: typeof Clock; color: string; next: EntregaStatus | null; nextLabel: string }> = {
+const statusCfgDelivery: Record<EntregaStatus, { label: string; icon: typeof Clock; color: string; next: EntregaStatus | null; nextLabel: string }> = {
   aguardando:        { label: "Aguardando",        icon: Clock,         color: "bg-status-pagamento/20 text-status-pagamento border-status-pagamento/30", next: "saiu_para_entrega", nextLabel: "Saiu para entrega" },
   saiu_para_entrega: { label: "Saiu para entrega", icon: Bike,          color: "bg-status-ocupada/20 text-status-ocupada border-status-ocupada/30",       next: "entregue",          nextLabel: "Marcar entregue" },
   entregue:          { label: "Entregue",          icon: CheckCircle2,  color: "bg-status-livre/20 text-status-livre border-status-livre/30",             next: null,                nextLabel: "" },
 };
 
+const statusCfgRetirada: Record<EntregaStatus, { label: string; icon: typeof Clock; color: string; next: EntregaStatus | null; nextLabel: string }> = {
+  aguardando:        { label: "Em preparo",         icon: Clock,         color: "bg-blue-100 text-blue-700 border-blue-200", next: "saiu_para_entrega", nextLabel: "Marcar pronto p/ retirada" },
+  saiu_para_entrega: { label: "Pronto p/ retirada", icon: Store,         color: "bg-blue-200 text-blue-800 border-blue-300", next: "entregue",          nextLabel: "Marcar retirado" },
+  entregue:          { label: "Retirado",           icon: CheckCircle2,  color: "bg-emerald-100 text-emerald-700 border-emerald-200", next: null,        nextLabel: "" },
+};
+
+const getStatusCfg = (row: DeliveryRow) => row.tipo_entrega === "retirada" ? statusCfgRetirada[row.status] : statusCfgDelivery[row.status];
+
 export default function Delivery() {
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [novoOpen, setNovoOpen] = useState(false);
+  const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
 
   const load = useCallback(async () => {
     const startOfDay = new Date();
@@ -46,7 +58,7 @@ export default function Delivery() {
 
     const { data: pedidos, error } = await supabase
       .from("pedidos")
-      .select("id, criado_em")
+      .select("id, criado_em, tipo_entrega")
       .eq("tipo", "delivery")
       .gte("criado_em", startOfDay.toISOString())
       .order("criado_em", { ascending: false });
@@ -88,6 +100,7 @@ export default function Delivery() {
       return {
         entrega_id: e.id,
         pedido_id: e.pedido_id,
+        tipo_entrega: (ped.tipo_entrega as EntregaTipo) || "delivery",
         cliente_nome: e.cliente_nome,
         cliente_telefone: e.cliente_telefone,
         endereco: e.endereco,
@@ -156,7 +169,7 @@ export default function Delivery() {
       .maybeSingle();
 
     printReceipt({
-      tipo: "delivery",
+      tipo: row.tipo_entrega,
       cliente_nome: row.cliente_nome,
       cliente_telefone: row.cliente_telefone,
       endereco: row.endereco,
@@ -180,7 +193,7 @@ export default function Delivery() {
   }, []);
 
   const advance = async (row: DeliveryRow) => {
-    const cfg = statusCfg[row.status];
+    const cfg = getStatusCfg(row);
     if (!cfg.next) return;
     const { error } = await supabase
       .from("entregas").update({ status: cfg.next }).eq("id", row.entrega_id);
@@ -188,10 +201,12 @@ export default function Delivery() {
       toast.error(error.message);
       return;
     }
-    toast.success(`Entrega: ${statusCfg[cfg.next].label}`);
+    toast.success(`Entrega: ${(row.tipo_entrega === "retirada" ? statusCfgRetirada : statusCfgDelivery)[cfg.next].label}`);
     // Recarregar imediatamente para garantir atualização visual
     await load();
   };
+
+  const rowsFiltrados = rows.filter((row) => filtroTipo === "todos" ? true : row.tipo_entrega === filtroTipo);
 
   const updateResgateStatus = async (row: DeliveryRow, status: "aplicado" | "cancelado") => {
     if (!row.resgate) return;
@@ -205,9 +220,9 @@ export default function Delivery() {
   };
 
   const counts = {
-    aguardando: rows.filter((r) => r.status === "aguardando").length,
-    saiu: rows.filter((r) => r.status === "saiu_para_entrega").length,
-    entregue: rows.filter((r) => r.status === "entregue").length,
+    aguardando: rowsFiltrados.filter((r) => r.status === "aguardando").length,
+    saiu: rowsFiltrados.filter((r) => r.status === "saiu_para_entrega").length,
+    entregue: rowsFiltrados.filter((r) => r.status === "entregue").length,
   };
 
   return (
@@ -239,17 +254,27 @@ export default function Delivery() {
         </Card>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant={filtroTipo === "todos" ? "default" : "outline"} size="sm" onClick={() => setFiltroTipo("todos")}>Todos</Button>
+        <Button variant={filtroTipo === "delivery" ? "default" : "outline"} size="sm" onClick={() => setFiltroTipo("delivery")}>
+          <Bike className="h-3.5 w-3.5 mr-1" /> Delivery
+        </Button>
+        <Button variant={filtroTipo === "retirada" ? "default" : "outline"} size="sm" onClick={() => setFiltroTipo("retirada")}>
+          <Store className="h-3.5 w-3.5 mr-1" /> Retirada
+        </Button>
+      </div>
+
       {loading ? (
         <div className="text-muted-foreground">Carregando...</div>
-      ) : rows.length === 0 ? (
+      ) : rowsFiltrados.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Package className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">Nenhum delivery hoje. Cadastre o primeiro pedido!</p>
+          <p className="text-muted-foreground">Nenhum pedido para o filtro selecionado.</p>
         </Card>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {rows.map((r) => {
-            const cfg = statusCfg[r.status];
+          {rowsFiltrados.map((r) => {
+            const cfg = getStatusCfg(r);
             const Icon = cfg.icon;
             const total = r.itens_total + r.taxa_entrega;
             return (
@@ -267,15 +292,28 @@ export default function Delivery() {
                   </Badge>
                 </div>
 
+                <Badge
+                  variant="outline"
+                  className={r.tipo_entrega === "retirada" ? "w-fit border-blue-300 bg-blue-100 text-blue-800" : "w-fit border-sky-300 bg-sky-100 text-sky-800"}
+                >
+                  {r.tipo_entrega === "retirada" ? "Retirada 🏃" : "Delivery 🛵"}
+                </Badge>
+
                 <div className="space-y-1.5 text-sm">
                   <div className="flex items-start gap-2 text-muted-foreground">
                     <Phone className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                     <span>{r.cliente_telefone}</span>
                   </div>
-                  <div className="flex items-start gap-2 text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                    <span>{r.endereco}{r.bairro ? ` — ${r.bairro}` : ""}</span>
-                  </div>
+                  {r.tipo_entrega === "delivery" ? (
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>{r.endereco}{r.bairro ? ` — ${r.bairro}` : ""}</span>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+                      Cliente retira no balcao.
+                    </div>
+                  )}
                 </div>
 
                 {r.resgate && (
@@ -298,7 +336,7 @@ export default function Delivery() {
 
                 <div className="grid grid-cols-3 gap-2 pt-3 border-t text-sm">
                   <div><div className="text-xs text-muted-foreground">Itens</div><div className="font-semibold">{brl(r.itens_total)}</div></div>
-                  <div><div className="text-xs text-muted-foreground">Taxa</div><div className="font-semibold">{brl(r.taxa_entrega)}</div></div>
+                  <div><div className="text-xs text-muted-foreground">Taxa</div><div className="font-semibold">{brl(r.tipo_entrega === "retirada" ? 0 : r.taxa_entrega)}</div></div>
                   <div><div className="text-xs text-muted-foreground">Total</div><div className="font-display text-lg text-primary">{brl(total)}</div></div>
                 </div>
 

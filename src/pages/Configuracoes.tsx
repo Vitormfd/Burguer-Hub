@@ -126,6 +126,8 @@ export default function Configuracoes() {
         seo_titulo: cfg.seo_titulo,
         seo_descricao: cfg.seo_descricao,
         tempo_entrega_min: cfg.tempo_entrega_min ?? "30-45 min",
+        retirada_ativa: cfg.retirada_ativa ?? false,
+        tempo_estimado_retirada: Number(cfg.tempo_estimado_retirada ?? 25),
         carrossel_imagens: cfg.carrossel_imagens || [],
       })
       .eq("id", cfg.id);
@@ -319,6 +321,30 @@ export default function Configuracoes() {
             maxLength={30}
             placeholder="Ex: 30-45 min"
           />
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Ativar opcao de retirada no cardapio</Label>
+            <div className="flex items-center gap-2 h-10">
+              <Switch
+                checked={!!cfg.retirada_ativa}
+                onCheckedChange={(v) => setCfg({ ...cfg, retirada_ativa: v })}
+              />
+              <span className="text-sm text-muted-foreground">
+                {cfg.retirada_ativa ? "Retirada habilitada" : "Retirada desativada"}
+              </span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Tempo estimado de preparo para retirada (minutos)</Label>
+            <Input
+              type="number"
+              min={1}
+              step="1"
+              value={Number(cfg.tempo_estimado_retirada ?? 25)}
+              onChange={(e) => setCfg({ ...cfg, tempo_estimado_retirada: Math.max(Number(e.target.value || 25), 1) })}
+            />
+          </div>
         </div>
       </Card>
 

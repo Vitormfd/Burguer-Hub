@@ -33,6 +33,7 @@ interface RangeKpi {
   pedidosPrev: number;
   ticketPrev: number;
   delivery: number;
+  retirada: number;
   mesa: number;
   topProdutos: { nome: string; quantidade: number; receita: number }[];
 }
@@ -56,7 +57,7 @@ const emptyToday: TodayKpi = { faturamento: 0, emAnalise: 0, emProducao: 0, pron
 const emptyRange: RangeKpi = {
   faturamento: 0, pedidos: 0, ticket: 0,
   faturamentoPrev: 0, pedidosPrev: 0, ticketPrev: 0,
-  delivery: 0, mesa: 0, topProdutos: [],
+  delivery: 0, retirada: 0, mesa: 0, topProdutos: [],
 };
 
 const emptyCancelamentos: CancelamentosHojeKpi = {
@@ -67,19 +68,22 @@ const emptyCancelamentos: CancelamentosHojeKpi = {
 };
 
 async function fetchRangeData(ini: string, fim: string) {
-  const [contasR, pedDelR, pedMesaR] = await Promise.all([
+  const [contasR, pedOnlineR, pedMesaR] = await Promise.all([
     supabase.from("contas").select("id, total")
       .eq("status", "fechada").gte("fechada_em", ini).lte("fechada_em", fim),
-    supabase.from("pedidos").select("id")
+    supabase.from("pedidos").select("id, tipo_entrega")
       .eq("tipo", "delivery").gte("criado_em", ini).lte("criado_em", fim),
     supabase.from("pedidos").select("id")
       .eq("tipo", "mesa").gte("criado_em", ini).lte("criado_em", fim),
   ]);
   const contas = contasR.data || [];
-  const pedDel = pedDelR.data || [];
+  const pedOnline = pedOnlineR.data || [];
   const pedMesa = pedMesaR.data || [];
 
-  const allIds = [...pedDel, ...pedMesa].map((p) => p.id);
+  const pedDel = pedOnline.filter((p: any) => p.tipo_entrega !== "retirada");
+  const pedRetirada = pedOnline.filter((p: any) => p.tipo_entrega === "retirada");
+
+  const allIds = [...pedOnline, ...pedMesa].map((p: any) => p.id);
   let receitaDelItens = 0;
   let taxas = 0;
   const acc = new Map<string, { quantidade: number; receita: number }>();
@@ -91,10 +95,10 @@ async function fetchRangeData(ini: string, fim: string) {
         ? supabase.from("entregas").select("taxa_entrega").in("pedido_id", pedDel.map((p) => p.id))
         : Promise.resolve({ data: [] as any[] }),
     ]);
-    const delIds = new Set(pedDel.map((p) => p.id));
+    const onlineIds = new Set(pedOnline.map((p: any) => p.id));
     (itens || []).forEach((i) => {
       const sub = Number(i.preco_unitario) * i.quantidade;
-      if (delIds.has(i.pedido_id)) receitaDelItens += sub;
+      if (onlineIds.has(i.pedido_id)) receitaDelItens += sub;
       const key = i.produto_id ?? "—";
       const cur = acc.get(key) ?? { quantidade: 0, receita: 0 };
       cur.quantidade += i.quantidade;
@@ -106,12 +110,14 @@ async function fetchRangeData(ini: string, fim: string) {
 
   const totalContas = contas.reduce((s, c) => s + Number(c.total || 0), 0);
   const faturamento = totalContas + receitaDelItens + taxas;
-  const pedidos = pedDel.length + pedMesa.length;
+  const pedidos = pedOnline.length + pedMesa.length;
   const ticket = pedidos > 0 ? faturamento / pedidos : 0;
 
   return {
     faturamento, pedidos, ticket,
-    delivery: pedDel.length, mesa: pedMesa.length,
+    delivery: pedDel.length,
+    retirada: pedRetirada.length,
+    mesa: pedMesa.length,
     acc,
   };
 }
@@ -189,7 +195,7 @@ export default function Relatorios() {
     setData({
       faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
       faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
-      delivery: cur.delivery, mesa: cur.mesa,
+      delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
       topProdutos,
     });
     setLoading(false);
@@ -312,7 +318,7 @@ export default function Relatorios() {
     setData({
       faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
       faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
-      delivery: cur.delivery, mesa: cur.mesa,
+      delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
       topProdutos,
     });
     setLoading(false);
@@ -341,7 +347,7 @@ export default function Relatorios() {
     return ((cur - prev) / prev) * 100;
   };
 
-  const totalModalidade = data.delivery + data.mesa || 1;
+  const totalModalidade = data.delivery + data.retirada + data.mesa || 1;
   const maxQtd = data.topProdutos[0]?.quantidade ?? 1;
 
   return (
@@ -504,13 +510,20 @@ export default function Relatorios() {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-6 place-items-center">
+          <div className="grid grid-cols-1 gap-6 place-items-center md:grid-cols-3">
             <ModalidadeGauge
               icon={<Truck className="w-4 h-4" />}
-              label="Entrega"
+              label="Delivery"
               value={data.delivery}
               total={totalModalidade}
               color="hsl(210 90% 55%)"
+            />
+            <ModalidadeGauge
+              icon={<ShoppingBag className="w-4 h-4" />}
+              label="Retirada"
+              value={data.retirada}
+              total={totalModalidade}
+              color="hsl(212 85% 60%)"
             />
             <ModalidadeGauge
               icon={<Utensils className="w-4 h-4" />}

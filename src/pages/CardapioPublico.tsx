@@ -33,7 +33,7 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, Produto, Recompensa } from "@/types/db";
+import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, Produto, Recompensa, TipoEntrega } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { CartItem } from "@/components/cardapio/cartTypes";
 import {
@@ -52,6 +52,7 @@ type CouponValidationPayload = {
   telefone: string | null;
   subtotal: number;
   taxa_entrega: number;
+  tipo_entrega: TipoEntrega;
   commit: boolean;
   pedido_id?: string;
   cliente_id?: string | null;
@@ -73,10 +74,10 @@ const checkoutSchema = z.object({
     const normalized = normalizePhone(value);
     return normalized.length === 0 || normalized.length >= 10;
   }, "Telefone invalido"),
-  endereco: z.string().trim().min(3, "Informe o endereco").max(200),
-  numero: z.string().trim().min(1, "Numero").max(20),
+  endereco: z.string().trim().max(200),
+  numero: z.string().trim().max(20),
   complemento: z.string().trim().max(80).optional().or(z.literal("")),
-  bairro_id: z.string().min(1, "Selecione o bairro"),
+  bairro_id: z.string(),
   forma: z.enum(["dinheiro", "pix", "cartao"]),
   troco: z.string().optional(),
 });
@@ -149,6 +150,9 @@ export default function CardapioPublico() {
   const [cupomCodigo, setCupomCodigo] = useState("");
   const [cupomBusy, setCupomBusy] = useState(false);
   const [cupomAplicado, setCupomAplicado] = useState<CupomAplicado | null>(null);
+  const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>("delivery");
+  const [sucessoTipoEntrega, setSucessoTipoEntrega] = useState<TipoEntrega>("delivery");
+  const [sucessoTempoRetirada, setSucessoTempoRetirada] = useState<number>(25);
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const produtosInicioRef = useRef<HTMLElement | null>(null);
@@ -217,6 +221,8 @@ export default function CardapioPublico() {
   const subtotal = cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
   const totalItens = cart.reduce((s, i) => s + i.quantidade, 0);
   const taxa = bairros.find((b) => b.id === bairroId)?.taxa ?? 0;
+  const retiradaAtiva = !!cfg?.retirada_ativa;
+  const tempoEstimadoRetirada = Math.max(Number(cfg?.tempo_estimado_retirada ?? 25), 1);
 
   const promocoes = useMemo(() => produtos.filter((p) => p.promocao), [produtos]);
   const recompensasOrdenadas = useMemo(
@@ -259,7 +265,8 @@ export default function CardapioPublico() {
     [selectedReward, subtotal, produtos]
   );
   const descontoCupom = cupomAplicado?.valor_desconto_aplicado ?? 0;
-  const taxaEfetiva = cupomAplicado?.taxa_entrega_zerada ? 0 : Number(taxa);
+  const taxaBase = tipoEntrega === "retirada" ? 0 : Number(taxa);
+  const taxaEfetiva = tipoEntrega === "retirada" ? 0 : (cupomAplicado?.taxa_entrega_zerada ? 0 : Number(taxa));
   const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
@@ -314,7 +321,13 @@ export default function CardapioPublico() {
     if (!cupomAplicado) return;
     setCupomAplicado(null);
     setCupomCodigo("");
-  }, [subtotal, bairroId, tel]);
+  }, [subtotal, bairroId, tel, tipoEntrega]);
+
+  useEffect(() => {
+    if (!retiradaAtiva && tipoEntrega === "retirada") {
+      setTipoEntrega("delivery");
+    }
+  }, [retiradaAtiva, tipoEntrega]);
 
   const validarCupom = async (payload: CouponValidationPayload) => {
     const edgeResult = await supabase.functions.invoke("cupons-validar", {
@@ -344,7 +357,7 @@ export default function CardapioPublico() {
       throw new Error(backendMessage || errorMessage || "Cupom inválido ou inexistente");
     }
 
-    const { data: rpcData, error: rpcError } = await supabase.rpc("aplicar_cupom_checkout", {
+    const { data: rpcData, error: rpcError } = await (supabase as any).rpc("aplicar_cupom_checkout", {
       p_codigo: payload.codigo,
       p_telefone_cliente: payload.telefone,
       p_subtotal: payload.subtotal,
@@ -358,7 +371,7 @@ export default function CardapioPublico() {
       throw new Error(rpcBackendMessage || "Cupom inválido ou inexistente");
     }
 
-    return rpcData as {
+    return rpcData as unknown as {
       cupom: { id: string; codigo: string; tipo: Cupom["tipo"]; valor: number | null; valor_minimo_pedido: number };
       valor_desconto_aplicado: number;
       taxa_entrega_zerada: boolean;
@@ -380,7 +393,8 @@ export default function CardapioPublico() {
         codigo,
         telefone: normalizePhone(tel) || null,
         subtotal,
-        taxa_entrega: Number(taxa),
+        taxa_entrega: taxaBase,
+        tipo_entrega: tipoEntrega,
         commit: false,
       });
     } catch (error) {
@@ -713,18 +727,33 @@ export default function CardapioPublico() {
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     if (!cart.length) return toast.error("Carrinho vazio");
 
+    if (tipoEntrega === "retirada" && !retiradaAtiva) {
+      return toast.error("A retirada no balcão está desativada no momento");
+    }
+
+    if (!nome.trim()) return toast.error("Informe seu nome");
+    if (normalizePhone(tel).length < 10) return toast.error("Informe um telefone valido");
+
+    if (tipoEntrega === "delivery") {
+      if (!endereco.trim() || endereco.trim().length < 3) return toast.error("Informe o endereco");
+      if (!numero.trim()) return toast.error("Numero");
+      if (!bairroId) return toast.error("Selecione o bairro");
+    }
+
     if (selectedReward && !fidelidadeCliente) {
       return toast.error("Busque seu telefone para aplicar uma recompensa");
     }
 
-    const bairro = bairros.find((b) => b.id === bairroId);
-    if (!bairro) return toast.error("Selecione o bairro");
+    const bairro = tipoEntrega === "delivery"
+      ? bairros.find((b) => b.id === bairroId)
+      : null;
+    if (tipoEntrega === "delivery" && !bairro) return toast.error("Selecione o bairro");
 
     const telefoneNormalizado = normalizePhone(tel);
     const descontoFidelidade = rewardBenefit.desconto;
     const itemGratis = rewardBenefit.itemGratis;
     const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
-    const taxaEntregaFinal = cupomAplicado?.taxa_entrega_zerada ? 0 : Number(bairro.taxa);
+    const taxaEntregaFinal = tipoEntrega === "retirada" ? 0 : (cupomAplicado?.taxa_entrega_zerada ? 0 : Number(bairro?.taxa || 0));
     const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
 
     setBusy(true);
@@ -733,6 +762,7 @@ export default function CardapioPublico() {
       .from("pedidos")
       .insert({
         tipo: "delivery",
+        tipo_entrega: tipoEntrega,
         status: "pendente",
         cliente_id: fidelidadeCliente?.id ?? null,
         subtotal,
@@ -791,7 +821,9 @@ export default function CardapioPublico() {
       }
     }
 
-    const enderecoFull = `${endereco}, ${numero}${complemento ? ` - ${complemento}` : ""}`;
+    const enderecoFull = tipoEntrega === "delivery"
+      ? `${endereco}, ${numero}${complemento ? ` - ${complemento}` : ""}`
+      : "Retirada no balcão";
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
 
     const { error: e3 } = await supabase.from("entregas").insert({
@@ -799,12 +831,12 @@ export default function CardapioPublico() {
       cliente_nome: nome,
       cliente_telefone: tel.trim(),
       endereco: enderecoFull,
-      bairro: bairro.nome,
+      bairro: tipoEntrega === "delivery" ? bairro?.nome || null : null,
       taxa_entrega: taxaEntregaFinal,
-      status: "aguardando",
+      status: tipoEntrega === "delivery" ? "aguardando" : "aguardando",
       origem: "online",
-      numero,
-      complemento: complemento || null,
+      numero: tipoEntrega === "delivery" ? numero : null,
+      complemento: tipoEntrega === "delivery" ? (complemento || null) : null,
       forma_pagamento: forma,
       troco_para: trocoVal,
     });
@@ -883,7 +915,8 @@ export default function CardapioPublico() {
           codigo: cupomAplicado.codigo,
           telefone: telefoneNormalizado || null,
           subtotal,
-          taxa_entrega: Number(bairro.taxa),
+          taxa_entrega: tipoEntrega === "retirada" ? 0 : Number(bairro?.taxa || 0),
+          tipo_entrega: tipoEntrega,
           commit: true,
           pedido_id: pedido.id,
           cliente_id: clienteId,
@@ -903,6 +936,8 @@ export default function CardapioPublico() {
 
     setBusy(false);
 
+    setSucessoTipoEntrega(tipoEntrega);
+    setSucessoTempoRetirada(tempoEstimadoRetirada);
     setSucessoNumero(pedido.id.slice(0, 8).toUpperCase());
     setCart([]);
     setCheckoutOpen(false);
@@ -914,6 +949,7 @@ export default function CardapioPublico() {
     setBairroId("");
     setForma("pix");
     setTroco("");
+    setTipoEntrega("delivery");
     setSelectedRewardId(null);
     setFidelidadeBusca(null);
     setTelefoneBuscado("");
@@ -1351,24 +1387,71 @@ export default function CardapioPublico() {
           <div className="px-5 space-y-3 mt-2">
             {renderFidelidadeBox(true)}
 
-            <h3 className="text-lg font-bold mt-6">Entrega</h3>
+            <h3 className="text-lg font-bold mt-6">Como voce quer receber?</h3>
+            <div className={cn("grid gap-2", retiradaAtiva ? "grid-cols-2" : "grid-cols-1")}>
+              <button
+                type="button"
+                onClick={() => setTipoEntrega("delivery")}
+                className={cn(
+                  "rounded-2xl border p-4 text-left transition-all",
+                  tipoEntrega === "delivery"
+                    ? "border-emerald-500 bg-emerald-50 shadow-sm"
+                    : "border-zinc-200 bg-white hover:border-zinc-300"
+                )}
+              >
+                <div className="flex items-center gap-2 text-base font-semibold">
+                  <Bike className="h-5 w-5" /> Delivery
+                </div>
+                <p className="mt-1 text-xs text-zinc-600">Receba no endereco informado</p>
+              </button>
+
+              {retiradaAtiva && (
+                <button
+                  type="button"
+                  onClick={() => setTipoEntrega("retirada")}
+                  className={cn(
+                    "rounded-2xl border p-4 text-left transition-all",
+                    tipoEntrega === "retirada"
+                      ? "border-blue-500 bg-blue-50 shadow-sm"
+                      : "border-zinc-200 bg-white hover:border-zinc-300"
+                  )}
+                >
+                  <div className="flex items-center gap-2 text-base font-semibold">
+                    <Store className="h-5 w-5" /> Retirada no balcao
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-600">Pronto em cerca de {tempoEstimadoRetirada} min</p>
+                </button>
+              )}
+            </div>
+
+            <h3 className="text-lg font-bold mt-4">Dados do cliente</h3>
             <div className="space-y-2"><Label>Nome completo *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} /></div>
-            <div className="space-y-2"><Label>Endereco *</Label><Input value={endereco} onChange={(e) => setEndereco(e.target.value)} maxLength={200} placeholder="Rua / Avenida" /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2"><Label>Numero *</Label><Input value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} /></div>
-              <div className="space-y-2"><Label>Complemento</Label><Input value={complemento} onChange={(e) => setComplemento(e.target.value)} maxLength={80} /></div>
-            </div>
-            <div className="space-y-2">
-              <Label>Bairro *</Label>
-              <Select value={bairroId} onValueChange={setBairroId}>
-                <SelectTrigger><SelectValue placeholder="Selecione o bairro" /></SelectTrigger>
-                <SelectContent>
-                  {bairros.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>{b.nome} - {brl(Number(b.taxa))}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="space-y-2"><Label>Telefone *</Label><Input value={tel} onChange={(e) => setTel(e.target.value)} maxLength={20} placeholder="(11) 99999-9999" /></div>
+
+            {tipoEntrega === "delivery" ? (
+              <>
+                <div className="space-y-2"><Label>Endereco *</Label><Input value={endereco} onChange={(e) => setEndereco(e.target.value)} maxLength={200} placeholder="Rua / Avenida" /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2"><Label>Numero *</Label><Input value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} /></div>
+                  <div className="space-y-2"><Label>Complemento</Label><Input value={complemento} onChange={(e) => setComplemento(e.target.value)} maxLength={80} /></div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Bairro *</Label>
+                  <Select value={bairroId} onValueChange={setBairroId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o bairro" /></SelectTrigger>
+                    <SelectContent>
+                      {bairros.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>{b.nome} - {brl(Number(b.taxa))}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                Seu pedido ficara pronto em aproximadamente {tempoEstimadoRetirada} minutos. Retire no balcao!
+              </div>
+            )}
           </div>
 
           <div className="px-5 space-y-3 mt-6">
@@ -1436,12 +1519,15 @@ export default function CardapioPublico() {
               )}
               {cupomAplicado?.tipo === "frete_gratis" && (
                 <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
-                  <span>Frete</span>
-                  <span>Grátis 🎉</span>
+                  <span>{tipoEntrega === "delivery" ? "Frete" : "Cupom"}</span>
+                  <span>{tipoEntrega === "delivery" ? "Grátis 🎉" : "Aplicado"}</span>
                 </div>
               )}
               {cupomAplicado?.tipo !== "frete_gratis" && (
-                <div className="flex justify-between"><span>Taxa de entrega</span><span>{brl(taxaEfetiva)}</span></div>
+                <div className="flex justify-between"><span>{tipoEntrega === "delivery" ? "Taxa de entrega" : "Taxa"}</span><span>{brl(taxaEfetiva)}</span></div>
+              )}
+              {cupomAplicado?.tipo === "frete_gratis" && tipoEntrega === "retirada" && (
+                <div className="flex justify-between"><span>Taxa</span><span>{brl(0)}</span></div>
               )}
               <div className="flex justify-between text-base md:text-lg font-extrabold"><span>Total</span><span className="brand-text">{brl(total)}</span></div>
             </div>
@@ -1457,8 +1543,12 @@ export default function CardapioPublico() {
         <DialogContent>
           <div className="text-center py-4 space-y-3">
             <CheckCircle2 className="w-16 h-16 mx-auto text-emerald-500" />
-            <h2 className="text-3xl font-bold">Pedido recebido!</h2>
-            <p className="text-muted-foreground">Em breve entraremos em contato.</p>
+            <h2 className="text-3xl font-bold">Pedido recebido! 🎉</h2>
+            {sucessoTipoEntrega === "retirada" ? (
+              <p className="text-muted-foreground">Retire no balcao em ~{sucessoTempoRetirada} minutos.</p>
+            ) : (
+              <p className="text-muted-foreground">Em breve entraremos em contato.</p>
+            )}
             <div className="text-xs text-muted-foreground">Numero do pedido</div>
             <div className="text-2xl font-bold tracking-wider">#{sucessoNumero}</div>
             <Button onClick={() => setSucessoNumero(null)} className="w-full text-white" style={{ background: cfg.cor_primaria }}>

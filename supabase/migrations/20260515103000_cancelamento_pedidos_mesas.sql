@@ -21,7 +21,8 @@ ALTER TABLE public.pedidos
 
 ALTER TABLE public.configuracoes
   ADD COLUMN IF NOT EXISTS retirada_ativa boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS tempo_estimado_retirada integer NOT NULL DEFAULT 25;
+  ADD COLUMN IF NOT EXISTS tempo_estimado_retirada integer NOT NULL DEFAULT 25,
+  ADD COLUMN IF NOT EXISTS endereco_estabelecimento text;
 
 ALTER TABLE public.pedido_itens
   ADD COLUMN IF NOT EXISTS cancelado boolean NOT NULL DEFAULT false,

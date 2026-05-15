@@ -1420,7 +1420,11 @@ export default function CardapioPublico() {
                   <div className="flex items-center gap-2 text-base font-semibold">
                     <Store className="h-5 w-5" /> Retirada no balcao
                   </div>
-                  <p className="mt-1 text-xs text-zinc-600">Pronto em cerca de {tempoEstimadoRetirada} min</p>
+                  {cfg?.endereco_estabelecimento ? (
+                    <p className="mt-1 text-xs text-zinc-600">{cfg.endereco_estabelecimento}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-zinc-400 italic">Endereço não configurado</p>
+                  )}
                 </button>
               )}
             </div>

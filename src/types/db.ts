@@ -128,6 +128,7 @@ export interface Configuracao {
   tempo_entrega_min?: string;
   retirada_ativa?: boolean;
   tempo_estimado_retirada?: number;
+  endereco_estabelecimento?: string | null;
   fidelidade_ativa?: boolean;
   fidelidade_texto?: string;
   fidelidade_cor?: string;

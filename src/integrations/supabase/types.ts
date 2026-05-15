@@ -125,6 +125,7 @@ export type Database = {
           logo_url: string | null
           nome_loja: string
           referencia: string | null
+          endereco_estabelecimento: string | null
           retirada_ativa: boolean
           seo_descricao: string
           seo_titulo: string
@@ -148,6 +149,7 @@ export type Database = {
           nome_loja?: string
           referencia?: string | null
           retirada_ativa?: boolean
+          endereco_estabelecimento?: string | null
           seo_descricao?: string
           seo_titulo?: string
           tempo_estimado_retirada?: number
@@ -170,6 +172,7 @@ export type Database = {
           nome_loja?: string
           referencia?: string | null
           retirada_ativa?: boolean
+          endereco_estabelecimento?: string | null
           seo_descricao?: string
           seo_titulo?: string
           tempo_estimado_retirada?: number

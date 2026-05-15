@@ -128,6 +128,7 @@ export default function Configuracoes() {
         tempo_entrega_min: cfg.tempo_entrega_min ?? "30-45 min",
         retirada_ativa: cfg.retirada_ativa ?? false,
         tempo_estimado_retirada: Number(cfg.tempo_estimado_retirada ?? 25),
+        endereco_estabelecimento: cfg.endereco_estabelecimento ?? null,
         carrossel_imagens: cfg.carrossel_imagens || [],
       })
       .eq("id", cfg.id);
@@ -345,6 +346,15 @@ export default function Configuracoes() {
               onChange={(e) => setCfg({ ...cfg, tempo_estimado_retirada: Math.max(Number(e.target.value || 25), 1) })}
             />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Endereço do estabelecimento (exibido na opção de retirada)</Label>
+          <Input
+            value={cfg.endereco_estabelecimento ?? ""}
+            onChange={(e) => setCfg({ ...cfg, endereco_estabelecimento: e.target.value || null })}
+            placeholder="Ex: Rua das Flores, 123 - Centro"
+            maxLength={200}
+          />
         </div>
       </Card>
 

@@ -167,17 +167,21 @@ export default function CardapioPublico() {
       if (referencia) {
         cfgQuery = cfgQuery.eq("referencia", referencia);
       }
-      
-      const [{ data: c }, { data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
-        cfgQuery.maybeSingle(),
-        supabase.from("categorias").select("*").eq("ativo", true).order("nome"),
-        supabase.from("produtos").select("*").eq("disponivel", true).order("nome"),
-        supabase.from("recompensas").select("*").eq("ativo", true).order("ordem").order("pedidos_necessarios"),
-        supabase.from("bairros_taxas").select("*").eq("ativo", true).order("nome"),
-        supabase.from("pedido_itens").select("produto_id, quantidade").limit(1000),
+
+      const { data: c } = await cfgQuery.maybeSingle();
+      if (!c) return;
+
+      setCfg(c as Configuracao);
+      const ownerId = (c as Configuracao & { owner_id?: string | null }).owner_id;
+
+      const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
+        (supabase.from("categorias") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
+        (supabase.from("produtos") as any).select("*").eq("disponivel", true).eq("owner_id", ownerId).order("nome"),
+        (supabase.from("recompensas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("pedidos_necessarios"),
+        (supabase.from("bairros_taxas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
+        (supabase.from("pedido_itens") as any).select("produto_id, quantidade").eq("owner_id", ownerId).limit(1000),
       ]);
 
-      if (c) setCfg(c as Configuracao);
       const cs = (cat || []) as Categoria[];
       setCategorias(cs);
       setProdutos((prod || []) as Produto[]);
@@ -757,12 +761,17 @@ export default function CardapioPublico() {
     const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
     const taxaEntregaFinal = tipoEntrega === "retirada" ? 0 : (cupomAplicado?.taxa_entrega_zerada ? 0 : Number(bairro?.taxa || 0));
     const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
+    const ownerId = (cfg as Configuracao & { owner_id?: string | null }).owner_id ?? null;
+
+    if (!ownerId) {
+      return toast.error("Loja sem identificação de tenant. Recarregue a página.");
+    }
 
     setBusy(true);
 
-    const { data: pedido, error: e1 } = await supabase
-      .from("pedidos")
+    const { data: pedido, error: e1 } = await (supabase.from("pedidos") as any)
       .insert({
+        owner_id: ownerId,
         tipo: "delivery",
         tipo_entrega: tipoEntrega,
         status: "pendente",
@@ -781,6 +790,7 @@ export default function CardapioPublico() {
     }
 
     const itensRows = cart.map((i) => ({
+      owner_id: ownerId,
       pedido_id: pedido.id,
       produto_id: i.produto.id,
       quantidade: i.quantidade,
@@ -790,6 +800,7 @@ export default function CardapioPublico() {
 
     if (itemGratis) {
       itensRows.push({
+        owner_id: ownerId,
         pedido_id: pedido.id,
         produto_id: itemGratis.id,
         quantidade: 1,
@@ -798,7 +809,7 @@ export default function CardapioPublico() {
       });
     }
 
-    const { data: insertedItens, error: e2 } = await supabase.from("pedido_itens").insert(itensRows).select("id");
+    const { data: insertedItens, error: e2 } = await (supabase.from("pedido_itens") as any).insert(itensRows).select("id");
     if (e2) {
       setBusy(false);
       return toast.error(e2.message);
@@ -828,7 +839,8 @@ export default function CardapioPublico() {
       : "Retirada no balcão";
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
 
-    const { error: e3 } = await supabase.from("entregas").insert({
+    const { error: e3 } = await (supabase.from("entregas") as any).insert({
+      owner_id: ownerId,
       pedido_id: pedido.id,
       cliente_nome: nome,
       cliente_telefone: tel.trim(),

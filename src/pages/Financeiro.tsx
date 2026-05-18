@@ -159,6 +159,13 @@ interface FornecedorFormState {
   observacoes: string;
 }
 
+interface CategoriaFormState {
+  nome: string;
+  tipo: CategoriaTipo;
+  cor: string;
+  icone: string;
+}
+
 interface WeeklyReportPoint {
   semana: string;
   faturamento: number;
@@ -209,6 +216,13 @@ const emptyFornecedorForm = (): FornecedorFormState => ({
   email: "",
   contato_responsavel: "",
   observacoes: "",
+});
+
+const emptyCategoriaForm = (): CategoriaFormState => ({
+  nome: "",
+  tipo: "ingrediente",
+  cor: "#16a34a",
+  icone: "",
 });
 
 const cnpjRegex = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
@@ -282,6 +296,10 @@ export default function Financeiro() {
   const [fornecedorSelected, setFornecedorSelected] = useState<Fornecedor | null>(null);
   const [fornecedorBusy, setFornecedorBusy] = useState(false);
   const [fornecedorForm, setFornecedorForm] = useState<FornecedorFormState>(emptyFornecedorForm());
+
+  const [categoriaDialogOpen, setCategoriaDialogOpen] = useState(false);
+  const [categoriaBusy, setCategoriaBusy] = useState(false);
+  const [categoriaForm, setCategoriaForm] = useState<CategoriaFormState>(emptyCategoriaForm());
 
   const [filtroCompraInicio, setFiltroCompraInicio] = useState("");
   const [filtroCompraFim, setFiltroCompraFim] = useState("");
@@ -741,6 +759,11 @@ export default function Financeiro() {
     setFornecedorDialogOpen(true);
   };
 
+  const openNovaCategoria = () => {
+    setCategoriaForm(emptyCategoriaForm());
+    setCategoriaDialogOpen(true);
+  };
+
   const openEditarFornecedor = (fornecedor: Fornecedor) => {
     setFornecedorEditId(fornecedor.id);
     setFornecedorForm({
@@ -788,6 +811,33 @@ export default function Financeiro() {
     setFornecedorEditId(null);
     setFornecedorForm(emptyFornecedorForm());
     await loadAll();
+  };
+
+  const saveCategoria = async () => {
+    if (!categoriaForm.nome.trim()) return toast.error("Informe o nome da categoria");
+
+    const payload = {
+      nome: categoriaForm.nome.trim(),
+      tipo: categoriaForm.tipo,
+      cor: categoriaForm.cor,
+      icone: categoriaForm.icone.trim() || null,
+    };
+
+    setCategoriaBusy(true);
+    const { data, error } = await sb.from("categorias_compra").insert(payload).select("id").single();
+    setCategoriaBusy(false);
+
+    if (error) return toast.error(error.message);
+
+    toast.success("Categoria criada");
+    setCategoriaDialogOpen(false);
+    setCategoriaForm(emptyCategoriaForm());
+
+    await loadAll();
+
+    if (data?.id) {
+      setCompraForm((current) => ({ ...current, categoria_compra_id: data.id }));
+    }
   };
 
   const toggleFornecedorAtivo = async (fornecedor: Fornecedor) => {
@@ -1242,22 +1292,25 @@ export default function Financeiro() {
 
             <div className="space-y-2">
               <Label>Categoria</Label>
-              <Select
-                value={compraForm.categoria_compra_id}
-                onValueChange={(value) => setCompraForm((current) => ({ ...current, categoria_compra_id: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem categoria</SelectItem>
-                  {categorias.map((categoria) => (
-                    <SelectItem key={categoria.id} value={categoria.id}>
-                      {categoria.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={compraForm.categoria_compra_id}
+                  onValueChange={(value) => setCompraForm((current) => ({ ...current, categoria_compra_id: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem categoria</SelectItem>
+                    {categorias.map((categoria) => (
+                      <SelectItem key={categoria.id} value={categoria.id}>
+                        {categoria.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" onClick={openNovaCategoria}>Nova categoria</Button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1597,6 +1650,69 @@ export default function Financeiro() {
             <Button variant="outline" onClick={() => setFornecedorDialogOpen(false)} disabled={fornecedorBusy}>Cancelar</Button>
             <Button onClick={() => void saveFornecedor()} disabled={fornecedorBusy}>
               {fornecedorBusy ? "Salvando..." : "Salvar fornecedor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={categoriaDialogOpen} onOpenChange={setCategoriaDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl">Nova categoria de compra</DialogTitle>
+            <DialogDescription>Crie a categoria que você quiser para classificar seus custos.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                value={categoriaForm.nome}
+                onChange={(event) => setCategoriaForm((current) => ({ ...current, nome: event.target.value }))}
+                placeholder="Ex: Limpeza, Bebidas, Manutenção"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select
+                  value={categoriaForm.tipo}
+                  onValueChange={(value: CategoriaTipo) => setCategoriaForm((current) => ({ ...current, tipo: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ingrediente">Ingrediente</SelectItem>
+                    <SelectItem value="embalagem">Embalagem</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cor</Label>
+                <Input
+                  type="color"
+                  value={categoriaForm.cor}
+                  onChange={(event) => setCategoriaForm((current) => ({ ...current, cor: event.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ícone (opcional)</Label>
+              <Input
+                value={categoriaForm.icone}
+                onChange={(event) => setCategoriaForm((current) => ({ ...current, icone: event.target.value }))}
+                placeholder="Ex: box, leaf, truck"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCategoriaDialogOpen(false)} disabled={categoriaBusy}>Cancelar</Button>
+            <Button onClick={() => void saveCategoria()} disabled={categoriaBusy}>
+              {categoriaBusy ? "Salvando..." : "Salvar categoria"}
             </Button>
           </DialogFooter>
         </DialogContent>

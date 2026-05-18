@@ -174,7 +174,11 @@ export default function CardapioPublico() {
         let cfgQuery = supabase.from("configuracoes").select("*");
 
         if (referencia) {
-          cfgQuery = cfgQuery.eq("referencia", referencia);
+          const referenciaNormalizada = referencia.trim().toLowerCase();
+          cfgQuery = cfgQuery
+            .ilike("referencia", referenciaNormalizada)
+            .order("created_at", { ascending: true })
+            .limit(1);
         } else {
           const {
             data: { session },

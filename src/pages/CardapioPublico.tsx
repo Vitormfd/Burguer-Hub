@@ -1074,7 +1074,7 @@ export default function CardapioPublico() {
                       <p className="font-bold">{cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}</p>
                     </div>
                     <div className="rounded-md border bg-white p-1 text-[11px]">
-                      <p className="text-zinc-500">Taxa de entrega</p>
+                      <p className="text-zinc-500">Pedido mínimo</p>
                       <p className="font-bold flex items-center gap-1">
                         <Bike className="w-3 h-3" /> A partir de {brl(taxaMin)}
                       </p>
@@ -1137,7 +1137,6 @@ export default function CardapioPublico() {
                       key={`dot-${idx}`}
                       type="button"
                       aria-label={`Ir para banner ${idx + 1}`}
-                      onClick={() => setBannerIndex(idx)}
                       className={cn(
                         "h-1.5 rounded-full transition-all",
                         idx === bannerIndex ? "w-4 bg-zinc-500" : "w-1.5 bg-zinc-300 hover:bg-zinc-400"
@@ -1271,8 +1270,9 @@ export default function CardapioPublico() {
                       <h4 className="font-bold text-sm line-clamp-1">{p.nome}</h4>
                       {p.descricao && <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5">{p.descricao}</p>}
                       <div className="flex items-end gap-2 mt-1">
-                        <span className="text-xs line-through text-zinc-400">{brl(Number(p.preco))}</span>
-                        <span className="font-semibold brand-text">{brl(precoEfetivo(p))}</span>
+                        <span className="text-[14px] leading-none">A partir de</span>
+                        {isPromo && <span className="text-xs line-through text-zinc-400 mb-0.5">{brl(Number(p.preco))}</span>}
+                        <span className="font-semibold text-[18px] leading-none text-zinc-700">{brl(precoEfetivo(p))}</span>
                       </div>
                     </div>
                   </div>
@@ -1554,7 +1554,7 @@ export default function CardapioPublico() {
                 </div>
               )}
               {cupomAplicado?.tipo !== "frete_gratis" && (
-                <div className="flex justify-between"><span>{tipoEntrega === "delivery" ? "Taxa de entrega" : "Taxa"}</span><span>{brl(taxaEfetiva)}</span></div>
+                <div className="flex justify-between"><span>{tipoEntrega === "delivery" ? "Pedido mínimo" : "Taxa"}</span><span>{brl(taxaEfetiva)}</span></div>
               )}
               {cupomAplicado?.tipo === "frete_gratis" && tipoEntrega === "retirada" && (
                 <div className="flex justify-between"><span>Taxa</span><span>{brl(0)}</span></div>

@@ -1107,7 +1107,7 @@ export default function CardapioPublico() {
         <div className="max-w-4xl mx-auto px-3 pb-2 -mt-6 relative z-10">
           <div className="rounded-lg bg-transparent overflow-hidden">
             <div className="p-0 sm:p-0">
-              <div className="rounded-lg border border-zinc-200/80 bg-white/92 backdrop-blur px-2.5 py-2 sm:px-3 sm:py-2.5">
+              <div className="rounded-lg border border-zinc-200/80 bg-white/92 backdrop-blur px-1 py-2 sm:px-3 sm:py-2.5">
               <div className="flex items-start gap-2 sm:gap-2.5">
                 <div className="shrink-0">
                   {cfg.logo_url ? (

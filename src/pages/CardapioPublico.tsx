@@ -145,6 +145,7 @@ export default function CardapioPublico() {
   const [busy, setBusy] = useState(false);
   const [fidelidadeBusy, setFidelidadeBusy] = useState(false);
   const [fidelidadeBusca, setFidelidadeBusca] = useState<FidelidadeLookupResult | null>(null);
+  const [fidelidadeDialogOpen, setFidelidadeDialogOpen] = useState(false);
   const [telefoneBuscado, setTelefoneBuscado] = useState("");
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
@@ -475,7 +476,7 @@ export default function CardapioPublico() {
   };
 
   const scrollToFidelidade = () => {
-    fidelidadeSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFidelidadeDialogOpen(true);
   };
 
   const renderFidelidadeBox = (compact = false) => {
@@ -1064,18 +1065,18 @@ export default function CardapioPublico() {
 
                   <h1 className="text-[15px] sm:text-lg font-bold tracking-tight line-clamp-2">{cfg.nome_loja}</h1>
 
-                  <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1">
-                    <div className="rounded-md border bg-white p-1 text-[11px]">
+                  <div className="mt-1.5 grid grid-cols-3 gap-1">
+                    <div className="rounded-md border bg-white p-1 text-[10px] sm:text-[11px] min-w-0">
                       <p className="text-zinc-500">Entrega</p>
-                      <p className="font-bold">{cfg.tempo_entrega_min || "40min - 1h20"}</p>
+                      <p className="font-bold leading-tight">{cfg.tempo_entrega_min || "40min - 1h20"}</p>
                     </div>
-                    <div className="rounded-md border bg-white p-1 text-[11px]">
+                    <div className="rounded-md border bg-white p-1 text-[10px] sm:text-[11px] min-w-0">
                       <p className="text-zinc-500">Horario</p>
-                      <p className="font-bold">{cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}</p>
+                      <p className="font-bold leading-tight">{cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}</p>
                     </div>
-                    <div className="rounded-md border bg-white p-1 text-[11px]">
+                    <div className="rounded-md border bg-white p-1 text-[10px] sm:text-[11px] min-w-0">
                       <p className="text-zinc-500">Pedido mínimo</p>
-                      <p className="font-bold flex items-center gap-1">
+                      <p className="font-bold flex items-center gap-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
                         <Bike className="w-3 h-3" /> A partir de {brl(taxaMin)}
                       </p>
                     </div>
@@ -1187,28 +1188,15 @@ export default function CardapioPublico() {
 
       {cfg.fidelidade_ativa && (
         <div className="max-w-4xl mx-auto px-3 mt-3">
-          <div
-            className="relative overflow-hidden rounded-[30px] border px-4 py-4 text-white shadow-[0_20px_44px_-30px_rgba(5,46,22,0.85)] sm:px-5"
-            style={{
-              borderColor: withAlpha(fidelidadeCor, 0.55),
-              backgroundImage: `linear-gradient(120deg, ${withAlpha(fidelidadeCor, 0.96)}, ${withAlpha(fidelidadeCor, 0.78)})`,
-            }}
-          >
-            <div className="pointer-events-none absolute inset-0 opacity-20 loyalty-shimmer" />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-white shadow-inner">
-                  <Trophy className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/80">Programa de fidelidade</p>
-                  <h2 className="text-lg font-bold tracking-tight text-white">{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</h2>
-                </div>
-              </div>
-              <Button type="button" onClick={scrollToFidelidade} className="bg-white hover:bg-white/90" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
-                Ver minhas recompensas
-              </Button>
-            </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              onClick={scrollToFidelidade}
+              className="h-9 rounded-full px-4 text-white shadow-md"
+              style={{ background: `linear-gradient(120deg, ${withAlpha(fidelidadeCor, 0.95)}, ${withAlpha(fidelidadeCor, 0.8)})` }}
+            >
+              <Trophy className="h-4 w-4 mr-2" /> Ver recompensas
+            </Button>
           </div>
         </div>
       )}
@@ -1243,8 +1231,6 @@ export default function CardapioPublico() {
       </nav>
 
       <main ref={produtosInicioRef} className="max-w-4xl mx-auto px-3 py-5 space-y-6">
-        {renderFidelidadeBox()}
-
         <div className="flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold">Cardapio</h2>
           <div className="text-xs sm:text-sm text-zinc-600 flex items-center gap-1">
@@ -1571,6 +1557,14 @@ export default function CardapioPublico() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={fidelidadeDialogOpen} onOpenChange={setFidelidadeDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto p-0">
+          <div className="p-4 sm:p-5">
+            {renderFidelidadeBox()}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!sucessoNumero} onOpenChange={(o) => !o && setSucessoNumero(null)}>
         <DialogContent>

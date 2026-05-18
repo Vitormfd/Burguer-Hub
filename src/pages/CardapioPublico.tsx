@@ -1256,28 +1256,31 @@ export default function CardapioPublico() {
           <section>
             <h3 className="text-lg font-bold mb-3 flex items-center gap-1.5"><Flame className="w-4 h-4 text-orange-500" /> Promocoes</h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {promocoes.slice(0, 6).map((p) => (
-                <article key={`promo-${p.id}`} onClick={() => aberta && openAdd(p)} className="rounded-2xl border bg-white p-3 cursor-pointer hover:shadow-md transition">
-                  <div className="flex gap-3">
-                    <div className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-100 shrink-0">
-                      {p.imagem_url ? (
-                        <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" loading="lazy" />
-                      ) : (
-                        <div className="w-full h-full grid place-items-center"><UtensilsCrossed className="w-5 h-5 opacity-35" /></div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-sm line-clamp-1">{p.nome}</h4>
-                      {p.descricao && <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5">{p.descricao}</p>}
-                      <div className="flex items-end gap-2 mt-1">
-                        <span className="text-[14px] leading-none">A partir de</span>
-                        {isPromo && <span className="text-xs line-through text-zinc-400 mb-0.5">{brl(Number(p.preco))}</span>}
-                        <span className="font-semibold text-[18px] leading-none text-zinc-700">{brl(precoEfetivo(p))}</span>
+              {promocoes.slice(0, 6).map((p) => {
+                const isPromo = p.promocao && p.preco_promocional != null;
+                return (
+                  <article key={`promo-${p.id}`} onClick={() => aberta && openAdd(p)} className="rounded-2xl border bg-white p-3 cursor-pointer hover:shadow-md transition">
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-100 shrink-0">
+                        {p.imagem_url ? (
+                          <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="w-full h-full grid place-items-center"><UtensilsCrossed className="w-5 h-5 opacity-35" /></div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-sm line-clamp-1">{p.nome}</h4>
+                        {p.descricao && <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5">{p.descricao}</p>}
+                        <div className="flex items-end gap-2 mt-1">
+                          <span className="text-[14px] leading-none">A partir de</span>
+                          {isPromo && <span className="text-xs line-through text-zinc-400 mb-0.5">{brl(Number(p.preco))}</span>}
+                          <span className="font-semibold text-[18px] leading-none text-zinc-700">{brl(precoEfetivo(p))}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           </section>
         )}

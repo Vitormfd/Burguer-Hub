@@ -8,6 +8,7 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
 import { printReceipt } from "@/lib/print";
+import { sendWhatsapp } from "@/lib/whatsapp";
 
 type EntregaStatus = "aguardando" | "saiu_para_entrega" | "entregue";
 type EntregaTipo = "delivery" | "retirada";
@@ -202,6 +203,24 @@ export default function Delivery() {
       return;
     }
     toast.success(`Entrega: ${(row.tipo_entrega === "retirada" ? statusCfgRetirada : statusCfgDelivery)[cfg.next].label}`);
+
+    // Enviar WhatsApp conforme o status e tipo de entrega
+    if (row.cliente_telefone) {
+      if (cfg.next === "saiu_para_entrega" && row.tipo_entrega === "delivery") {
+        sendWhatsapp(row.pedido_id, "saiu_entrega", row.cliente_telefone, {
+          nome: row.cliente_nome,
+        });
+      } else if (cfg.next === "saiu_para_entrega" && row.tipo_entrega === "retirada") {
+        sendWhatsapp(row.pedido_id, "retirada_pronto", row.cliente_telefone, {
+          nome: row.cliente_nome,
+        });
+      } else if (cfg.next === "entregue" && row.tipo_entrega === "delivery") {
+        sendWhatsapp(row.pedido_id, "entregue", row.cliente_telefone, {
+          nome: row.cliente_nome,
+        });
+      }
+    }
+
     // Recarregar imediatamente para garantir atualização visual
     await load();
   };

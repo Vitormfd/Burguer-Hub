@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,12 +6,168 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Settings, Plus, Trash2, ExternalLink, Upload, X } from "lucide-react";
-import { useRef } from "react";
-import type { BairroTaxa, Configuracao } from "@/types/db";
+import {
+  Settings,
+  Plus,
+  Trash2,
+  ExternalLink,
+  Upload,
+  X,
+  Eye,
+  EyeOff,
+  MessageSquare,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
+  Send,
+  List,
+} from "lucide-react";
+import type { BairroTaxa, Configuracao, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { brl } from "@/lib/format";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
+
+// --- helpers -----------------------------------------------------------------
+
+const VAR_CHIPS: { label: string; value: string }[] = [
+  { label: "{{nome}}", value: "{{nome}}" },
+  { label: "{{pedido_id}}", value: "{{pedido_id}}" },
+  { label: "{{itens}}", value: "{{itens}}" },
+  { label: "{{total}}", value: "{{total}}" },
+  { label: "{{tempo_estimado}}", value: "{{tempo_estimado}}" },
+];
+
+const MENSAGENS_CONFIG: {
+  campo: keyof Configuracao;
+  label: string;
+  tipo: TipoMensagemWhatsapp;
+}[] = [
+  { campo: "whatsapp_msg_confirmado", label: "Pedido confirmado", tipo: "confirmado" },
+  { campo: "whatsapp_msg_em_preparo", label: "Em preparo", tipo: "em_preparo" },
+  { campo: "whatsapp_msg_saiu_entrega", label: "Saiu para entrega", tipo: "saiu_entrega" },
+  { campo: "whatsapp_msg_entregue", label: "Pedido entregue", tipo: "entregue" },
+  { campo: "whatsapp_msg_retirada_pronto", label: "Pronto para retirada", tipo: "retirada_pronto" },
+];
+
+const LOG_TIPO_LABEL: Record<TipoMensagemWhatsapp, string> = {
+  confirmado: "Confirmado",
+  em_preparo: "Em preparo",
+  saiu_entrega: "Saiu p/ entrega",
+  entregue: "Entregue",
+  retirada_pronto: "Pronto p/ retirada",
+};
+
+// --- PasswordInput -----------------------------------------------------------
+
+function PasswordInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="pr-10"
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
+// --- TestMsgModal ------------------------------------------------------------
+
+function TestMsgModal({
+  open,
+  tipo,
+  onClose,
+}: {
+  open: boolean;
+  tipo: TipoMensagemWhatsapp | null;
+  onClose: () => void;
+}) {
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) return toast.error("Informe um telefone valido com DDD");
+    setBusy(true);
+    try {
+      const { error } = await supabase.functions.invoke("send-whatsapp", {
+        body: {
+          pedido_id: "00000000-0000-0000-0000-000000000000",
+          tipo_mensagem: tipo,
+          telefone: digits,
+          dados_pedido: {
+            nome: "Cliente Teste",
+            itens: "1x Hamburguer Artesanal",
+            total: "R$ 45,00",
+            tempo_estimado: "30-45 min",
+          },
+        },
+      });
+      if (error) toast.error(error.message || "Erro ao enviar");
+      else toast.success("Mensagem de teste enviada!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar");
+    } finally {
+      setBusy(false);
+      onClose();
+      setPhone("");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enviar mensagem de teste</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <Label>Numero de destino</Label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="(11) 99999-9999"
+            />
+            <p className="text-xs text-muted-foreground">
+              Sera formatado automaticamente com codigo do pais 55.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button onClick={send} disabled={busy}>
+              <Send className="w-4 h-4 mr-1" />
+              {busy ? "Enviando..." : "Enviar teste"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Main Component ----------------------------------------------------------
 
 export default function Configuracoes() {
   const [cfg, setCfg] = useState<Configuracao | null>(null);
@@ -20,14 +176,66 @@ export default function Configuracoes() {
   const [novaTaxa, setNovaTaxa] = useState("");
   const [novaImagemCarrossel, setNovaImagemCarrossel] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyWpp, setBusyWpp] = useState(false);
   const [uploading, setUploading] = useState<"logo" | "banner" | "carrossel" | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
   const carrosselRef = useRef<HTMLInputElement>(null);
 
+  // WhatsApp state
+  const [zapiStatus, setZapiStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [zapiErrMsg, setZapiErrMsg] = useState("");
+  const [zapiPhone, setZapiPhone] = useState("");
+  const [testingConn, setTestingConn] = useState(false);
+  const [testMsgTipo, setTestMsgTipo] = useState<TipoMensagemWhatsapp | null>(null);
+
+  // Logs state
+  const [logs, setLogs] = useState<WhatsappLog[]>([]);
+  const [logsFiltro, setLogsFiltro] = useState<"todos" | "enviado" | "erro">("todos");
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [reenvBusy, setReenvBusy] = useState<string | null>(null);
+
+  // loaders
+
+  const load = async () => {
+    const [{ data: c }, { data: b }] = await Promise.all([
+      supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
+      supabase.from("bairros_taxas").select("*").order("nome"),
+    ]);
+    if (c) {
+      const cfgData = c as Configuracao;
+      setCfg({ ...cfgData, carrossel_imagens: cfgData.carrossel_imagens || [] });
+    }
+    setBairros((b || []) as BairroTaxa[]);
+  };
+
+  const loadLogs = async () => {
+    setLogsLoading(true);
+    let q = supabase
+      .from("whatsapp_logs" as any)
+      .select("*")
+      .order("enviado_em", { ascending: false })
+      .limit(200);
+    if (logsFiltro !== "todos") {
+      q = (q as any).eq("status", logsFiltro);
+    }
+    const { data, error } = await q;
+    setLogsLoading(false);
+    if (error) return toast.error(error.message);
+    setLogs((data || []) as unknown as WhatsappLog[]);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  // Reload logs whenever filter changes (only if the tab has been opened at least once)
+  const [logsOpened, setLogsOpened] = useState(false);
+  useEffect(() => { if (logsOpened) loadLogs(); }, [logsFiltro]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // file uploads
+
   const uploadFile = async (kind: "logo" | "banner", file: File) => {
     if (!cfg) return;
-    if (file.size > 5 * 1024 * 1024) return toast.error("Arquivo deve ter até 5MB");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Arquivo deve ter ate 5MB");
     setUploading(kind);
     const ext = file.name.split(".").pop() || "png";
     const path = `${kind}-${cfg.id}-${Date.now()}.${ext}`;
@@ -45,45 +253,17 @@ export default function Configuracoes() {
     toast.success(`${kind === "logo" ? "Logo" : "Banner"} salvo`);
   };
 
-  const load = async () => {
-    const [{ data: c }, { data: b }] = await Promise.all([
-      supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
-      supabase.from("bairros_taxas").select("*").order("nome"),
-    ]);
-    if (c) {
-      const cfgData = c as Configuracao;
-      setCfg({
-        ...cfgData,
-        carrossel_imagens: cfgData.carrossel_imagens || [],
-      });
-    }
-    setBairros((b || []) as BairroTaxa[]);
-  };
-  useEffect(() => { load(); }, []);
-
   const uploadCarouselImage = async (file: File) => {
     if (!cfg) return;
-    if (file.size > 5 * 1024 * 1024) return toast.error("Arquivo deve ter até 5MB");
-
+    if (file.size > 5 * 1024 * 1024) return toast.error("Arquivo deve ter ate 5MB");
     setUploading("carrossel");
     const ext = file.name.split(".").pop() || "png";
     const path = `carrossel-${cfg.id}-${Date.now()}.${ext}`;
-
-    const { error: upErr } = await supabase.storage.from("loja").upload(path, file, {
-      upsert: true,
-      contentType: file.type,
-    });
-    if (upErr) {
-      setUploading(null);
-      return toast.error(upErr.message);
-    }
-
+    const { error: upErr } = await supabase.storage.from("loja").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) { setUploading(null); return toast.error(upErr.message); }
     const { data } = supabase.storage.from("loja").getPublicUrl(path);
     const url = data.publicUrl;
-    setCfg({
-      ...cfg,
-      carrossel_imagens: [...(cfg.carrossel_imagens || []), url],
-    });
+    setCfg({ ...cfg, carrossel_imagens: [...(cfg.carrossel_imagens || []), url] });
     setUploading(null);
     toast.success("Imagem adicionada ao carrossel");
   };
@@ -92,22 +272,19 @@ export default function Configuracoes() {
     if (!cfg) return;
     const url = novaImagemCarrossel.trim();
     if (!url) return;
-    if (!/^https?:\/\//i.test(url)) return toast.error("Informe uma URL válida iniciando com http:// ou https://");
-
+    if (!/^https?:\/\//i.test(url)) return toast.error("Informe uma URL valida iniciando com http:// ou https://");
     const atuais = cfg.carrossel_imagens || [];
-    if (atuais.includes(url)) return toast.error("Essa imagem já está no carrossel");
-
+    if (atuais.includes(url)) return toast.error("Essa imagem ja esta no carrossel");
     setCfg({ ...cfg, carrossel_imagens: [...atuais, url] });
     setNovaImagemCarrossel("");
   };
 
   const removeCarouselImage = (url: string) => {
     if (!cfg) return;
-    setCfg({
-      ...cfg,
-      carrossel_imagens: (cfg.carrossel_imagens || []).filter((item) => item !== url),
-    });
+    setCfg({ ...cfg, carrossel_imagens: (cfg.carrossel_imagens || []).filter((item) => item !== url) });
   };
+
+  // save geral
 
   const save = async () => {
     if (!cfg) return;
@@ -134,8 +311,67 @@ export default function Configuracoes() {
       .eq("id", cfg.id);
     setBusy(false);
     if (error) toast.error(error.message);
-    else toast.success("Configurações salvas");
+    else toast.success("Configuracoes salvas");
   };
+
+  // save whatsapp
+
+  const saveWhatsapp = async () => {
+    if (!cfg) return;
+    setBusyWpp(true);
+    const { error } = await supabase
+      .from("configuracoes")
+      .update({
+        zapi_instance_id: cfg.zapi_instance_id ?? null,
+        zapi_token: cfg.zapi_token ?? null,
+        zapi_client_token: cfg.zapi_client_token ?? null,
+        zapi_ativo: cfg.zapi_ativo ?? false,
+        whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
+        whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
+        whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
+        whatsapp_msg_entregue: cfg.whatsapp_msg_entregue,
+        whatsapp_msg_retirada_pronto: cfg.whatsapp_msg_retirada_pronto,
+      } as any)
+      .eq("id", cfg.id);
+    setBusyWpp(false);
+    if (error) toast.error(error.message);
+    else toast.success("Configuracoes WhatsApp salvas");
+  };
+
+  // test Z-API connection
+
+  const testConnection = async () => {
+    if (!hasCredentials) {
+      return toast.error("Preencha Instance ID, Token e Client Token primeiro");
+    }
+    setTestingConn(true);
+    setZapiStatus("idle");
+    setZapiErrMsg("");
+    setZapiPhone("");
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+        body: { action: "test_connection" },
+      });
+
+      if (error) {
+        setZapiStatus("error");
+        setZapiErrMsg(error.message || "Falha ao testar conexão");
+      } else if (data?.ok) {
+        setZapiStatus("ok");
+        setZapiPhone(data.phone || "");
+      } else {
+        setZapiStatus("error");
+        setZapiErrMsg(data?.error || "Falha ao testar conexão");
+      }
+    } catch (err) {
+      setZapiStatus("error");
+      setZapiErrMsg(err instanceof Error ? err.message : "Erro de conexao");
+    } finally {
+      setTestingConn(false);
+    }
+  };
+
+  // bairros
 
   const addBairro = async () => {
     const taxa = Number(novaTaxa.replace(",", ".")) || 0;
@@ -151,6 +387,30 @@ export default function Configuracoes() {
     if (error) toast.error(error.message); else load();
   };
 
+  // reenviar log
+
+  const reenviarLog = async (log: WhatsappLog) => {
+    setReenvBusy(log.id);
+    try {
+      const { error } = await supabase.functions.invoke("send-whatsapp", {
+        body: {
+          pedido_id: log.pedido_id ?? "00000000-0000-0000-0000-000000000000",
+          tipo_mensagem: log.tipo_mensagem,
+          telefone: log.telefone,
+          dados_pedido: {},
+        },
+      });
+      if (error) toast.error(error.message || "Erro ao reenviar");
+      else { toast.success("Mensagem reenviada!"); loadLogs(); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao reenviar");
+    } finally {
+      setReenvBusy(null);
+    }
+  };
+
+  const hasCredentials = !!(cfg?.zapi_instance_id && cfg?.zapi_token && cfg?.zapi_client_token);
+
   if (!cfg) return <div className="text-muted-foreground">Carregando...</div>;
 
   return (
@@ -158,251 +418,411 @@ export default function Configuracoes() {
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-5xl flex items-center gap-3">
-            <Settings className="w-8 h-8 text-primary" /> Configurações
+            <Settings className="w-8 h-8 text-primary" /> Configuracoes
           </h1>
-          <p className="text-muted-foreground mt-1">Identidade, horário e bairros do delivery online</p>
+          <p className="text-muted-foreground mt-1">Identidade, horario, bairros e integracoes</p>
         </div>
         <Button asChild variant="outline">
-          <Link to="/cardapio" target="_blank"><ExternalLink className="w-4 h-4 mr-1" /> Ver página pública</Link>
+          <Link to="/cardapio" target="_blank"><ExternalLink className="w-4 h-4 mr-1" /> Ver pagina publica</Link>
         </Button>
       </div>
 
-      <Card className="p-6 space-y-4">
-        <h2 className="font-display text-2xl">Identidade da loja</h2>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Nome da loja</Label>
-            <Input value={cfg.nome_loja} maxLength={80} onChange={(e) => setCfg({ ...cfg, nome_loja: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Slug/Referência (URL pública)</Label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">dominio.com/</span>
-              <Input 
-                value={cfg.referencia || ""} 
-                onChange={(e) => setCfg({ ...cfg, referencia: e.target.value.toLowerCase().replace(/[^a-z0-9\-]/g, "") || null })} 
-                placeholder="seu-restaurante"
-                maxLength={50}
-              />
-              <span className="text-sm text-muted-foreground">/cardapio</span>
+      <Tabs defaultValue="geral">
+        <TabsList className="mb-4">
+          <TabsTrigger value="geral"><Settings className="w-4 h-4 mr-1.5" />Geral</TabsTrigger>
+          <TabsTrigger value="whatsapp"><MessageSquare className="w-4 h-4 mr-1.5" />WhatsApp</TabsTrigger>
+          <TabsTrigger value="logs" onClick={() => { setLogsOpened(true); loadLogs(); }}><List className="w-4 h-4 mr-1.5" />Logs WhatsApp</TabsTrigger>
+        </TabsList>
+
+        {/* TAB: GERAL */}
+        <TabsContent value="geral" className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Identidade da loja</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome da loja</Label>
+                <Input value={cfg.nome_loja} maxLength={80} onChange={(e) => setCfg({ ...cfg, nome_loja: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Slug/Referencia (URL publica)</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">dominio.com/</span>
+                  <Input
+                    value={cfg.referencia || ""}
+                    onChange={(e) => setCfg({ ...cfg, referencia: e.target.value.toLowerCase().replace(/[^a-z0-9\-]/g, "") || null })}
+                    placeholder="seu-restaurante"
+                    maxLength={50}
+                  />
+                  <span className="text-sm text-muted-foreground">/cardapio</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Use apenas letras minusculas, numeros e hifen.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Cor principal</Label>
+                <div className="flex gap-2">
+                  <Input type="color" value={cfg.cor_primaria} onChange={(e) => setCfg({ ...cfg, cor_primaria: e.target.value })} className="w-20 h-10 p-1" />
+                  <Input value={cfg.cor_primaria} onChange={(e) => setCfg({ ...cfg, cor_primaria: e.target.value })} />
+                </div>
+              </div>
+              <div className="space-y-2 md:col-span-2 grid md:grid-cols-2 gap-4">
+                {(["logo", "banner"] as const).map((kind) => {
+                  const url = kind === "logo" ? cfg.logo_url : cfg.banner_url;
+                  const ref = kind === "logo" ? logoRef : bannerRef;
+                  const setUrl = (v: string | null) => setCfg({ ...cfg, [kind === "logo" ? "logo_url" : "banner_url"]: v });
+                  return (
+                    <div key={kind} className="space-y-2">
+                      <Label>{kind === "logo" ? "Logo" : "Banner"}</Label>
+                      {url && (
+                        <div className="relative w-full rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: kind === "logo" ? "1 / 1" : "16 / 6", maxHeight: kind === "logo" ? 120 : 160 }}>
+                          <img src={url} alt={kind} className="w-full h-full object-cover" />
+                          <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => setUrl(null)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(kind, f); e.target.value = ""; }} />
+                        <Button type="button" variant="outline" onClick={() => ref.current?.click()} disabled={uploading === kind}>
+                          <Upload className="w-4 h-4 mr-1" /> {uploading === kind ? "Enviando..." : "Enviar arquivo"}
+                        </Button>
+                      </div>
+                      <Input value={url ?? ""} onChange={(e) => setUrl(e.target.value || null)} placeholder="ou cole uma URL https://..." />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-3 md:col-span-2">
+                <Label>Imagens do carrossel do topo</Label>
+                <p className="text-xs text-muted-foreground">Essas imagens sao exibidas no carrossel grande da pagina publica.</p>
+                {(cfg.carrossel_imagens || []).length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nenhuma imagem adicionada no carrossel ainda.</div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {(cfg.carrossel_imagens || []).map((url, idx) => (
+                      <div key={`${url}-${idx}`} className="relative rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
+                        <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
+                        <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => removeCarouselImage(url)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <input ref={carrosselRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadCarouselImage(f); e.target.value = ""; }} />
+                  <Button type="button" variant="outline" onClick={() => carrosselRef.current?.click()} disabled={uploading === "carrossel"}>
+                    <Upload className="w-4 h-4 mr-1" /> {uploading === "carrossel" ? "Enviando..." : "Adicionar imagem"}
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Input value={novaImagemCarrossel} onChange={(e) => setNovaImagemCarrossel(e.target.value)} placeholder="ou cole uma URL da imagem https://..." />
+                  <Button type="button" variant="secondary" onClick={addCarouselByUrl}>Adicionar URL</Button>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">Use apenas letras minúsculas, números e hífen. Este é o identificador único para sua loja.</p>
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Funcionamento</h2>
+            <div className="grid md:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Pagina publica ativa</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <Switch checked={cfg.ativo} onCheckedChange={(v) => setCfg({ ...cfg, ativo: v })} />
+                  <span className="text-sm text-muted-foreground">{cfg.ativo ? "Aceitando pedidos" : "Fechada"}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Abertura</Label>
+                <Input type="time" value={cfg.hora_abertura.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_abertura: e.target.value + ":00" })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Fechamento</Label>
+                <Input type="time" value={cfg.hora_fechamento.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_fechamento: e.target.value + ":00" })} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Tempo estimado de entrega</Label>
+              <Input value={cfg.tempo_entrega_min ?? ""} onChange={(e) => setCfg({ ...cfg, tempo_entrega_min: e.target.value })} maxLength={30} placeholder="Ex: 30-45 min" />
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Ativar opcao de retirada no cardapio</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <Switch checked={!!cfg.retirada_ativa} onCheckedChange={(v) => setCfg({ ...cfg, retirada_ativa: v })} />
+                  <span className="text-sm text-muted-foreground">{cfg.retirada_ativa ? "Retirada habilitada" : "Retirada desativada"}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Tempo estimado de preparo para retirada (minutos)</Label>
+                <Input type="number" min={1} step="1" value={Number(cfg.tempo_estimado_retirada ?? 25)} onChange={(e) => setCfg({ ...cfg, tempo_estimado_retirada: Math.max(Number(e.target.value || 25), 1) })} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Endereco do estabelecimento (exibido na opcao de retirada)</Label>
+              <Input value={cfg.endereco_estabelecimento ?? ""} onChange={(e) => setCfg({ ...cfg, endereco_estabelecimento: e.target.value || null })} placeholder="Ex: Rua das Flores, 123 - Centro" maxLength={200} />
+            </div>
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">SEO</h2>
+            <div className="space-y-2">
+              <Label>Titulo da pagina</Label>
+              <Input value={cfg.seo_titulo} maxLength={60} onChange={(e) => setCfg({ ...cfg, seo_titulo: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Meta description</Label>
+              <Textarea rows={2} value={cfg.seo_descricao} maxLength={160} onChange={(e) => setCfg({ ...cfg, seo_descricao: e.target.value })} />
+            </div>
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Bairros e taxas de entrega</h2>
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 space-y-2">
+                <Label>Bairro</Label>
+                <Input value={novoBairro} onChange={(e) => setNovoBairro(e.target.value)} placeholder="Ex: Centro" />
+              </div>
+              <div className="w-32 space-y-2">
+                <Label>Taxa (R$)</Label>
+                <Input type="number" min={0} step="0.50" value={novaTaxa} onChange={(e) => setNovaTaxa(e.target.value)} />
+              </div>
+              <Button onClick={addBairro}><Plus className="w-4 h-4 mr-1" /> Adicionar</Button>
+            </div>
+            <div className="divide-y border rounded-lg">
+              {bairros.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground text-center">Nenhum bairro cadastrado</div>
+              ) : bairros.map((b) => (
+                <div key={b.id} className="flex items-center justify-between px-4 py-2">
+                  <span className="font-medium">{b.nome}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-primary font-semibold">{brl(Number(b.taxa))}</span>
+                    <Button variant="ghost" size="icon" onClick={() => removeBairro(b.id)}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button size="lg" onClick={save} disabled={busy}>{busy ? "Salvando..." : "Salvar configuracoes"}</Button>
           </div>
-          <div className="space-y-2">
-            <Label>Cor principal</Label>
-            <div className="flex gap-2">
-              <Input type="color" value={cfg.cor_primaria} onChange={(e) => setCfg({ ...cfg, cor_primaria: e.target.value })} className="w-20 h-10 p-1" />
-              <Input value={cfg.cor_primaria} onChange={(e) => setCfg({ ...cfg, cor_primaria: e.target.value })} />
+        </TabsContent>
+
+        {/* TAB: WHATSAPP */}
+        <TabsContent value="whatsapp" className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl flex items-center gap-2">
+              <MessageSquare className="w-6 h-6 text-green-500" /> Integracao WhatsApp (Z-API)
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              As credenciais sao usadas exclusivamente pela Edge Function no servidor - nunca expostas ao frontend.
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Instance ID</Label>
+                <Input
+                  value={cfg.zapi_instance_id ?? ""}
+                  onChange={(e) => setCfg({ ...cfg, zapi_instance_id: e.target.value || null })}
+                  placeholder="Ex: 3D1234ABCD..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Token</Label>
+                <PasswordInput
+                  value={cfg.zapi_token ?? ""}
+                  onChange={(v) => setCfg({ ...cfg, zapi_token: v || null })}
+                  placeholder="Token da instancia"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Client Token</Label>
+                <PasswordInput
+                  value={cfg.zapi_client_token ?? ""}
+                  onChange={(v) => setCfg({ ...cfg, zapi_client_token: v || null })}
+                  placeholder="Client-Token do seu plano Z-API"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <Button variant="outline" onClick={testConnection} disabled={testingConn || !hasCredentials}>
+                {testingConn
+                  ? <><RefreshCw className="w-4 h-4 mr-1 animate-spin" /> Testando...</>
+                  : "Testar conexao"}
+              </Button>
+              {zapiStatus === "ok" && (
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-green-100 text-green-700 border-green-300">
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> Conectado
+                  </Badge>
+                  {zapiPhone && <span className="text-sm text-muted-foreground">Numero: {zapiPhone}</span>}
+                </div>
+              )}
+              {zapiStatus === "error" && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className="bg-red-100 text-red-700 border-red-300">
+                    <XCircle className="w-3 h-3 mr-1" /> Erro na conexao
+                  </Badge>
+                  {zapiErrMsg && <span className="text-xs text-muted-foreground">{zapiErrMsg}</span>}
+                </div>
+              )}
+            </div>
+
+            {hasCredentials && (
+              <div className="flex items-center gap-3 pt-2 border-t">
+                <Switch
+                  checked={!!cfg.zapi_ativo}
+                  onCheckedChange={(v) => setCfg({ ...cfg, zapi_ativo: v })}
+                />
+                <span className="text-sm font-medium">Ativar notificacoes WhatsApp</span>
+                {cfg.zapi_ativo && (
+                  <Badge className="bg-green-100 text-green-700 border-green-300 ml-auto">Ativo</Badge>
+                )}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-6 space-y-5">
+            <h2 className="font-display text-2xl">Personalizar mensagens</h2>
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm text-muted-foreground mr-1 self-center">Variaveis disponiveis:</span>
+              {VAR_CHIPS.map((chip) => (
+                <Badge
+                  key={chip.value}
+                  variant="secondary"
+                  className="cursor-pointer select-none hover:bg-primary hover:text-primary-foreground transition-colors"
+                  onClick={() => navigator.clipboard.writeText(chip.value).then(() => toast.success(`${chip.label} copiado`))}
+                >
+                  {chip.label}
+                </Badge>
+              ))}
+            </div>
+
+            <div className="space-y-6">
+              {MENSAGENS_CONFIG.map(({ campo, label, tipo }) => (
+                <div key={campo} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>{label}</Label>
+                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => setTestMsgTipo(tipo)}>
+                      <Send className="w-3 h-3 mr-1" /> Enviar teste
+                    </Button>
+                  </div>
+                  <Textarea
+                    rows={3}
+                    value={(cfg[campo] as string) ?? ""}
+                    onChange={(e) => setCfg({ ...cfg, [campo]: e.target.value })}
+                    placeholder={`Mensagem de ${label.toLowerCase()}...`}
+                  />
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button size="lg" onClick={saveWhatsapp} disabled={busyWpp}>
+              {busyWpp ? "Salvando..." : "Salvar configuracoes WhatsApp"}
+            </Button>
+          </div>
+        </TabsContent>
+
+        {/* TAB: LOGS */}
+        <TabsContent value="logs" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-2xl">Logs de envio WhatsApp</h2>
+            <div className="flex gap-2 flex-wrap">
+              {(["todos", "enviado", "erro"] as const).map((f) => (
+                <Button
+                  key={f}
+                  variant={logsFiltro === f ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setLogsFiltro(f)}
+                >
+                  {f === "todos" ? "Todos" : f === "enviado" ? "Enviados" : "Erros"}
+                </Button>
+              ))}
+              <Button variant="outline" size="sm" onClick={loadLogs}>
+                <RefreshCw className={cn("w-4 h-4", logsLoading && "animate-spin")} />
+              </Button>
             </div>
           </div>
-          <div className="space-y-2 md:col-span-2 grid md:grid-cols-2 gap-4">
-            {(["logo", "banner"] as const).map((kind) => {
-              const url = kind === "logo" ? cfg.logo_url : cfg.banner_url;
-              const ref = kind === "logo" ? logoRef : bannerRef;
-              const setUrl = (v: string | null) => setCfg({ ...cfg, [kind === "logo" ? "logo_url" : "banner_url"]: v });
-              return (
-                <div key={kind} className="space-y-2">
-                  <Label>{kind === "logo" ? "Logo" : "Banner"}</Label>
-                  {url && (
-                    <div className="relative w-full rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: kind === "logo" ? "1 / 1" : "16 / 6", maxHeight: kind === "logo" ? 120 : 160 }}>
-                      <img src={url} alt={kind} className="w-full h-full object-cover" />
-                      <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => setUrl(null)}>
-                        <X className="w-4 h-4" />
+
+          {logsLoading ? (
+            <div className="text-muted-foreground text-sm py-8 text-center">Carregando logs...</div>
+          ) : logs.length === 0 ? (
+            <div className="text-muted-foreground text-sm py-8 text-center border rounded-lg">
+              Nenhum log encontrado para o filtro selecionado.
+            </div>
+          ) : (
+            <div className="border rounded-lg divide-y overflow-hidden">
+              {logs.map((log) => (
+                <div key={log.id} className="flex flex-wrap items-start gap-3 px-4 py-3 text-sm">
+                  <div className="flex flex-col min-w-[140px]">
+                    <span className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Data/hora</span>
+                    <span>{new Date(log.enviado_em).toLocaleString("pt-BR")}</span>
+                  </div>
+                  <div className="flex flex-col min-w-[110px]">
+                    <span className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Pedido</span>
+                    <span className="font-mono text-xs">
+                      {log.pedido_id ? log.pedido_id.slice(0, 8).toUpperCase() : "-"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col min-w-[130px]">
+                    <span className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Telefone</span>
+                    <span>{log.telefone}</span>
+                  </div>
+                  <div className="flex flex-col min-w-[130px]">
+                    <span className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Tipo</span>
+                    <span>{LOG_TIPO_LABEL[log.tipo_mensagem] ?? log.tipo_mensagem}</span>
+                  </div>
+                  <div className="flex flex-col flex-1 min-w-[160px]">
+                    <span className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Status</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge className={log.status === "enviado"
+                        ? "bg-green-100 text-green-700 border-green-300"
+                        : "bg-red-100 text-red-700 border-red-300"
+                      }>
+                        {log.status === "enviado"
+                          ? <><CheckCircle2 className="w-3 h-3 mr-1" />Enviado</>
+                          : <><XCircle className="w-3 h-3 mr-1" />Erro</>
+                        }
+                      </Badge>
+                      {log.erro_detalhe && (
+                        <span className="text-xs text-muted-foreground truncate max-w-[240px]" title={log.erro_detalhe}>
+                          {log.erro_detalhe}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {log.status === "erro" && (
+                    <div className="flex items-center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={reenvBusy === log.id}
+                        onClick={() => reenviarLog(log)}
+                      >
+                        <RefreshCw className={cn("w-3 h-3 mr-1", reenvBusy === log.id && "animate-spin")} />
+                        Reenviar
                       </Button>
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    <input
-                      ref={ref}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) uploadFile(kind, f);
-                        e.target.value = "";
-                      }}
-                    />
-                    <Button type="button" variant="outline" onClick={() => ref.current?.click()} disabled={uploading === kind}>
-                      <Upload className="w-4 h-4 mr-1" /> {uploading === kind ? "Enviando..." : "Enviar arquivo"}
-                    </Button>
-                  </div>
-                  <Input
-                    value={url ?? ""}
-                    onChange={(e) => setUrl(e.target.value || null)}
-                    placeholder="ou cole uma URL https://..."
-                  />
                 </div>
-              );
-            })}
-          </div>
-
-          <div className="space-y-3 md:col-span-2">
-            <Label>Imagens do carrossel do topo</Label>
-            <p className="text-xs text-muted-foreground">
-              Essas imagens são exibidas no carrossel grande da página pública.
-            </p>
-
-            {(cfg.carrossel_imagens || []).length === 0 ? (
-              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Nenhuma imagem adicionada no carrossel ainda.
-              </div>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {(cfg.carrossel_imagens || []).map((url, idx) => (
-                  <div key={`${url}-${idx}`} className="relative rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
-                    <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="destructive"
-                      className="absolute top-1 right-1 h-7 w-7"
-                      onClick={() => removeCarouselImage(url)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <input
-                ref={carrosselRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) uploadCarouselImage(f);
-                  e.target.value = "";
-                }}
-              />
-              <Button type="button" variant="outline" onClick={() => carrosselRef.current?.click()} disabled={uploading === "carrossel"}>
-                <Upload className="w-4 h-4 mr-1" /> {uploading === "carrossel" ? "Enviando..." : "Adicionar imagem"}
-              </Button>
+              ))}
             </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
-            <div className="flex gap-2">
-              <Input
-                value={novaImagemCarrossel}
-                onChange={(e) => setNovaImagemCarrossel(e.target.value)}
-                placeholder="ou cole uma URL da imagem https://..."
-              />
-              <Button type="button" variant="secondary" onClick={addCarouselByUrl}>Adicionar URL</Button>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-6 space-y-4">
-        <h2 className="font-display text-2xl">Funcionamento</h2>
-        <div className="grid md:grid-cols-3 gap-4 items-end">
-          <div className="space-y-2">
-            <Label>Página pública ativa</Label>
-            <div className="flex items-center gap-2 h-10">
-              <Switch checked={cfg.ativo} onCheckedChange={(v) => setCfg({ ...cfg, ativo: v })} />
-              <span className="text-sm text-muted-foreground">{cfg.ativo ? "Aceitando pedidos" : "Fechada"}</span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Abertura</Label>
-            <Input type="time" value={cfg.hora_abertura.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_abertura: e.target.value + ":00" })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Fechamento</Label>
-            <Input type="time" value={cfg.hora_fechamento.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_fechamento: e.target.value + ":00" })} />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Tempo estimado de entrega</Label>
-          <Input
-            value={cfg.tempo_entrega_min ?? ""}
-            onChange={(e) => setCfg({ ...cfg, tempo_entrega_min: e.target.value })}
-            maxLength={30}
-            placeholder="Ex: 30-45 min"
-          />
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Ativar opcao de retirada no cardapio</Label>
-            <div className="flex items-center gap-2 h-10">
-              <Switch
-                checked={!!cfg.retirada_ativa}
-                onCheckedChange={(v) => setCfg({ ...cfg, retirada_ativa: v })}
-              />
-              <span className="text-sm text-muted-foreground">
-                {cfg.retirada_ativa ? "Retirada habilitada" : "Retirada desativada"}
-              </span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Tempo estimado de preparo para retirada (minutos)</Label>
-            <Input
-              type="number"
-              min={1}
-              step="1"
-              value={Number(cfg.tempo_estimado_retirada ?? 25)}
-              onChange={(e) => setCfg({ ...cfg, tempo_estimado_retirada: Math.max(Number(e.target.value || 25), 1) })}
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Endereço do estabelecimento (exibido na opção de retirada)</Label>
-          <Input
-            value={cfg.endereco_estabelecimento ?? ""}
-            onChange={(e) => setCfg({ ...cfg, endereco_estabelecimento: e.target.value || null })}
-            placeholder="Ex: Rua das Flores, 123 - Centro"
-            maxLength={200}
-          />
-        </div>
-      </Card>
-
-      <Card className="p-6 space-y-4">
-        <h2 className="font-display text-2xl">SEO</h2>
-        <div className="space-y-2">
-          <Label>Título da página</Label>
-          <Input value={cfg.seo_titulo} maxLength={60} onChange={(e) => setCfg({ ...cfg, seo_titulo: e.target.value })} />
-        </div>
-        <div className="space-y-2">
-          <Label>Meta description</Label>
-          <Textarea rows={2} value={cfg.seo_descricao} maxLength={160} onChange={(e) => setCfg({ ...cfg, seo_descricao: e.target.value })} />
-        </div>
-      </Card>
-
-      <Card className="p-6 space-y-4">
-        <h2 className="font-display text-2xl">Bairros e taxas de entrega</h2>
-        <div className="flex gap-2 items-end">
-          <div className="flex-1 space-y-2">
-            <Label>Bairro</Label>
-            <Input value={novoBairro} onChange={(e) => setNovoBairro(e.target.value)} placeholder="Ex: Centro" />
-          </div>
-          <div className="w-32 space-y-2">
-            <Label>Taxa (R$)</Label>
-            <Input type="number" min={0} step="0.50" value={novaTaxa} onChange={(e) => setNovaTaxa(e.target.value)} />
-          </div>
-          <Button onClick={addBairro}><Plus className="w-4 h-4 mr-1" /> Adicionar</Button>
-        </div>
-        <div className="divide-y border rounded-lg">
-          {bairros.length === 0 ? (
-            <div className="p-4 text-sm text-muted-foreground text-center">Nenhum bairro cadastrado</div>
-          ) : bairros.map((b) => (
-            <div key={b.id} className="flex items-center justify-between px-4 py-2">
-              <span className="font-medium">{b.nome}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-primary font-semibold">{brl(Number(b.taxa))}</span>
-                <Button variant="ghost" size="icon" onClick={() => removeBairro(b.id)}>
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <div className="flex justify-end">
-        <Button size="lg" onClick={save} disabled={busy}>{busy ? "Salvando..." : "Salvar configurações"}</Button>
-      </div>
+      <TestMsgModal
+        open={testMsgTipo !== null}
+        tipo={testMsgTipo}
+        onClose={() => setTestMsgTipo(null)}
+      />
     </div>
   );
 }

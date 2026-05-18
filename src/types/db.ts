@@ -6,6 +6,8 @@ export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue" | "
 export type RecompensaTipo = "item_gratis" | "desconto_percentual" | "desconto_fixo";
 export type CupomTipo = "percentual" | "fixo" | "frete_gratis";
 export type ResgateStatus = "pendente" | "aplicado" | "cancelado";
+export type WhatsappLogStatus = "enviado" | "erro";
+export type TipoMensagemWhatsapp = "confirmado" | "em_preparo" | "saiu_entrega" | "entregue" | "retirada_pronto";
 
 export interface Mesa {
   id: string;
@@ -132,6 +134,27 @@ export interface Configuracao {
   fidelidade_ativa?: boolean;
   fidelidade_texto?: string;
   fidelidade_cor?: string;
+  // Z-API / WhatsApp
+  zapi_instance_id?: string | null;
+  zapi_token?: string | null;
+  zapi_client_token?: string | null;
+  zapi_ativo?: boolean;
+  whatsapp_msg_confirmado?: string;
+  whatsapp_msg_em_preparo?: string;
+  whatsapp_msg_saiu_entrega?: string;
+  whatsapp_msg_entregue?: string;
+  whatsapp_msg_retirada_pronto?: string;
+}
+
+export interface WhatsappLog {
+  id: string;
+  pedido_id: string | null;
+  telefone: string;
+  tipo_mensagem: TipoMensagemWhatsapp;
+  mensagem_enviada: string;
+  status: WhatsappLogStatus;
+  erro_detalhe: string | null;
+  enviado_em: string;
 }
 
 export interface Cliente {

@@ -44,6 +44,7 @@ import {
   normalizePhone,
   rewardProgress,
 } from "@/lib/fidelidade";
+import { sendWhatsapp } from "@/lib/whatsapp";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
@@ -936,6 +937,18 @@ export default function CardapioPublico() {
     }
 
     setBusy(false);
+
+    // Dispara mensagem WhatsApp de confirmação (fire-and-forget)
+    if (tel.trim()) {
+      const itensTexto = cart
+        .map((i) => `${i.quantidade}x ${i.produto.nome}`)
+        .join(", ");
+      sendWhatsapp(pedido.id, "confirmado", tel.trim(), {
+        nome,
+        itens: itensTexto,
+        total: brl(subtotal + taxaEntregaFinal - descontoCupomAplicado),
+      });
+    }
 
     setSucessoTipoEntrega(tipoEntrega);
     setSucessoTempoRetirada(tempoEstimadoRetirada);

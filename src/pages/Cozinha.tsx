@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChefHat, Clock, Flame, ArrowLeft, Utensils, Truck, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { sendWhatsapp } from "@/lib/whatsapp";
 
 type Status = "pendente" | "em_preparo" | "pronto" | "entregue";
 type Tipo = "mesa" | "delivery" | "retirada";
@@ -199,6 +200,19 @@ export default function Cozinha() {
     if (error) {
       toast.error(error.message);
       return;
+    }
+    // Enviar WhatsApp para pedidos de delivery/retirada ao entrar em preparo
+    if (next === "em_preparo" && c.tipo !== "mesa") {
+      const { data: entrega } = await supabase
+        .from("entregas")
+        .select("cliente_nome, cliente_telefone")
+        .eq("pedido_id", c.pedido_id)
+        .maybeSingle();
+      if (entrega?.cliente_telefone) {
+        sendWhatsapp(c.pedido_id, "em_preparo", entrega.cliente_telefone, {
+          nome: entrega.cliente_nome ?? undefined,
+        });
+      }
     }
     // Recarregar imediatamente após sucesso (garante atualização visual mesmo sem realtime)
     await load();

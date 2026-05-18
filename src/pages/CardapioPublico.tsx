@@ -146,6 +146,8 @@ export default function CardapioPublico() {
   const [fidelidadeBusy, setFidelidadeBusy] = useState(false);
   const [fidelidadeBusca, setFidelidadeBusca] = useState<FidelidadeLookupResult | null>(null);
   const [fidelidadeDialogOpen, setFidelidadeDialogOpen] = useState(false);
+  const [loadingCfg, setLoadingCfg] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [telefoneBuscado, setTelefoneBuscado] = useState("");
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
@@ -162,45 +164,94 @@ export default function CardapioPublico() {
   const celebradosRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    (async () => {
-      let cfgQuery = supabase.from("configuracoes").select("*");
-      
-      if (referencia) {
-        cfgQuery = cfgQuery.eq("referencia", referencia);
+    let isMounted = true;
+
+    const load = async () => {
+      setLoadingCfg(true);
+      setLoadError(null);
+
+      try {
+        let cfgQuery = supabase.from("configuracoes").select("*");
+
+        if (referencia) {
+          cfgQuery = cfgQuery.eq("referencia", referencia);
+        } else {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (session?.user?.id) {
+            cfgQuery = cfgQuery.eq("owner_id", session.user.id);
+          } else {
+            if (!isMounted) return;
+            setCfg(null);
+            setLoadingCfg(false);
+            setLoadError("Link publico invalido. Use o link completo no formato /sua-referencia/cardapio.");
+            return;
+          }
+        }
+
+        const { data: c, error: cfgError } = await cfgQuery.maybeSingle();
+
+        if (!isMounted) return;
+
+        if (cfgError || !c) {
+          setCfg(null);
+          setCategorias([]);
+          setProdutos([]);
+          setRecompensas([]);
+          setBairros([]);
+          setTopSellers(new Set());
+          setLoadError(cfgError?.message || "Cardapio nao encontrado para esta referencia.");
+          setLoadingCfg(false);
+          return;
+        }
+
+        setCfg(c as Configuracao);
+        const ownerId = (c as Configuracao & { owner_id?: string | null }).owner_id;
+
+        const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
+          (supabase.from("categorias") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
+          (supabase.from("produtos") as any).select("*").eq("disponivel", true).eq("owner_id", ownerId).order("nome"),
+          (supabase.from("recompensas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("pedidos_necessarios"),
+          (supabase.from("bairros_taxas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
+          (supabase.from("pedido_itens") as any).select("produto_id, quantidade").eq("owner_id", ownerId).limit(1000),
+        ]);
+
+        if (!isMounted) return;
+
+        const cs = (cat || []) as Categoria[];
+        setCategorias(cs);
+        setProdutos((prod || []) as Produto[]);
+        setRecompensas((rewards || []) as Recompensa[]);
+        setBairros((b || []) as BairroTaxa[]);
+        if (cs[0]) setActiveCat(cs[0].id);
+
+        const counts = new Map<string, number>();
+        (itens || []).forEach((i: any) => {
+          if (!i.produto_id) return;
+          counts.set(i.produto_id, (counts.get(i.produto_id) || 0) + (i.quantidade || 0));
+        });
+
+        const top = [...counts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 6)
+          .map(([id]) => id);
+        setTopSellers(new Set(top));
+      } catch (error) {
+        if (!isMounted) return;
+        setCfg(null);
+        setLoadError(error instanceof Error ? error.message : "Nao foi possivel carregar o cardapio.");
+      } finally {
+        if (isMounted) setLoadingCfg(false);
       }
+    };
 
-      const { data: c } = await cfgQuery.maybeSingle();
-      if (!c) return;
+    void load();
 
-      setCfg(c as Configuracao);
-      const ownerId = (c as Configuracao & { owner_id?: string | null }).owner_id;
-
-      const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
-        (supabase.from("categorias") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
-        (supabase.from("produtos") as any).select("*").eq("disponivel", true).eq("owner_id", ownerId).order("nome"),
-        (supabase.from("recompensas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("pedidos_necessarios"),
-        (supabase.from("bairros_taxas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
-        (supabase.from("pedido_itens") as any).select("produto_id, quantidade").eq("owner_id", ownerId).limit(1000),
-      ]);
-
-      const cs = (cat || []) as Categoria[];
-      setCategorias(cs);
-      setProdutos((prod || []) as Produto[]);
-      setRecompensas((rewards || []) as Recompensa[]);
-      setBairros((b || []) as BairroTaxa[]);
-      if (cs[0]) setActiveCat(cs[0].id);
-
-      const counts = new Map<string, number>();
-      (itens || []).forEach((i: any) => {
-        if (!i.produto_id) return;
-        counts.set(i.produto_id, (counts.get(i.produto_id) || 0) + (i.quantidade || 0));
-      });
-      const top = [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6)
-        .map(([id]) => id);
-      setTopSellers(new Set(top));
-    })();
+    return () => {
+      isMounted = false;
+    };
   }, [referencia]);
 
   useEffect(() => {
@@ -984,7 +1035,18 @@ export default function CardapioPublico() {
     setCupomCodigo("");
   };
 
-  if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
+  if (loadingCfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
+
+  if (!cfg) {
+    return (
+      <div className="min-h-screen grid place-items-center p-6 text-center">
+        <div className="max-w-md space-y-2">
+          <h1 className="text-xl font-semibold text-zinc-800">Nao foi possivel abrir o cardapio</h1>
+          <p className="text-sm text-zinc-600">{loadError || "Verifique se o link esta correto e tente novamente."}</p>
+        </div>
+      </div>
+    );
+  }
 
   const aberta = cfg.ativo && isOpenNow(cfg);
   const taxaMin = bairros.length ? Math.min(...bairros.map((b) => Number(b.taxa))) : 0;

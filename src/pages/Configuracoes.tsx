@@ -410,6 +410,7 @@ export default function Configuracoes() {
   };
 
   const hasCredentials = !!(cfg?.zapi_instance_id && cfg?.zapi_token && cfg?.zapi_client_token);
+  const publicCardapioPath = cfg?.referencia ? `/${cfg.referencia}/cardapio` : "/cardapio";
 
   if (!cfg) return <div className="text-muted-foreground">Carregando...</div>;
 
@@ -423,7 +424,7 @@ export default function Configuracoes() {
           <p className="text-muted-foreground mt-1">Identidade, horario, bairros e integracoes</p>
         </div>
         <Button asChild variant="outline">
-          <Link to="/cardapio" target="_blank"><ExternalLink className="w-4 h-4 mr-1" /> Ver pagina publica</Link>
+          <Link to={publicCardapioPath} target="_blank"><ExternalLink className="w-4 h-4 mr-1" /> Ver pagina publica</Link>
         </Button>
       </div>
 

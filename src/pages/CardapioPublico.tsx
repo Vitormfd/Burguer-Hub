@@ -56,7 +56,7 @@ import {
 } from "@/lib/fidelidade";
 import { sendWhatsapp } from "@/lib/whatsapp";
 
-type Forma = "dinheiro" | "pix" | "cartao";
+type Forma = "dinheiro" | "cartao";
 
 type CouponValidationPayload = {
   codigo: string;
@@ -89,7 +89,7 @@ const checkoutSchema = z.object({
   numero: z.string().trim().max(20),
   complemento: z.string().trim().max(80).optional().or(z.literal("")),
   bairro_id: z.string(),
-  forma: z.enum(["dinheiro", "pix", "cartao"]),
+  forma: z.enum(["dinheiro", "cartao"]),
   troco: z.string().optional(),
 });
 
@@ -202,7 +202,7 @@ export default function CardapioPublico() {
   const [numero, setNumero] = useState("");
   const [complemento, setComplemento] = useState("");
   const [bairroId, setBairroId] = useState("");
-  const [forma, setForma] = useState<Forma>("pix");
+  const [forma, setForma] = useState<Forma>("cartao");
   const [troco, setTroco] = useState("");
   const [busy, setBusy] = useState(false);
   const [fidelidadeBusy, setFidelidadeBusy] = useState(false);
@@ -898,69 +898,26 @@ export default function CardapioPublico() {
 
     setBusy(true);
 
-    const { data: pedido, error: e1 } = await (supabase.from("pedidos") as any)
-      .insert({
-        owner_id: ownerId,
-        tipo: "delivery",
-        tipo_entrega: tipoEntrega,
-        status: "pendente",
-        cliente_id: fidelidadeCliente?.id ?? null,
-        subtotal,
-        desconto: descontoFidelidade,
-        cupom_id: cupomAplicado?.id ?? null,
-        valor_desconto: descontoCupomAplicado,
-        total: totalFinal,
-      })
-      .select()
-      .single();
-    if (e1 || !pedido) {
-      setBusy(false);
-      return toast.error(e1?.message || "Erro ao criar pedido");
-    }
-
-    const itensRows = cart.map((i) => ({
-      owner_id: ownerId,
-      pedido_id: pedido.id,
-      produto_id: i.produto.id,
-      quantidade: i.quantidade,
-      preco_unitario: i.precoUnit,
-      observacao: i.observacao || null,
+    const itensPayload = cart.map((item) => ({
+      produto_id: item.produto.id,
+      quantidade: item.quantidade,
+      preco_unitario: item.precoUnit,
+      observacao: item.observacao || null,
+      adicionais: item.adicionais.map((adicional) => ({
+        adicional_id: adicional.adicionalId,
+        quantidade: adicional.quantidade,
+        preco_unitario: adicional.precoUnitario,
+      })),
     }));
 
     if (itemGratis) {
-      itensRows.push({
-        owner_id: ownerId,
-        pedido_id: pedido.id,
+      itensPayload.push({
         produto_id: itemGratis.id,
         quantidade: 1,
         preco_unitario: 0,
         observacao: `Recompensa fidelidade: ${selectedReward?.nome || itemGratis.nome}`,
+        adicionais: [],
       });
-    }
-
-    const { data: insertedItens, error: e2 } = await (supabase.from("pedido_itens") as any).insert(itensRows).select("id");
-    if (e2) {
-      setBusy(false);
-      return toast.error(e2.message);
-    }
-
-    const adicionaisRows = cart
-      .flatMap((item, idx) =>
-        item.adicionais.map((adicional) => ({
-          pedido_item_id: insertedItens?.[idx]?.id,
-          adicional_id: adicional.adicionalId,
-          quantidade: adicional.quantidade,
-          preco_unitario: adicional.precoUnitario,
-        }))
-      )
-      .filter((row) => !!row.pedido_item_id);
-
-    if (adicionaisRows.length) {
-      const { error: eAdd } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
-      if (eAdd) {
-        setBusy(false);
-        return toast.error(eAdd.message);
-      }
     }
 
     const enderecoFull = tipoEntrega === "delivery"
@@ -968,114 +925,34 @@ export default function CardapioPublico() {
       : "Retirada no balcão";
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
 
-    const { error: e3 } = await (supabase.from("entregas") as any).insert({
-      owner_id: ownerId,
-      pedido_id: pedido.id,
-      cliente_nome: nome,
-      cliente_telefone: tel.trim(),
-      endereco: enderecoFull,
-      bairro: tipoEntrega === "delivery" ? bairro?.nome || null : null,
-      taxa_entrega: taxaEntregaFinal,
-      status: tipoEntrega === "delivery" ? "aguardando" : "aguardando",
-      origem: "online",
-      numero: tipoEntrega === "delivery" ? numero : null,
-      complemento: tipoEntrega === "delivery" ? (complemento || null) : null,
-      forma_pagamento: forma,
-      troco_para: trocoVal,
+    const { data: pedidoResult, error: pedidoError } = await (supabase as any).rpc("create_public_delivery_order", {
+      p_owner_id: ownerId,
+      p_tipo_entrega: tipoEntrega,
+      p_cliente_nome: nome,
+      p_cliente_telefone: tel.trim(),
+      p_endereco: enderecoFull,
+      p_numero: tipoEntrega === "delivery" ? numero : null,
+      p_complemento: tipoEntrega === "delivery" ? (complemento || null) : null,
+      p_bairro: tipoEntrega === "delivery" ? bairro?.nome || null : null,
+      p_taxa_entrega: taxaEntregaFinal,
+      p_forma_pagamento: forma,
+      p_troco_para: trocoVal,
+      p_subtotal: subtotal,
+      p_desconto: descontoFidelidade,
+      p_total: totalFinal,
+      p_cupom_id: cupomAplicado?.id ?? null,
+      p_valor_desconto: descontoCupomAplicado,
+      p_cliente_id: fidelidadeCliente?.id ?? null,
+      p_selected_reward_id: selectedReward?.id ?? null,
+      p_items: itensPayload,
     });
 
-    if (e3) {
+    if (pedidoError || !pedidoResult?.pedido_id) {
       setBusy(false);
-      return toast.error(e3.message);
+      return toast.error(pedidoError?.message || "Erro ao criar pedido");
     }
 
-    let clienteId = fidelidadeCliente?.id ?? null;
-    if (telefoneNormalizado) {
-      const { data: clienteRegistradoId, error: eCliente } = await supabase.rpc("register_cliente_pedido", {
-        p_pedido_id: pedido.id,
-        p_nome: nome,
-        p_telefone: telefoneNormalizado,
-      });
-
-      if (eCliente) {
-        setBusy(false);
-        return toast.error(eCliente.message);
-      }
-
-      clienteId = clienteRegistradoId;
-    }
-
-    let recompensaResgatadaId: string | null = null;
-    if (selectedReward && clienteId) {
-      const { data: novoResgate, error: eResgate } = await supabase
-        .from("resgates")
-        .insert({
-          cliente_id: clienteId,
-          recompensa_id: selectedReward.id,
-          pedido_id: pedido.id,
-          status: "pendente",
-        })
-        .select("id")
-        .single();
-
-      if (eResgate) {
-        setBusy(false);
-        await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
-        await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
-        await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
-        await supabase.from("pedidos").delete().eq("id", pedido.id);
-        return toast.error(eResgate.message);
-      }
-
-      recompensaResgatadaId = novoResgate.id;
-    }
-
-    const { error: ePedidoUpdate } = await supabase
-      .from("pedidos")
-      .update({
-        cliente_id: clienteId,
-        recompensa_resgatada_id: recompensaResgatadaId,
-        cupom_id: cupomAplicado?.id ?? null,
-        valor_desconto: descontoCupomAplicado,
-      })
-      .eq("id", pedido.id);
-
-    if (ePedidoUpdate) {
-      setBusy(false);
-      if (recompensaResgatadaId) {
-        await supabase.from("resgates").delete().eq("id", recompensaResgatadaId);
-      }
-      await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
-      await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
-      await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
-      await supabase.from("pedidos").delete().eq("id", pedido.id);
-      return toast.error(ePedidoUpdate.message);
-    }
-
-    if (cupomAplicado) {
-      try {
-        await validarCupom({
-          codigo: cupomAplicado.codigo,
-          telefone: telefoneNormalizado || null,
-          subtotal,
-          taxa_entrega: tipoEntrega === "retirada" ? 0 : Number(bairro?.taxa || 0),
-          tipo_entrega: tipoEntrega,
-          commit: true,
-          pedido_id: pedido.id,
-          cliente_id: clienteId,
-        });
-      } catch (error) {
-        setBusy(false);
-        if (recompensaResgatadaId) {
-          await supabase.from("resgates").delete().eq("id", recompensaResgatadaId);
-        }
-        await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
-        await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
-        await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
-        await supabase.from("pedidos").delete().eq("id", pedido.id);
-        return toast.error(error instanceof Error ? error.message : "Erro ao registrar cupom");
-      }
-    }
+    const pedidoId = String(pedidoResult.pedido_id);
 
     setBusy(false);
 
@@ -1084,7 +961,7 @@ export default function CardapioPublico() {
       const itensTexto = cart
         .map((i) => `${i.quantidade}x ${i.produto.nome}`)
         .join(", ");
-      sendWhatsapp(pedido.id, "confirmado", tel.trim(), {
+      sendWhatsapp(pedidoId, "confirmado", tel.trim(), {
         nome,
         itens: itensTexto,
         total: brl(subtotal + taxaEntregaFinal - descontoCupomAplicado),
@@ -1093,7 +970,7 @@ export default function CardapioPublico() {
 
     setSucessoTipoEntrega(tipoEntrega);
     setSucessoTempoRetirada(tempoEstimadoRetirada);
-    setSucessoNumero(pedido.id.slice(0, 8).toUpperCase());
+    setSucessoNumero(pedidoId.slice(0, 8).toUpperCase());
     setCart([]);
     setCheckoutOpen(false);
     setNome("");
@@ -1102,7 +979,7 @@ export default function CardapioPublico() {
     setNumero("");
     setComplemento("");
     setBairroId("");
-    setForma("pix");
+    setForma("cartao");
     setTroco("");
     setTipoEntrega("delivery");
     setSelectedRewardId(null);
@@ -1621,7 +1498,6 @@ export default function CardapioPublico() {
           <div className="px-5 space-y-3 mt-6">
             <h3 className="text-lg font-bold">Pagamento</h3>
             <RadioGroup value={forma} onValueChange={(v) => setForma(v as Forma)}>
-              <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="pix" value="pix" /><Label htmlFor="pix" className="flex-1 cursor-pointer text-sm md:text-base">PIX</Label></div>
               <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="dinheiro" value="dinheiro" /><Label htmlFor="dinheiro" className="flex-1 cursor-pointer text-sm md:text-base">Dinheiro</Label></div>
               <div className="flex items-center gap-1.5 border rounded-md p-2 md:p-3"><RadioGroupItem id="cartao" value="cartao" /><Label htmlFor="cartao" className="flex-1 cursor-pointer flex items-center gap-1 md:gap-2"><CreditCard className="w-4 h-4" /><span className="text-sm md:text-base">Cartão na entrega</span></Label></div>
             </RadioGroup>

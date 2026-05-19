@@ -216,5 +216,5 @@ Deno.serve(async (req) => {
   });
 
   // Always return success — errors never block the order flow
-  return json({ ok: true, status: zapiStatus });
+  return json({ ok: true, status: zapiStatus, error: erroDetalhe });
 });

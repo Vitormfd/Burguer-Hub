@@ -98,10 +98,12 @@ function PasswordInput({
 function TestMsgModal({
   open,
   tipo,
+  configuracaoId,
   onClose,
 }: {
   open: boolean;
   tipo: TipoMensagemWhatsapp | null;
+  configuracaoId: string | null;
   onClose: () => void;
 }) {
   const [phone, setPhone] = useState("");
@@ -109,11 +111,15 @@ function TestMsgModal({
 
   const send = async () => {
     const digits = phone.replace(/\D/g, "");
-    if (digits.length < 10) return toast.error("Informe um telefone valido com DDD");
+    if (!configuracaoId) return toast.error("Configuração inválida para envio de teste");
+    if (digits.length !== 11 && !(digits.startsWith("55") && digits.length === 13)) {
+      return toast.error("Informe um telefone com DDD e 9 dígitos");
+    }
     setBusy(true);
     try {
-      const { error } = await supabase.functions.invoke("send-whatsapp", {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
         body: {
+          configuracao_id: configuracaoId,
           pedido_id: "00000000-0000-0000-0000-000000000000",
           tipo_mensagem: tipo,
           telefone: digits,
@@ -125,8 +131,20 @@ function TestMsgModal({
           },
         },
       });
-      if (error) toast.error(error.message || "Erro ao enviar");
-      else toast.success("Mensagem de teste enviada!");
+      if (error) {
+        toast.error(error.message || "Erro ao enviar");
+      } else if (data?.skipped) {
+        const reasonMap: Record<string, string> = {
+          zapi_inactive: "WhatsApp está desativado. Ative e salve antes do teste.",
+          credentials_missing: "Credenciais Z-API ausentes na configuração.",
+          invalid_phone: "Telefone inválido para envio.",
+        };
+        toast.error(reasonMap[data.reason] || "Envio não realizado");
+      } else if (data?.status === "erro") {
+        toast.error(data?.error || "Falha no envio via Z-API");
+      } else {
+        toast.success("Mensagem de teste enviada!");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao enviar");
     } finally {
@@ -843,6 +861,7 @@ export default function Configuracoes() {
       <TestMsgModal
         open={testMsgTipo !== null}
         tipo={testMsgTipo}
+        configuracaoId={cfg?.id ?? null}
         onClose={() => setTestMsgTipo(null)}
       />
     </div>

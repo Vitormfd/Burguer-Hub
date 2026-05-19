@@ -38,13 +38,16 @@ export default function Cardapio() {
 
   const [delTarget, setDelTarget] = useState<DeleteTarget>(null);
 
+  const sortByOrdem = (items: Produto[]) =>
+    [...items].sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome));
+
   const load = async () => {
     const [{ data: cs }, { data: ps }] = await Promise.all([
       supabase.from("categorias").select("*").order("nome"),
       supabase.from("produtos").select("*").order("ordem"),
     ]);
     setCategorias((cs || []) as Categoria[]);
-    setProdutos((ps || []) as Produto[]);
+    setProdutos(sortByOrdem((ps || []) as Produto[]));
     setLoading(false);
   };
 
@@ -52,13 +55,14 @@ export default function Cardapio() {
 
   const produtosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return produtos.filter((p) => {
+    return sortByOrdem(produtos).filter((p) => {
       if (filtro === "sem" && p.categoria_id !== null) return false;
       if (filtro !== "todas" && filtro !== "sem" && p.categoria_id !== filtro) return false;
       if (termo && !p.nome.toLowerCase().includes(termo) && !(p.descricao ?? "").toLowerCase().includes(termo)) return false;
       return true;
     });
   }, [produtos, busca, filtro]);
+
 
   const catMap = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
 
@@ -90,6 +94,7 @@ export default function Cardapio() {
     setDelTarget(null);
     load();
   };
+
 
   const countByCat = (id: string) => produtos.filter((p) => p.categoria_id === id).length;
   const semCat = produtos.filter((p) => p.categoria_id === null).length;
@@ -204,6 +209,7 @@ export default function Cardapio() {
 
         {/* Lista de produtos */}
         <div className="space-y-4">
+          {/* <p className="text-xs text-muted-foreground">Use as setas nos cards para ordenar os lanches manualmente.</p> */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -230,7 +236,7 @@ export default function Cardapio() {
               {produtosFiltrados.map((p) => {
                 const cat = p.categoria_id ? catMap.get(p.categoria_id) : null;
                 return (
-                  <Card key={p.id} className={cn("overflow-hidden flex flex-col shadow-soft hover:shadow-card transition-shadow", !p.disponivel && "opacity-70")}>
+                  <Card key={p.id} className={cn("overflow-hidden flex flex-col shadow-soft hover:shadow-card transition-shadow", !p.disponivel && "opacity-70")}> 
                     {p.imagem_url ? (
                       <div className="aspect-video bg-muted overflow-hidden">
                         <img
@@ -256,6 +262,7 @@ export default function Cardapio() {
                         <p className="text-xs text-muted-foreground line-clamp-2">{p.descricao}</p>
                       )}
                       <div className="flex items-center gap-2 mt-auto pt-2">
+                        <Badge variant="outline" className="text-xs">Ordem {p.ordem + 1}</Badge>
                         {cat ? (
                           <Badge variant="secondary" className="text-xs">{cat.nome}</Badge>
                         ) : (

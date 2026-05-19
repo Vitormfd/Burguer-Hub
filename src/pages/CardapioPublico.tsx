@@ -1207,18 +1207,18 @@ export default function CardapioPublico() {
 
                   <h1 className="text-[15px] sm:text-lg font-bold tracking-tight line-clamp-2">{cfg.nome_loja}</h1>
 
-                  <div className="mt-1.5 grid grid-cols-3 gap-0.5 w-full pr-12 sm:pr-0">
-                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center">
+                  <div className="mt-1.5 grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-1 w-full pr-0">
+                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center break-words">
                       <p className="text-zinc-500">Entrega</p>
-                      <p className="font-bold leading-tight">{cfg.tempo_entrega_min || "40min - 1h20"}</p>
+                      <p className="font-bold leading-tight break-words">{cfg.tempo_entrega_min || "40min - 1h20"}</p>
                     </div>
-                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center">
+                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center break-words">
                       <p className="text-zinc-500">Horario</p>
-                      <p className="font-bold leading-tight">{horarioHojeTexto}</p>
+                      <p className="font-bold leading-tight break-words">{horarioHojeTexto}</p>
                     </div>
-                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center">
+                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center break-words">
                       <p className="text-zinc-500">Pedido mínimo</p>
-                      <p className="font-bold flex items-center gap-1 leading-tight justify-center text-nowrap">
+                      <p className="font-bold flex items-center gap-1 leading-tight justify-center text-nowrap break-words">
                         <Bike className="w-3 h-3" /> A partir de {brl(taxaMin)}
                       </p>
                     </div>

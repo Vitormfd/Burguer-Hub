@@ -26,6 +26,7 @@ const schema = z.object({
   destaque: z.boolean(),
   promocao: z.boolean(),
   preco_promocional: z.number().min(0).max(9999).nullable(),
+  ordem: z.number().int().min(0).max(9999).optional(),
 });
 
 interface Props {
@@ -48,6 +49,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
   const [promocao, setPromocao] = useState(false);
   const [precoPromo, setPrecoPromo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ordem, setOrdem] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [grupos, setGrupos] = useState<GrupoAdicional[]>([]);
   const [gruposVinculados, setGruposVinculados] = useState<ProdutoGrupoAdicional[]>([]);
@@ -85,6 +87,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
     setDestaque(produto?.destaque ?? false);
     setPromocao(produto?.promocao ?? false);
     setPrecoPromo(produto?.preco_promocional != null ? String(produto.preco_promocional) : "");
+    setOrdem(produto?.ordem ?? 0);
   }, [open, produto, defaultCategoriaId]);
 
   useEffect(() => {
@@ -181,6 +184,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
       destaque,
       promocao,
       preco_promocional: promocao && precoPromo ? Number(precoPromo.replace(",", ".")) : null,
+      ordem: ordem,
     });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
 
@@ -194,6 +198,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
       imagem_url: parsed.data.imagem_url || null,
       promocao: parsed.data.promocao,
       preco_promocional: parsed.data.preco_promocional,
+      ordem: parsed.data.ordem,
     };
 
     setBusy(true);
@@ -216,6 +221,11 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
         </DialogHeader>
 
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="space-y-2">
+            <Label htmlFor="p-ordem">Ordem no cardápio</Label>
+            <Input id="p-ordem" type="number" min={0} max={9999} value={ordem} onChange={e => setOrdem(Number(e.target.value))} />
+            <p className="text-xs text-muted-foreground">Quanto menor o número, mais acima o produto aparece.</p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="p-nome">Nome *</Label>
             <Input id="p-nome" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={80} autoFocus />

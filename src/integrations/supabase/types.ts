@@ -718,6 +718,7 @@ export type Database = {
       }
       produtos: {
         Row: {
+          ordem: number;
           categoria_id: string | null
           created_at: string
           destaque: boolean

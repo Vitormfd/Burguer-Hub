@@ -35,6 +35,7 @@ export interface Produto {
   imagem_url: string | null;
   promocao?: boolean;
   preco_promocional?: number | null;
+  ordem: number;
 }
 
 export interface Conta {

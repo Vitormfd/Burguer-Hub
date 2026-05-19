@@ -169,6 +169,10 @@ export interface Cliente {
   id: string;
   nome: string;
   telefone: string;
+  endereco?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  bairro?: string | null;
   total_pedidos: number;
   pontos: number;
   criado_em: string;

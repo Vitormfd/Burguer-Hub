@@ -178,6 +178,40 @@ const encodeKdsItemObservation = (produtoNome: string, observacao?: string | nul
   return safeObs ? `${marker} ${safeObs}` : marker;
 };
 
+const CHECKOUT_PROFILE_CACHE_KEY = "burgerhub:checkout-profile:v1";
+
+type CachedCheckoutProfile = {
+  nome?: string;
+  endereco?: string;
+  numero?: string;
+  complemento?: string;
+  bairroId?: string;
+  updatedAt: number;
+};
+
+const readCheckoutProfileCache = (): Record<string, CachedCheckoutProfile> => {
+  try {
+    const raw = localStorage.getItem(CHECKOUT_PROFILE_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, CachedCheckoutProfile>;
+  } catch {
+    return {};
+  }
+};
+
+const writeCheckoutProfileCache = (phone: string, data: Omit<CachedCheckoutProfile, "updatedAt">) => {
+  if (!phone) return;
+  const current = readCheckoutProfileCache();
+  current[phone] = { ...data, updatedAt: Date.now() };
+  try {
+    localStorage.setItem(CHECKOUT_PROFILE_CACHE_KEY, JSON.stringify(current));
+  } catch {
+    // Ignore storage limits/private mode
+  }
+};
+
 export default function CardapioPublico() {
   const { referencia } = useParams<{ referencia?: string }>();
   
@@ -221,6 +255,7 @@ export default function CardapioPublico() {
   const produtosInicioRef = useRef<HTMLElement | null>(null);
   const [fidelidadeDialogOpen, setFidelidadeDialogOpen] = useState(false);
   const celebradosRef = useRef<Set<string>>(new Set());
+  const hydratedPhoneRef = useRef<string>("");
 
   useEffect(() => {
     (async () => {
@@ -386,6 +421,52 @@ export default function CardapioPublico() {
     setCupomAplicado(null);
     setCupomCodigo("");
   }, [subtotal, bairroId, tel, tipoEntrega]);
+
+  useEffect(() => {
+    const phone = normalizePhone(tel);
+    if (phone.length < 10 || hydratedPhoneRef.current === phone) return;
+
+    hydratedPhoneRef.current = phone;
+
+    const cached = readCheckoutProfileCache()[phone];
+    if (cached) {
+      if (!nome.trim() && cached.nome) setNome(cached.nome);
+      if (!endereco.trim() && cached.endereco) setEndereco(cached.endereco);
+      if (!numero.trim() && cached.numero) setNumero(cached.numero);
+      if (!complemento.trim() && cached.complemento) setComplemento(cached.complemento);
+      if (!bairroId && cached.bairroId) setBairroId(cached.bairroId);
+    }
+
+    void (async () => {
+      const { data } = await (supabase as any)
+        .from("entregas")
+        .select("cliente_nome, endereco, numero, complemento, bairro")
+        .eq("cliente_telefone", phone)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!data) return;
+
+      if (!nome.trim() && data.cliente_nome) {
+        setNome(String(data.cliente_nome));
+      }
+      if (!endereco.trim() && data.endereco && String(data.endereco).toLowerCase() !== "retirada no balcao") {
+        setEndereco(String(data.endereco));
+      }
+      if (!numero.trim() && data.numero) {
+        setNumero(String(data.numero));
+      }
+      if (!complemento.trim() && data.complemento) {
+        setComplemento(String(data.complemento));
+      }
+      if (!bairroId && data.bairro) {
+        const normalizedBairro = String(data.bairro).trim().toLowerCase();
+        const bairro = bairros.find((item) => item.nome.trim().toLowerCase() === normalizedBairro);
+        if (bairro?.id) setBairroId(bairro.id);
+      }
+    })();
+  }, [tel, bairros, nome, endereco, numero, complemento, bairroId]);
 
   useEffect(() => {
     if (cfg?.retirada_ativa === false && tipoEntrega === "retirada") {
@@ -886,6 +967,29 @@ export default function CardapioPublico() {
     }
 
     const pedidoId = String(rpcResult.pedido_id);
+
+    if (tipoEntrega === "delivery") {
+      writeCheckoutProfileCache(telefoneNormalizado, {
+        nome: nome.trim(),
+        endereco: endereco.trim(),
+        numero: numero.trim(),
+        complemento: complemento.trim(),
+        bairroId,
+      });
+    }
+
+    if (rpcResult?.cliente_id && tipoEntrega === "delivery") {
+      await (supabase as any)
+        .from("clientes")
+        .update({
+          nome: nome.trim() || null,
+          endereco: endereco.trim() || null,
+          numero: numero.trim() || null,
+          complemento: complemento.trim() || null,
+          bairro: (bairros.find((b) => b.id === bairroId)?.nome || "").trim() || null,
+        })
+        .eq("id", String(rpcResult.cliente_id));
+    }
 
     setBusy(false);
 

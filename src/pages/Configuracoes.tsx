@@ -341,7 +341,7 @@ export default function Configuracoes() {
   // test Z-API connection
 
   const testConnection = async () => {
-    if (!hasCredentials) {
+    if (!cfg || !hasCredentials) {
       return toast.error("Preencha Instance ID, Token e Client Token primeiro");
     }
     setTestingConn(true);
@@ -349,6 +349,23 @@ export default function Configuracoes() {
     setZapiErrMsg("");
     setZapiPhone("");
     try {
+      // Persist the latest credentials before invoking the backend test.
+      const { error: saveErr } = await supabase
+        .from("configuracoes")
+        .update({
+          zapi_instance_id: cfg.zapi_instance_id ?? null,
+          zapi_token: cfg.zapi_token ?? null,
+          zapi_client_token: cfg.zapi_client_token ?? null,
+          zapi_ativo: cfg.zapi_ativo ?? false,
+        } as any)
+        .eq("id", cfg.id);
+
+      if (saveErr) {
+        setZapiStatus("error");
+        setZapiErrMsg(saveErr.message || "Falha ao salvar credenciais antes do teste");
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke("send-whatsapp", {
         body: { action: "test_connection" },
       });

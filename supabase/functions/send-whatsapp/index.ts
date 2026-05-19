@@ -85,19 +85,14 @@ Deno.serve(async (req) => {
     return json({ error: "Não foi possível carregar configurações" }, 500);
   }
 
-  // If WhatsApp integration is disabled, return silently
-  if (!cfg.zapi_ativo) {
-    return json({ skipped: true, reason: "zapi_inactive" });
-  }
-
   const { zapi_instance_id, zapi_token, zapi_client_token } = cfg as Record<string, string | null | boolean>;
-
-  if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
-    return json({ skipped: true, reason: "credentials_missing" });
-  }
 
   // Connection test always runs through backend to avoid exposing credentials in frontend
   if (action === "test_connection") {
+    if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
+      return json({ ok: false, error: "Credenciais Z-API ausentes em configuracoes" }, 200);
+    }
+
     try {
       const statusUrl = `https://api.z-api.io/instances/${zapi_instance_id}/token/${zapi_token}/status`;
       const res = await fetch(statusUrl, {
@@ -116,6 +111,15 @@ Deno.serve(async (req) => {
     } catch (err) {
       return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
     }
+  }
+
+  // If WhatsApp integration is disabled, return silently for normal send flow
+  if (!cfg.zapi_ativo) {
+    return json({ skipped: true, reason: "zapi_inactive" });
+  }
+
+  if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
+    return json({ skipped: true, reason: "credentials_missing" });
   }
 
   if (!pedido_id || !tipo_mensagem || !telefone) {

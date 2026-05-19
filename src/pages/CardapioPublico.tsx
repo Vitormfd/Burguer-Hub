@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,17 +33,7 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import type {
-  BairroTaxa,
-  Categoria,
-  Cliente,
-  Configuracao,
-  Cupom,
-  HorarioFuncionamentoDia,
-  Produto,
-  Recompensa,
-  TipoEntrega,
-} from "@/types/db";
+import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, Produto, Recompensa, TipoEntrega } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { CartItem } from "@/components/cardapio/cartTypes";
 import {
@@ -56,7 +46,7 @@ import {
 } from "@/lib/fidelidade";
 import { sendWhatsapp } from "@/lib/whatsapp";
 
-type Forma = "dinheiro" | "cartao";
+type Forma = "dinheiro" | "pix" | "cartao";
 
 type CouponValidationPayload = {
   codigo: string;
@@ -89,69 +79,17 @@ const checkoutSchema = z.object({
   numero: z.string().trim().max(20),
   complemento: z.string().trim().max(80).optional().or(z.literal("")),
   bairro_id: z.string(),
-  forma: z.enum(["dinheiro", "cartao"]),
+  forma: z.enum(["dinheiro", "pix", "cartao"]),
   troco: z.string().optional(),
 });
 
-const DIAS_SEMANA_LABEL = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
-
-const normalizeTimeHHMM = (value?: string | null) => {
-  if (!value) return "00:00";
-  return value.slice(0, 5);
-};
-
-const toMinutes = (hhmm: string) => {
-  const [h, m] = normalizeTimeHHMM(hhmm).split(":").map(Number);
-  return h * 60 + m;
-};
-
-const getWeeklySchedule = (cfg: Configuracao): HorarioFuncionamentoDia[] => {
-  const fallbackAbertura = normalizeTimeHHMM(cfg.hora_abertura);
-  const fallbackFechamento = normalizeTimeHHMM(cfg.hora_fechamento);
-  const byDay = new Map<number, HorarioFuncionamentoDia>();
-
-  if (Array.isArray(cfg.horario_funcionamento)) {
-    for (const raw of cfg.horario_funcionamento) {
-      if (!raw || typeof raw !== "object") continue;
-      const dia = Number((raw as { dia?: unknown }).dia);
-      if (!Number.isInteger(dia) || dia < 0 || dia > 6) continue;
-      byDay.set(dia, {
-        dia,
-        ativo: Boolean((raw as { ativo?: unknown }).ativo),
-        abertura: normalizeTimeHHMM((raw as { abertura?: string }).abertura) || fallbackAbertura,
-        fechamento: normalizeTimeHHMM((raw as { fechamento?: string }).fechamento) || fallbackFechamento,
-      });
-    }
-  }
-
-  return [0, 1, 2, 3, 4, 5, 6].map((dia) => {
-    return byDay.get(dia) ?? {
-      dia,
-      ativo: true,
-      abertura: fallbackAbertura,
-      fechamento: fallbackFechamento,
-    };
-  });
-};
-
-const getTodaySchedule = (cfg: Configuracao, date = new Date()) => {
-  const dia = date.getDay();
-  return getWeeklySchedule(cfg).find((item) => item.dia === dia) ?? null;
-};
-
-const formatScheduleRange = (schedule: HorarioFuncionamentoDia | null) => {
-  if (!schedule || !schedule.ativo) return "Fechado";
-  return `${normalizeTimeHHMM(schedule.abertura)} - ${normalizeTimeHHMM(schedule.fechamento)}`;
-};
-
-const isOpenNow = (cfg: Configuracao, todaySchedule?: HorarioFuncionamentoDia | null) => {
+const isOpenNow = (cfg: Configuracao) => {
   const now = new Date();
   const cur = now.getHours() * 60 + now.getMinutes();
-  const schedule = todaySchedule ?? getTodaySchedule(cfg, now);
-  if (!schedule?.ativo) return false;
-
-  const ini = toMinutes(schedule.abertura);
-  const fim = toMinutes(schedule.fechamento);
+  const [ah, am] = cfg.hora_abertura.split(":").map(Number);
+  const [fh, fm] = cfg.hora_fechamento.split(":").map(Number);
+  const ini = ah * 60 + am;
+  const fim = fh * 60 + fm;
   return fim > ini ? cur >= ini && cur <= fim : cur >= ini || cur <= fim;
 };
 
@@ -202,14 +140,11 @@ export default function CardapioPublico() {
   const [numero, setNumero] = useState("");
   const [complemento, setComplemento] = useState("");
   const [bairroId, setBairroId] = useState("");
-  const [forma, setForma] = useState<Forma>("cartao");
+  const [forma, setForma] = useState<Forma>("pix");
   const [troco, setTroco] = useState("");
   const [busy, setBusy] = useState(false);
   const [fidelidadeBusy, setFidelidadeBusy] = useState(false);
   const [fidelidadeBusca, setFidelidadeBusca] = useState<FidelidadeLookupResult | null>(null);
-  const [fidelidadeDialogOpen, setFidelidadeDialogOpen] = useState(false);
-  const [loadingCfg, setLoadingCfg] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [telefoneBuscado, setTelefoneBuscado] = useState("");
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
@@ -226,98 +161,41 @@ export default function CardapioPublico() {
   const celebradosRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    let isMounted = true;
-
-    const load = async () => {
-      setLoadingCfg(true);
-      setLoadError(null);
-
-      try {
-        let cfgQuery = supabase.from("configuracoes").select("*");
-
-        if (referencia) {
-          const referenciaNormalizada = referencia.trim().toLowerCase();
-          cfgQuery = cfgQuery
-            .ilike("referencia", referenciaNormalizada)
-            .order("created_at", { ascending: true })
-            .limit(1);
-        } else {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
-
-          if (session?.user?.id) {
-            cfgQuery = (cfgQuery as any).eq("owner_id", session.user.id);
-          } else {
-            if (!isMounted) return;
-            setCfg(null);
-            setLoadingCfg(false);
-            setLoadError("Link publico invalido. Use o link completo no formato /sua-referencia/cardapio.");
-            return;
-          }
-        }
-
-        const { data: c, error: cfgError } = await cfgQuery.maybeSingle();
-
-        if (!isMounted) return;
-
-        if (cfgError || !c) {
-          setCfg(null);
-          setCategorias([]);
-          setProdutos([]);
-          setRecompensas([]);
-          setBairros([]);
-          setTopSellers(new Set());
-          setLoadError(cfgError?.message || "Cardapio nao encontrado para esta referencia.");
-          setLoadingCfg(false);
-          return;
-        }
-
-        setCfg(c as unknown as Configuracao);
-        const ownerId = (c as unknown as Configuracao & { owner_id?: string | null }).owner_id;
-
-        const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
-          (supabase.from("categorias") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("nome"),
-          (supabase.from("produtos") as any).select("*").eq("disponivel", true).eq("owner_id", ownerId).order("ordem"),
-          (supabase.from("recompensas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("pedidos_necessarios"),
-          (supabase.from("bairros_taxas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
-          (supabase.from("pedido_itens") as any).select("produto_id, quantidade").eq("owner_id", ownerId).limit(1000),
-        ]);
-
-        if (!isMounted) return;
-
-        const cs = (cat || []) as Categoria[];
-        setCategorias(cs);
-        setProdutos((prod || []) as Produto[]);
-        setRecompensas((rewards || []) as Recompensa[]);
-        setBairros((b || []) as BairroTaxa[]);
-        if (cs[0]) setActiveCat(cs[0].id);
-
-        const counts = new Map<string, number>();
-        (itens || []).forEach((i: any) => {
-          if (!i.produto_id) return;
-          counts.set(i.produto_id, (counts.get(i.produto_id) || 0) + (i.quantidade || 0));
-        });
-
-        const top = [...counts.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 6)
-          .map(([id]) => id);
-        setTopSellers(new Set(top));
-      } catch (error) {
-        if (!isMounted) return;
-        setCfg(null);
-        setLoadError(error instanceof Error ? error.message : "Nao foi possivel carregar o cardapio.");
-      } finally {
-        if (isMounted) setLoadingCfg(false);
+    (async () => {
+      let cfgQuery = supabase.from("configuracoes").select("*");
+      
+      if (referencia) {
+        cfgQuery = cfgQuery.eq("referencia", referencia);
       }
-    };
+      
+      const [{ data: c }, { data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
+        cfgQuery.maybeSingle(),
+        supabase.from("categorias").select("*").eq("ativo", true).order("nome"),
+        supabase.from("produtos").select("*").eq("disponivel", true).order("nome"),
+        supabase.from("recompensas").select("*").eq("ativo", true).order("ordem").order("pedidos_necessarios"),
+        supabase.from("bairros_taxas").select("*").eq("ativo", true).order("nome"),
+        supabase.from("pedido_itens").select("produto_id, quantidade").limit(1000),
+      ]);
 
-    void load();
+      if (c) setCfg(c as Configuracao);
+      const cs = (cat || []) as Categoria[];
+      setCategorias(cs);
+      setProdutos((prod || []) as Produto[]);
+      setRecompensas((rewards || []) as Recompensa[]);
+      setBairros((b || []) as BairroTaxa[]);
+      if (cs[0]) setActiveCat(cs[0].id);
 
-    return () => {
-      isMounted = false;
-    };
+      const counts = new Map<string, number>();
+      (itens || []).forEach((i: any) => {
+        if (!i.produto_id) return;
+        counts.set(i.produto_id, (counts.get(i.produto_id) || 0) + (i.quantidade || 0));
+      });
+      const top = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([id]) => id);
+      setTopSellers(new Set(top));
+    })();
   }, [referencia]);
 
   useEffect(() => {
@@ -593,7 +471,7 @@ export default function CardapioPublico() {
   };
 
   const scrollToFidelidade = () => {
-    setFidelidadeDialogOpen(true);
+    fidelidadeSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const renderFidelidadeBox = (compact = false) => {
@@ -803,26 +681,15 @@ export default function CardapioPublico() {
     window.scrollTo({ top, behavior: "smooth" });
   };
 
-  const goToBanner = useCallback((index: number) => {
-    if (bannerSlides.length === 0) return;
-    const nextIndex = ((index % bannerSlides.length) + bannerSlides.length) % bannerSlides.length;
-    setBannerIndex(nextIndex);
-  }, [bannerSlides.length]);
-
-  const goToNextBanner = useCallback(() => {
-    if (bannerSlides.length <= 1) return;
-    setBannerIndex((prev) => (prev + 1) % bannerSlides.length);
-  }, [bannerSlides.length]);
-
   useEffect(() => {
     if (bannerSlides.length <= 1) return;
 
     const timer = window.setInterval(() => {
-      goToNextBanner();
+      setBannerIndex((prev) => (prev + 1) % bannerSlides.length);
     }, 3500);
 
     return () => window.clearInterval(timer);
-  }, [bannerSlides.length, goToNextBanner]);
+  }, [bannerSlides.length]);
 
   useEffect(() => {
     if (bannerSlides.length === 0) {
@@ -831,9 +698,9 @@ export default function CardapioPublico() {
     }
 
     if (bannerIndex >= bannerSlides.length) {
-      goToBanner(0);
+      setBannerIndex(0);
     }
-  }, [bannerIndex, bannerSlides.length, goToBanner]);
+  }, [bannerIndex, bannerSlides.length]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -890,34 +757,70 @@ export default function CardapioPublico() {
     const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
     const taxaEntregaFinal = tipoEntrega === "retirada" ? 0 : (cupomAplicado?.taxa_entrega_zerada ? 0 : Number(bairro?.taxa || 0));
     const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
-    const ownerId = (cfg as Configuracao & { owner_id?: string | null }).owner_id ?? null;
-
-    if (!ownerId) {
-      return toast.error("Loja sem identificação de tenant. Recarregue a página.");
-    }
 
     setBusy(true);
 
-    const itensPayload = cart.map((item) => ({
-      produto_id: item.produto.id,
-      quantidade: item.quantidade,
-      preco_unitario: item.precoUnit,
-      observacao: item.observacao || null,
-      adicionais: item.adicionais.map((adicional) => ({
-        adicional_id: adicional.adicionalId,
-        quantidade: adicional.quantidade,
-        preco_unitario: adicional.precoUnitario,
-      })),
+    const { data: pedido, error: e1 } = await supabase
+      .from("pedidos")
+      .insert({
+        tipo: "delivery",
+        tipo_entrega: tipoEntrega,
+        status: "pendente",
+        cliente_id: fidelidadeCliente?.id ?? null,
+        subtotal,
+        desconto: descontoFidelidade,
+        cupom_id: cupomAplicado?.id ?? null,
+        valor_desconto: descontoCupomAplicado,
+        total: totalFinal,
+      })
+      .select()
+      .single();
+    if (e1 || !pedido) {
+      setBusy(false);
+      return toast.error(e1?.message || "Erro ao criar pedido");
+    }
+
+    const itensRows = cart.map((i) => ({
+      pedido_id: pedido.id,
+      produto_id: i.produto.id,
+      quantidade: i.quantidade,
+      preco_unitario: i.precoUnit,
+      observacao: i.observacao || null,
     }));
 
     if (itemGratis) {
-      itensPayload.push({
+      itensRows.push({
+        pedido_id: pedido.id,
         produto_id: itemGratis.id,
         quantidade: 1,
         preco_unitario: 0,
         observacao: `Recompensa fidelidade: ${selectedReward?.nome || itemGratis.nome}`,
-        adicionais: [],
       });
+    }
+
+    const { data: insertedItens, error: e2 } = await supabase.from("pedido_itens").insert(itensRows).select("id");
+    if (e2) {
+      setBusy(false);
+      return toast.error(e2.message);
+    }
+
+    const adicionaisRows = cart
+      .flatMap((item, idx) =>
+        item.adicionais.map((adicional) => ({
+          pedido_item_id: insertedItens?.[idx]?.id,
+          adicional_id: adicional.adicionalId,
+          quantidade: adicional.quantidade,
+          preco_unitario: adicional.precoUnitario,
+        }))
+      )
+      .filter((row) => !!row.pedido_item_id);
+
+    if (adicionaisRows.length) {
+      const { error: eAdd } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
+      if (eAdd) {
+        setBusy(false);
+        return toast.error(eAdd.message);
+      }
     }
 
     const enderecoFull = tipoEntrega === "delivery"
@@ -925,34 +828,113 @@ export default function CardapioPublico() {
       : "Retirada no balcão";
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
 
-    const { data: pedidoResult, error: pedidoError } = await (supabase as any).rpc("create_public_delivery_order", {
-      p_owner_id: ownerId,
-      p_tipo_entrega: tipoEntrega,
-      p_cliente_nome: nome,
-      p_cliente_telefone: tel.trim(),
-      p_endereco: enderecoFull,
-      p_numero: tipoEntrega === "delivery" ? numero : null,
-      p_complemento: tipoEntrega === "delivery" ? (complemento || null) : null,
-      p_bairro: tipoEntrega === "delivery" ? bairro?.nome || null : null,
-      p_taxa_entrega: taxaEntregaFinal,
-      p_forma_pagamento: forma,
-      p_troco_para: trocoVal,
-      p_subtotal: subtotal,
-      p_desconto: descontoFidelidade,
-      p_total: totalFinal,
-      p_cupom_id: cupomAplicado?.id ?? null,
-      p_valor_desconto: descontoCupomAplicado,
-      p_cliente_id: fidelidadeCliente?.id ?? null,
-      p_selected_reward_id: selectedReward?.id ?? null,
-      p_items: itensPayload,
+    const { error: e3 } = await supabase.from("entregas").insert({
+      pedido_id: pedido.id,
+      cliente_nome: nome,
+      cliente_telefone: tel.trim(),
+      endereco: enderecoFull,
+      bairro: tipoEntrega === "delivery" ? bairro?.nome || null : null,
+      taxa_entrega: taxaEntregaFinal,
+      status: tipoEntrega === "delivery" ? "aguardando" : "aguardando",
+      origem: "online",
+      numero: tipoEntrega === "delivery" ? numero : null,
+      complemento: tipoEntrega === "delivery" ? (complemento || null) : null,
+      forma_pagamento: forma,
+      troco_para: trocoVal,
     });
 
-    if (pedidoError || !pedidoResult?.pedido_id) {
+    if (e3) {
       setBusy(false);
-      return toast.error(pedidoError?.message || "Erro ao criar pedido");
+      return toast.error(e3.message);
     }
 
-    const pedidoId = String(pedidoResult.pedido_id);
+    let clienteId = fidelidadeCliente?.id ?? null;
+    if (telefoneNormalizado) {
+      const { data: clienteRegistradoId, error: eCliente } = await supabase.rpc("register_cliente_pedido", {
+        p_pedido_id: pedido.id,
+        p_nome: nome,
+        p_telefone: telefoneNormalizado,
+      });
+
+      if (eCliente) {
+        setBusy(false);
+        return toast.error(eCliente.message);
+      }
+
+      clienteId = clienteRegistradoId;
+    }
+
+    let recompensaResgatadaId: string | null = null;
+    if (selectedReward && clienteId) {
+      const { data: novoResgate, error: eResgate } = await supabase
+        .from("resgates")
+        .insert({
+          cliente_id: clienteId,
+          recompensa_id: selectedReward.id,
+          pedido_id: pedido.id,
+          status: "pendente",
+        })
+        .select("id")
+        .single();
+
+      if (eResgate) {
+        setBusy(false);
+        await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
+        await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
+        await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
+        await supabase.from("pedidos").delete().eq("id", pedido.id);
+        return toast.error(eResgate.message);
+      }
+
+      recompensaResgatadaId = novoResgate.id;
+    }
+
+    const { error: ePedidoUpdate } = await supabase
+      .from("pedidos")
+      .update({
+        cliente_id: clienteId,
+        recompensa_resgatada_id: recompensaResgatadaId,
+        cupom_id: cupomAplicado?.id ?? null,
+        valor_desconto: descontoCupomAplicado,
+      })
+      .eq("id", pedido.id);
+
+    if (ePedidoUpdate) {
+      setBusy(false);
+      if (recompensaResgatadaId) {
+        await supabase.from("resgates").delete().eq("id", recompensaResgatadaId);
+      }
+      await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
+      await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
+      await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
+      await supabase.from("pedidos").delete().eq("id", pedido.id);
+      return toast.error(ePedidoUpdate.message);
+    }
+
+    if (cupomAplicado) {
+      try {
+        await validarCupom({
+          codigo: cupomAplicado.codigo,
+          telefone: telefoneNormalizado || null,
+          subtotal,
+          taxa_entrega: tipoEntrega === "retirada" ? 0 : Number(bairro?.taxa || 0),
+          tipo_entrega: tipoEntrega,
+          commit: true,
+          pedido_id: pedido.id,
+          cliente_id: clienteId,
+        });
+      } catch (error) {
+        setBusy(false);
+        if (recompensaResgatadaId) {
+          await supabase.from("resgates").delete().eq("id", recompensaResgatadaId);
+        }
+        await supabase.from("pedido_item_adicionais").delete().in("pedido_item_id", insertedItens?.map((item) => item.id) || []);
+        await supabase.from("pedido_itens").delete().eq("pedido_id", pedido.id);
+        await supabase.from("entregas").delete().eq("pedido_id", pedido.id);
+        await supabase.from("pedidos").delete().eq("id", pedido.id);
+        return toast.error(error instanceof Error ? error.message : "Erro ao registrar cupom");
+      }
+    }
 
     setBusy(false);
 
@@ -961,7 +943,7 @@ export default function CardapioPublico() {
       const itensTexto = cart
         .map((i) => `${i.quantidade}x ${i.produto.nome}`)
         .join(", ");
-      sendWhatsapp(pedidoId, "confirmado", tel.trim(), {
+      sendWhatsapp(pedido.id, "confirmado", tel.trim(), {
         nome,
         itens: itensTexto,
         total: brl(subtotal + taxaEntregaFinal - descontoCupomAplicado),
@@ -970,7 +952,7 @@ export default function CardapioPublico() {
 
     setSucessoTipoEntrega(tipoEntrega);
     setSucessoTempoRetirada(tempoEstimadoRetirada);
-    setSucessoNumero(pedidoId.slice(0, 8).toUpperCase());
+    setSucessoNumero(pedido.id.slice(0, 8).toUpperCase());
     setCart([]);
     setCheckoutOpen(false);
     setNome("");
@@ -979,7 +961,7 @@ export default function CardapioPublico() {
     setNumero("");
     setComplemento("");
     setBairroId("");
-    setForma("cartao");
+    setForma("pix");
     setTroco("");
     setTipoEntrega("delivery");
     setSelectedRewardId(null);
@@ -989,23 +971,9 @@ export default function CardapioPublico() {
     setCupomCodigo("");
   };
 
-  if (loadingCfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
+  if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
 
-  if (!cfg) {
-    return (
-      <div className="min-h-screen grid place-items-center p-6 text-center">
-        <div className="max-w-md space-y-2">
-          <h1 className="text-xl font-semibold text-zinc-800">Nao foi possivel abrir o cardapio</h1>
-          <p className="text-sm text-zinc-600">{loadError || "Verifique se o link esta correto e tente novamente."}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const horarioHoje = getTodaySchedule(cfg);
-  const diaHojeNome = DIAS_SEMANA_LABEL[new Date().getDay()];
-  const horarioHojeTexto = formatScheduleRange(horarioHoje);
-  const aberta = cfg.ativo && isOpenNow(cfg, horarioHoje);
+  const aberta = cfg.ativo && isOpenNow(cfg);
   const taxaMin = bairros.length ? Math.min(...bairros.map((b) => Number(b.taxa))) : 0;
 
   return (
@@ -1050,7 +1018,7 @@ export default function CardapioPublico() {
       <header className="relative paper-bg">
         <div className="relative h-24 sm:h-30 md:h-36 overflow-hidden">
           {cfg.banner_url ? (
-            <img src={cfg.banner_url} alt="Banner" className="w-full h-full object-contain object-center" />
+            <img src={cfg.banner_url} alt="Banner" className="w-full h-full object-cover object-center" />
           ) : (
             <div className="w-full h-full" style={{ background: `linear-gradient(125deg, ${cfg.cor_primaria}, #00000066)` }} />
           )}
@@ -1060,7 +1028,7 @@ export default function CardapioPublico() {
         <div className="max-w-4xl mx-auto px-3 pb-2 -mt-6 relative z-10">
           <div className="rounded-lg bg-transparent overflow-hidden">
             <div className="p-0 sm:p-0">
-              <div className="rounded-lg border border-zinc-200/80 bg-white/92 backdrop-blur px-0 py-2 sm:px-3 sm:py-2.5">
+              <div className="rounded-lg border border-zinc-200/80 bg-white/92 backdrop-blur px-2.5 py-2 sm:px-3 sm:py-2.5">
               <div className="flex items-start gap-2 sm:gap-2.5">
                 <div className="shrink-0">
                   {cfg.logo_url ? (
@@ -1075,27 +1043,27 @@ export default function CardapioPublico() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1">
                     <Badge className={cn("rounded-full px-2.5 text-[11px]", aberta ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
-                      {aberta ? "Aberto agora" : "Loja fechada"}
+                      {aberta ? `Abrimos hoje as ${cfg.hora_abertura.slice(0, 5)}` : "Loja fechada"}
                     </Badge>
                     <Badge variant="secondary" className="rounded-full px-2.5 text-[11px] bg-zinc-100 text-zinc-700">
-                      <Clock className="w-3 h-3 mr-1" /> {diaHojeNome}: {horarioHojeTexto}
+                      <Clock className="w-3 h-3 mr-1" /> {cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}
                     </Badge>
                   </div>
 
                   <h1 className="text-[15px] sm:text-lg font-bold tracking-tight line-clamp-2">{cfg.nome_loja}</h1>
 
-                  <div className="mt-1.5 grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-1 w-full pr-6">
-                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center break-words">
+                  <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1">
+                    <div className="rounded-md border bg-white p-1 text-[11px]">
                       <p className="text-zinc-500">Entrega</p>
-                      <p className="font-bold leading-tight break-words">{cfg.tempo_entrega_min || "40min - 1h20"}</p>
+                      <p className="font-bold">{cfg.tempo_entrega_min || "40min - 1h20"}</p>
                     </div>
-                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center break-words">
+                    <div className="rounded-md border bg-white p-1 text-[11px]">
                       <p className="text-zinc-500">Horario</p>
-                      <p className="font-bold leading-tight break-words">{horarioHojeTexto}</p>
+                      <p className="font-bold">{cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}</p>
                     </div>
-                    <div className="rounded-md border bg-white p-1.5 text-[10px] sm:text-[11px] min-w-0 text-center break-words">
-                      <p className="text-zinc-500">Pedido mínimo</p>
-                      <p className="font-bold flex items-center gap-1 leading-tight justify-center text-nowrap break-words">
+                    <div className="rounded-md border bg-white p-1 text-[11px]">
+                      <p className="text-zinc-500">Taxa de entrega</p>
+                      <p className="font-bold flex items-center gap-1">
                         <Bike className="w-3 h-3" /> A partir de {brl(taxaMin)}
                       </p>
                     </div>
@@ -1121,7 +1089,7 @@ export default function CardapioPublico() {
         <div className="max-w-4xl mx-auto px-3 pb-2">
           <div className="rounded-lg p-0 bg-transparent border-0 shadow-none">
             <div className="mx-auto w-full max-w-[620px]">
-              <div className="relative overflow-hidden rounded-[12px] bg-zinc-100 aspect-video">
+              <div className="relative overflow-hidden rounded-[12px] bg-zinc-100" style={{ aspectRatio: "16 / 10.4" }}>
                 {bannerSlides.length > 0 ? (
                   <>
                     {bannerSlides.map((src, idx) => (
@@ -1130,7 +1098,7 @@ export default function CardapioPublico() {
                         src={src}
                         alt={`Banner ${idx + 1}`}
                         className={cn(
-                          "absolute inset-0 h-full w-full object-contain transition-opacity duration-500",
+                          "absolute inset-0 h-full w-full object-cover transition-opacity duration-500",
                           idx === bannerIndex ? "opacity-100" : "opacity-0"
                         )}
                         loading={idx === 0 ? "eager" : "lazy"}
@@ -1157,7 +1125,7 @@ export default function CardapioPublico() {
                       key={`dot-${idx}`}
                       type="button"
                       aria-label={`Ir para banner ${idx + 1}`}
-                      onClick={() => goToBanner(idx)}
+                      onClick={() => setBannerIndex(idx)}
                       className={cn(
                         "h-1.5 rounded-full transition-all",
                         idx === bannerIndex ? "w-4 bg-zinc-500" : "w-1.5 bg-zinc-300 hover:bg-zinc-400"
@@ -1201,24 +1169,35 @@ export default function CardapioPublico() {
       {!aberta && (
         <div className="max-w-4xl mx-auto px-3 mt-2">
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
-            {horarioHoje?.ativo
-              ? `Estamos fechados no momento. Hoje (${diaHojeNome}) abrimos em ${horarioHojeTexto}.`
-              : `Hoje (${diaHojeNome}) nao abrimos.`}
+            Estamos fechados no momento. Volte entre {cfg.hora_abertura.slice(0, 5)} e {cfg.hora_fechamento.slice(0, 5)}.
           </div>
         </div>
       )}
 
       {cfg.fidelidade_ativa && (
         <div className="max-w-4xl mx-auto px-3 mt-3">
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={scrollToFidelidade}
-              className="h-9 rounded-full px-4 text-white shadow-md"
-              style={{ background: `linear-gradient(120deg, ${withAlpha(fidelidadeCor, 0.95)}, ${withAlpha(fidelidadeCor, 0.8)})` }}
-            >
-              <Trophy className="h-4 w-4 mr-2" /> Ver recompensas
-            </Button>
+          <div
+            className="relative overflow-hidden rounded-[30px] border px-4 py-4 text-white shadow-[0_20px_44px_-30px_rgba(5,46,22,0.85)] sm:px-5"
+            style={{
+              borderColor: withAlpha(fidelidadeCor, 0.55),
+              backgroundImage: `linear-gradient(120deg, ${withAlpha(fidelidadeCor, 0.96)}, ${withAlpha(fidelidadeCor, 0.78)})`,
+            }}
+          >
+            <div className="pointer-events-none absolute inset-0 opacity-20 loyalty-shimmer" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-white shadow-inner">
+                  <Trophy className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/80">Programa de fidelidade</p>
+                  <h2 className="text-lg font-bold tracking-tight text-white">{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</h2>
+                </div>
+              </div>
+              <Button type="button" onClick={scrollToFidelidade} className="bg-white hover:bg-white/90" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
+                Ver minhas recompensas
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -1253,6 +1232,8 @@ export default function CardapioPublico() {
       </nav>
 
       <main ref={produtosInicioRef} className="max-w-4xl mx-auto px-3 py-5 space-y-6">
+        {renderFidelidadeBox()}
+
         <div className="flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold">Cardapio</h2>
           <div className="text-xs sm:text-sm text-zinc-600 flex items-center gap-1">
@@ -1264,31 +1245,27 @@ export default function CardapioPublico() {
           <section>
             <h3 className="text-lg font-bold mb-3 flex items-center gap-1.5"><Flame className="w-4 h-4 text-orange-500" /> Promocoes</h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {promocoes.slice(0, 6).map((p) => {
-                const isPromo = p.promocao && p.preco_promocional != null;
-                return (
-                  <article key={`promo-${p.id}`} onClick={() => aberta && openAdd(p)} className="rounded-2xl border bg-white p-3 cursor-pointer hover:shadow-md transition">
-                    <div className="flex gap-3">
-                      <div className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-100 shrink-0">
-                        {p.imagem_url ? (
-                          <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" loading="lazy" />
-                        ) : (
-                          <div className="w-full h-full grid place-items-center"><UtensilsCrossed className="w-5 h-5 opacity-35" /></div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-sm line-clamp-1">{p.nome}</h4>
-                        {p.descricao && <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5">{p.descricao}</p>}
-                        <div className="flex items-end gap-2 mt-1">
-                          <span className="text-[14px] leading-none">A partir de</span>
-                          {isPromo && <span className="text-xs line-through text-zinc-400 mb-0.5">{brl(Number(p.preco))}</span>}
-                          <span className="font-semibold text-[18px] leading-none text-zinc-700">{brl(precoEfetivo(p))}</span>
-                        </div>
+              {promocoes.slice(0, 6).map((p) => (
+                <article key={`promo-${p.id}`} onClick={() => aberta && openAdd(p)} className="rounded-2xl border bg-white p-3 cursor-pointer hover:shadow-md transition">
+                  <div className="flex gap-3">
+                    <div className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-100 shrink-0">
+                      {p.imagem_url ? (
+                        <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="w-full h-full grid place-items-center"><UtensilsCrossed className="w-5 h-5 opacity-35" /></div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-sm line-clamp-1">{p.nome}</h4>
+                      {p.descricao && <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5">{p.descricao}</p>}
+                      <div className="flex items-end gap-2 mt-1">
+                        <span className="text-xs line-through text-zinc-400">{brl(Number(p.preco))}</span>
+                        <span className="font-semibold brand-text">{brl(precoEfetivo(p))}</span>
                       </div>
                     </div>
-                  </article>
-                );
-              })}
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
         )}
@@ -1498,6 +1475,7 @@ export default function CardapioPublico() {
           <div className="px-5 space-y-3 mt-6">
             <h3 className="text-lg font-bold">Pagamento</h3>
             <RadioGroup value={forma} onValueChange={(v) => setForma(v as Forma)}>
+              <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="pix" value="pix" /><Label htmlFor="pix" className="flex-1 cursor-pointer text-sm md:text-base">PIX</Label></div>
               <div className="flex items-center gap-2 border rounded-md p-2 md:p-3"><RadioGroupItem id="dinheiro" value="dinheiro" /><Label htmlFor="dinheiro" className="flex-1 cursor-pointer text-sm md:text-base">Dinheiro</Label></div>
               <div className="flex items-center gap-1.5 border rounded-md p-2 md:p-3"><RadioGroupItem id="cartao" value="cartao" /><Label htmlFor="cartao" className="flex-1 cursor-pointer flex items-center gap-1 md:gap-2"><CreditCard className="w-4 h-4" /><span className="text-sm md:text-base">Cartão na entrega</span></Label></div>
             </RadioGroup>
@@ -1578,14 +1556,6 @@ export default function CardapioPublico() {
           </div>
         </SheetContent>
       </Sheet>
-
-      <Dialog open={fidelidadeDialogOpen} onOpenChange={setFidelidadeDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto p-0">
-          <div className="p-4 sm:p-5">
-            {renderFidelidadeBox()}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!sucessoNumero} onOpenChange={(o) => !o && setSucessoNumero(null)}>
         <DialogContent>

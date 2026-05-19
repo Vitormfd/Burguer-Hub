@@ -35,7 +35,6 @@ export interface Produto {
   imagem_url: string | null;
   promocao?: boolean;
   preco_promocional?: number | null;
-  ordem: number;
 }
 
 export interface Conta {
@@ -115,16 +114,8 @@ export interface PedidoItemAdicional {
   preco_unitario: number;
 }
 
-export interface HorarioFuncionamentoDia {
-  dia: number;
-  ativo: boolean;
-  abertura: string;
-  fechamento: string;
-}
-
 export interface Configuracao {
   id: string;
-  owner_id?: string | null;
   nome_loja: string;
   referencia: string | null;
   logo_url: string | null;
@@ -134,7 +125,6 @@ export interface Configuracao {
   ativo: boolean;
   hora_abertura: string;
   hora_fechamento: string;
-  horario_funcionamento?: HorarioFuncionamentoDia[];
   seo_titulo: string;
   seo_descricao: string;
   tempo_entrega_min?: string;

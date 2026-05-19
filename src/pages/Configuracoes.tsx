@@ -26,7 +26,7 @@ import {
   Send,
   List,
 } from "lucide-react";
-import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
+import type { BairroTaxa, Configuracao, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { brl } from "@/lib/format";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -60,59 +60,6 @@ const LOG_TIPO_LABEL: Record<TipoMensagemWhatsapp, string> = {
   entregue: "Entregue",
   retirada_pronto: "Pronto p/ retirada",
 };
-
-const DIAS_SEMANA: Array<{ value: number; label: string }> = [
-  { value: 1, label: "Segunda" },
-  { value: 2, label: "Terca" },
-  { value: 3, label: "Quarta" },
-  { value: 4, label: "Quinta" },
-  { value: 5, label: "Sexta" },
-  { value: 6, label: "Sabado" },
-  { value: 0, label: "Domingo" },
-];
-
-const normalizeTimeHHMM = (value?: string | null) => {
-  if (!value) return "00:00";
-  return value.slice(0, 5);
-};
-
-const parseHorarioFuncionamento = (
-  raw: unknown,
-  fallbackAbertura: string,
-  fallbackFechamento: string,
-): HorarioFuncionamentoDia[] => {
-  const byDay = new Map<number, HorarioFuncionamentoDia>();
-
-  if (Array.isArray(raw)) {
-    for (const item of raw) {
-      if (!item || typeof item !== "object") continue;
-      const dia = Number((item as { dia?: unknown }).dia);
-      if (!Number.isInteger(dia) || dia < 0 || dia > 6) continue;
-
-      const ativo = Boolean((item as { ativo?: unknown }).ativo);
-      const abertura = normalizeTimeHHMM((item as { abertura?: string }).abertura) || fallbackAbertura;
-      const fechamento = normalizeTimeHHMM((item as { fechamento?: string }).fechamento) || fallbackFechamento;
-      byDay.set(dia, { dia, ativo, abertura, fechamento });
-    }
-  }
-
-  return DIAS_SEMANA.map(({ value }) => {
-    return byDay.get(value) ?? {
-      dia: value,
-      ativo: true,
-      abertura: fallbackAbertura,
-      fechamento: fallbackFechamento,
-    };
-  });
-};
-
-const serializeHorarioFuncionamento = (horarios: HorarioFuncionamentoDia[]) =>
-  horarios.map((h) => ({
-    dia: h.dia,
-    ativo: h.ativo,
-    abertura: `${normalizeTimeHHMM(h.abertura)}:00`,
-    fechamento: `${normalizeTimeHHMM(h.fechamento)}:00`,
-  }));
 
 // --- PasswordInput -----------------------------------------------------------
 
@@ -257,26 +204,9 @@ export default function Configuracoes() {
     ]);
     if (c) {
       const cfgData = c as Configuracao;
-      const fallbackAbertura = normalizeTimeHHMM(cfgData.hora_abertura);
-      const fallbackFechamento = normalizeTimeHHMM(cfgData.hora_fechamento);
-      setCfg({
-        ...cfgData,
-        carrossel_imagens: cfgData.carrossel_imagens || [],
-        horario_funcionamento: parseHorarioFuncionamento(
-          cfgData.horario_funcionamento,
-          fallbackAbertura,
-          fallbackFechamento,
-        ),
-      });
+      setCfg({ ...cfgData, carrossel_imagens: cfgData.carrossel_imagens || [] });
     }
     setBairros((b || []) as BairroTaxa[]);
-  };
-
-  const updateHorarioDia = (dia: number, patch: Partial<HorarioFuncionamentoDia>) => {
-    if (!cfg) return;
-    const atual = cfg.horario_funcionamento || [];
-    const updated = atual.map((item) => (item.dia === dia ? { ...item, ...patch } : item));
-    setCfg({ ...cfg, horario_funcionamento: updated });
   };
 
   const loadLogs = async () => {
@@ -370,7 +300,6 @@ export default function Configuracoes() {
         ativo: cfg.ativo,
         hora_abertura: cfg.hora_abertura,
         hora_fechamento: cfg.hora_fechamento,
-        horario_funcionamento: serializeHorarioFuncionamento(cfg.horario_funcionamento || []),
         seo_titulo: cfg.seo_titulo,
         seo_descricao: cfg.seo_descricao,
         tempo_entrega_min: cfg.tempo_entrega_min ?? "30-45 min",
@@ -431,8 +360,13 @@ export default function Configuracoes() {
         setZapiStatus("ok");
         setZapiPhone(data.phone || "");
       } else {
+        const reasonMap: Record<string, string> = {
+          zapi_inactive: "WhatsApp desativado nas configurações salvas",
+          credentials_missing: "Credenciais Z-API ausentes nas configurações salvas",
+          invalid_phone: "Telefone inválido",
+        };
         setZapiStatus("error");
-        setZapiErrMsg(data?.error || "Falha ao testar conexão");
+        setZapiErrMsg(data?.error || reasonMap[data?.reason] || "Falha ao testar conexão");
       }
     } catch (err) {
       setZapiStatus("error");
@@ -481,7 +415,6 @@ export default function Configuracoes() {
   };
 
   const hasCredentials = !!(cfg?.zapi_instance_id && cfg?.zapi_token && cfg?.zapi_client_token);
-  const publicCardapioPath = cfg?.referencia ? `/${cfg.referencia}/cardapio` : "/cardapio";
 
   if (!cfg) return <div className="text-muted-foreground">Carregando...</div>;
 
@@ -495,7 +428,7 @@ export default function Configuracoes() {
           <p className="text-muted-foreground mt-1">Identidade, horario, bairros e integracoes</p>
         </div>
         <Button asChild variant="outline">
-          <Link to={publicCardapioPath} target="_blank"><ExternalLink className="w-4 h-4 mr-1" /> Ver pagina publica</Link>
+          <Link to="/cardapio" target="_blank"><ExternalLink className="w-4 h-4 mr-1" /> Ver pagina publica</Link>
         </Button>
       </div>
 
@@ -546,7 +479,7 @@ export default function Configuracoes() {
                       <Label>{kind === "logo" ? "Logo" : "Banner"}</Label>
                       {url && (
                         <div className="relative w-full rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: kind === "logo" ? "1 / 1" : "16 / 6", maxHeight: kind === "logo" ? 120 : 160 }}>
-                          <img src={url} alt={kind} className={cn("w-full h-full", kind === "logo" ? "object-cover" : "object-contain")} />
+                          <img src={url} alt={kind} className="w-full h-full object-cover" />
                           <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => setUrl(null)}>
                             <X className="w-4 h-4" />
                           </Button>
@@ -573,7 +506,7 @@ export default function Configuracoes() {
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {(cfg.carrossel_imagens || []).map((url, idx) => (
                       <div key={`${url}-${idx}`} className="relative rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
-                        <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-contain" />
+                        <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
                         <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => removeCarouselImage(url)}>
                           <X className="w-4 h-4" />
                         </Button>
@@ -606,68 +539,12 @@ export default function Configuracoes() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Abertura padrao</Label>
+                <Label>Abertura</Label>
                 <Input type="time" value={cfg.hora_abertura.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_abertura: e.target.value + ":00" })} />
               </div>
               <div className="space-y-2">
-                <Label>Fechamento padrao</Label>
+                <Label>Fechamento</Label>
                 <Input type="time" value={cfg.hora_fechamento.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_fechamento: e.target.value + ":00" })} />
-              </div>
-            </div>
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <Label>Horarios por dia</Label>
-                  <p className="text-xs text-muted-foreground">Defina horarios diferentes para cada dia da semana.</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setCfg({
-                    ...cfg,
-                    horario_funcionamento: DIAS_SEMANA.map(({ value }) => ({
-                      dia: value,
-                      ativo: true,
-                      abertura: cfg.hora_abertura.slice(0, 5),
-                      fechamento: cfg.hora_fechamento.slice(0, 5),
-                    })),
-                  })}
-                >
-                  Aplicar horario padrao em todos os dias
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                {(cfg.horario_funcionamento || []).map((diaCfg) => {
-                  const diaNome = DIAS_SEMANA.find((d) => d.value === diaCfg.dia)?.label || `Dia ${diaCfg.dia}`;
-                  return (
-                    <div key={diaCfg.dia} className="grid grid-cols-1 md:grid-cols-[130px_auto_1fr_1fr] gap-3 items-center rounded-md border p-3">
-                      <div className="font-medium">{diaNome}</div>
-                      <div className="flex items-center gap-2">
-                        <Switch checked={diaCfg.ativo} onCheckedChange={(v) => updateHorarioDia(diaCfg.dia, { ativo: v })} />
-                        <span className="text-sm text-muted-foreground">{diaCfg.ativo ? "Aberto" : "Fechado"}</span>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Abertura</Label>
-                        <Input
-                          type="time"
-                          value={normalizeTimeHHMM(diaCfg.abertura)}
-                          onChange={(e) => updateHorarioDia(diaCfg.dia, { abertura: e.target.value })}
-                          disabled={!diaCfg.ativo}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Fechamento</Label>
-                        <Input
-                          type="time"
-                          value={normalizeTimeHHMM(diaCfg.fechamento)}
-                          onChange={(e) => updateHorarioDia(diaCfg.dia, { fechamento: e.target.value })}
-                          disabled={!diaCfg.ativo}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
             <div className="space-y-2">

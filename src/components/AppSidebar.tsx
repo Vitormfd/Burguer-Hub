@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { bindAudioUnlock, playNewOrderAlert } from "@/lib/sound";
 
 const items = [
   { title: "Mesas", url: "/mesas", icon: Utensils },
@@ -40,44 +41,9 @@ export function AppSidebar() {
   const [pendingCount, setPendingCount] = useState(0);
   const previousPendingRef = useRef<number | null>(null);
 
-  const playNewOrderSound = () => {
-    try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) return;
-
-      const ctx = new AudioCtx();
-      const master = ctx.createGain();
-      master.gain.value = 0.06;
-      master.connect(ctx.destination);
-
-      const makeBeep = (frequency: number, start: number, duration: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = frequency;
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.9, start + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(start);
-        osc.stop(start + duration);
-      };
-
-      const now = ctx.currentTime;
-      makeBeep(880, now, 0.13);
-      makeBeep(1046, now + 0.17, 0.16);
-
-      setTimeout(() => {
-        void ctx.close();
-      }, 800);
-    } catch {
-      // Silencioso: em alguns navegadores autoplay pode bloquear áudio.
-    }
-  };
-
   useEffect(() => {
     if (!user) return;
+    bindAudioUnlock();
 
     const syncPendingCount = async () => {
       const { count } = await supabase
@@ -89,7 +55,7 @@ export function AppSidebar() {
       const prevCount = previousPendingRef.current;
 
       if (prevCount !== null && nextCount > prevCount) {
-        playNewOrderSound();
+        playNewOrderAlert();
       }
 
       previousPendingRef.current = nextCount;
@@ -100,6 +66,14 @@ export function AppSidebar() {
 
     const channel = supabase
       .channel("sidebar-pedidos-pendentes")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "pedidos", filter: "status=eq.pendente" },
+        () => {
+          playNewOrderAlert();
+          void syncPendingCount();
+        }
+      )
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => {
         void syncPendingCount();
       })

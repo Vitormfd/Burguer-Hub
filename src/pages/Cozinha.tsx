@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,6 +9,7 @@ import { ChefHat, Clock, Flame, ArrowLeft, Utensils, Truck, Store } from "lucide
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { sendWhatsapp } from "@/lib/whatsapp";
+import { bindAudioUnlock, playNewOrderAlert } from "@/lib/sound";
 
 type Status = "pendente" | "em_preparo" | "pronto" | "entregue";
 type Tipo = "mesa" | "delivery" | "retirada";
@@ -60,11 +61,16 @@ export default function Cozinha() {
   const { session, loading: authLoading } = useAuth();
   const [cards, setCards] = useState<KdsCard[]>([]);
   const [tick, setTick] = useState(0);
+  const previousPendingRef = useRef<number | null>(null);
 
   // re-render every 30s para atualizar "tempo decorrido"
   useEffect(() => {
     const t = setInterval(() => setTick((v) => v + 1), 30000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    bindAudioUnlock();
   }, []);
 
   const notifyItemCancelado = useCallback(async (payload: any) => {
@@ -198,6 +204,15 @@ export default function Cozinha() {
       };
     }).filter((card) => card.itens.length > 0);
 
+    const nextPending = list.filter((card) => card.status === "pendente").length;
+    const prevPending = previousPendingRef.current;
+
+    if (prevPending !== null && nextPending > prevPending) {
+      playNewOrderAlert();
+      toast.success("Novo pedido chegou na cozinha");
+    }
+
+    previousPendingRef.current = nextPending;
     setCards(list);
   }, []);
 

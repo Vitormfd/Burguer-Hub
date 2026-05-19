@@ -1564,7 +1564,7 @@ export default function CardapioPublico() {
                 </div>
               )}
               {cupomAplicado?.tipo !== "frete_gratis" && (
-                <div className="flex justify-between"><span>{tipoEntrega === "delivery" ? "Pedido mínimo" : "Taxa"}</span><span>{brl(taxaEfetiva)}</span></div>
+                <div className="flex justify-between"><span>{tipoEntrega === "delivery" ? "Taxa de entrega" : "Taxa"}</span><span>{brl(taxaEfetiva)}</span></div>
               )}
               {cupomAplicado?.tipo === "frete_gratis" && tipoEntrega === "retirada" && (
                 <div className="flex justify-between"><span>Taxa</span><span>{brl(0)}</span></div>

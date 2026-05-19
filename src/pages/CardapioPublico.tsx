@@ -33,7 +33,7 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, Produto, Recompensa, TipoEntrega } from "@/types/db";
+import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, HorarioFuncionamentoDia, Produto, Recompensa, TipoEntrega } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { CartItem } from "@/components/cardapio/cartTypes";
 import {
@@ -83,13 +83,68 @@ const checkoutSchema = z.object({
   troco: z.string().optional(),
 });
 
+const DIAS_SEMANA_LABEL = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
+
+const normalizeTimeHHMM = (value?: string | null) => {
+  if (!value) return "00:00";
+  return value.slice(0, 5);
+};
+
+const toMinutes = (hhmm: string) => {
+  const [h, m] = normalizeTimeHHMM(hhmm).split(":").map(Number);
+  return h * 60 + m;
+};
+
+const getWeeklySchedule = (cfg: Configuracao): HorarioFuncionamentoDia[] => {
+  const fallbackAbertura = normalizeTimeHHMM(cfg.hora_abertura);
+  const fallbackFechamento = normalizeTimeHHMM(cfg.hora_fechamento);
+  const byDay = new Map<number, HorarioFuncionamentoDia>();
+
+  if (Array.isArray(cfg.horario_funcionamento)) {
+    for (const raw of cfg.horario_funcionamento) {
+      if (!raw || typeof raw !== "object") continue;
+      const dia = Number((raw as { dia?: unknown }).dia);
+      if (!Number.isInteger(dia) || dia < 0 || dia > 6) continue;
+      byDay.set(dia, {
+        dia,
+        ativo: Boolean((raw as { ativo?: unknown }).ativo),
+        abertura: normalizeTimeHHMM((raw as { abertura?: string }).abertura) || fallbackAbertura,
+        fechamento: normalizeTimeHHMM((raw as { fechamento?: string }).fechamento) || fallbackFechamento,
+      });
+    }
+  }
+
+  return [0, 1, 2, 3, 4, 5, 6].map((dia) => {
+    return byDay.get(dia) ?? {
+      dia,
+      ativo: true,
+      abertura: fallbackAbertura,
+      fechamento: fallbackFechamento,
+    };
+  });
+};
+
+const getTodaySchedule = (cfg: Configuracao, date = new Date()) => {
+  const dia = date.getDay();
+  return getWeeklySchedule(cfg).find((item) => item.dia === dia) ?? null;
+};
+
+const formatScheduleRange = (item: HorarioFuncionamentoDia | null, cfg: Configuracao) => {
+  if (!item) {
+    return `${normalizeTimeHHMM(cfg.hora_abertura)} - ${normalizeTimeHHMM(cfg.hora_fechamento)}`;
+  }
+  if (!item.ativo) return "Fechado";
+  return `${normalizeTimeHHMM(item.abertura)} - ${normalizeTimeHHMM(item.fechamento)}`;
+};
+
 const isOpenNow = (cfg: Configuracao) => {
+  const today = getTodaySchedule(cfg);
+  if (!today || !today.ativo) return false;
+
   const now = new Date();
   const cur = now.getHours() * 60 + now.getMinutes();
-  const [ah, am] = cfg.hora_abertura.split(":").map(Number);
-  const [fh, fm] = cfg.hora_fechamento.split(":").map(Number);
-  const ini = ah * 60 + am;
-  const fim = fh * 60 + fm;
+  const ini = toMinutes(today.abertura);
+  const fim = toMinutes(today.fechamento);
   return fim > ini ? cur >= ini && cur <= fim : cur >= ini || cur <= fim;
 };
 
@@ -177,7 +232,7 @@ export default function CardapioPublico() {
         supabase.from("pedido_itens").select("produto_id, quantidade").limit(1000),
       ]);
 
-      if (c) setCfg(c as Configuracao);
+      if (c) setCfg(c as unknown as Configuracao);
       const cs = (cat || []) as Categoria[];
       setCategorias(cs);
       setProdutos((prod || []) as Produto[]);
@@ -974,6 +1029,9 @@ export default function CardapioPublico() {
   if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
 
   const aberta = cfg.ativo && isOpenNow(cfg);
+  const horarioHoje = getTodaySchedule(cfg);
+  const diaHojeNome = DIAS_SEMANA_LABEL[new Date().getDay()];
+  const horarioHojeTexto = formatScheduleRange(horarioHoje, cfg);
   const taxaMin = bairros.length ? Math.min(...bairros.map((b) => Number(b.taxa))) : 0;
 
   return (
@@ -1043,10 +1101,10 @@ export default function CardapioPublico() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1">
                     <Badge className={cn("rounded-full px-2.5 text-[11px]", aberta ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
-                      {aberta ? `Abrimos hoje as ${cfg.hora_abertura.slice(0, 5)}` : "Loja fechada"}
+                      {aberta ? "Aberto agora" : "Loja fechada"}
                     </Badge>
                     <Badge variant="secondary" className="rounded-full px-2.5 text-[11px] bg-zinc-100 text-zinc-700">
-                      <Clock className="w-3 h-3 mr-1" /> {cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}
+                      <Clock className="w-3 h-3 mr-1" /> {diaHojeNome}: {horarioHojeTexto}
                     </Badge>
                   </div>
 
@@ -1059,7 +1117,7 @@ export default function CardapioPublico() {
                     </div>
                     <div className="rounded-md border bg-white p-1 text-[11px]">
                       <p className="text-zinc-500">Horario</p>
-                      <p className="font-bold">{cfg.hora_abertura.slice(0, 5)} - {cfg.hora_fechamento.slice(0, 5)}</p>
+                      <p className="font-bold">{horarioHojeTexto}</p>
                     </div>
                     <div className="rounded-md border bg-white p-1 text-[11px]">
                       <p className="text-zinc-500">Taxa de entrega</p>
@@ -1169,7 +1227,9 @@ export default function CardapioPublico() {
       {!aberta && (
         <div className="max-w-4xl mx-auto px-3 mt-2">
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
-            Estamos fechados no momento. Volte entre {cfg.hora_abertura.slice(0, 5)} e {cfg.hora_fechamento.slice(0, 5)}.
+            {horarioHoje?.ativo
+              ? `Estamos fechados no momento. Hoje (${diaHojeNome}) abrimos em ${horarioHojeTexto}.`
+              : `Hoje (${diaHojeNome}) nao abrimos.`}
           </div>
         </div>
       )}

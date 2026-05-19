@@ -114,6 +114,13 @@ export interface PedidoItemAdicional {
   preco_unitario: number;
 }
 
+export interface HorarioFuncionamentoDia {
+  dia: number;
+  ativo: boolean;
+  abertura: string;
+  fechamento: string;
+}
+
 export interface Configuracao {
   id: string;
   nome_loja: string;
@@ -125,6 +132,7 @@ export interface Configuracao {
   ativo: boolean;
   hora_abertura: string;
   hora_fechamento: string;
+  horario_funcionamento?: unknown;
   seo_titulo: string;
   seo_descricao: string;
   tempo_entrega_min?: string;

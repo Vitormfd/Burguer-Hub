@@ -26,7 +26,7 @@ import {
   Send,
   List,
 } from "lucide-react";
-import type { BairroTaxa, Configuracao, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
+import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { brl } from "@/lib/format";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -59,6 +59,43 @@ const LOG_TIPO_LABEL: Record<TipoMensagemWhatsapp, string> = {
   saiu_entrega: "Saiu p/ entrega",
   entregue: "Entregue",
   retirada_pronto: "Pronto p/ retirada",
+};
+
+const DIAS_SEMANA_LABEL = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
+
+const normalizeTimeHHMMSS = (value?: string | null) => {
+  if (!value) return "00:00:00";
+  const base = value.slice(0, 5);
+  return `${base}:00`;
+};
+
+const normalizeWeeklySchedule = (cfg: Configuracao): HorarioFuncionamentoDia[] => {
+  const fallbackAbertura = normalizeTimeHHMMSS(cfg.hora_abertura);
+  const fallbackFechamento = normalizeTimeHHMMSS(cfg.hora_fechamento);
+  const byDay = new Map<number, HorarioFuncionamentoDia>();
+
+  if (Array.isArray(cfg.horario_funcionamento)) {
+    for (const raw of cfg.horario_funcionamento) {
+      if (!raw || typeof raw !== "object") continue;
+      const dia = Number((raw as { dia?: unknown }).dia);
+      if (!Number.isInteger(dia) || dia < 0 || dia > 6) continue;
+      byDay.set(dia, {
+        dia,
+        ativo: Boolean((raw as { ativo?: unknown }).ativo),
+        abertura: normalizeTimeHHMMSS((raw as { abertura?: string }).abertura) || fallbackAbertura,
+        fechamento: normalizeTimeHHMMSS((raw as { fechamento?: string }).fechamento) || fallbackFechamento,
+      });
+    }
+  }
+
+  return [0, 1, 2, 3, 4, 5, 6].map((dia) => {
+    return byDay.get(dia) ?? {
+      dia,
+      ativo: true,
+      abertura: fallbackAbertura,
+      fechamento: fallbackFechamento,
+    };
+  });
 };
 
 // --- PasswordInput -----------------------------------------------------------
@@ -213,6 +250,13 @@ export default function Configuracoes() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [reenvBusy, setReenvBusy] = useState<string | null>(null);
 
+  const updateScheduleDay = (day: number, patch: Partial<HorarioFuncionamentoDia>) => {
+    if (!cfg) return;
+    const base = normalizeWeeklySchedule(cfg);
+    const next = base.map((item) => (item.dia === day ? { ...item, ...patch } : item));
+    setCfg({ ...cfg, horario_funcionamento: next });
+  };
+
   // loaders
 
   const load = async () => {
@@ -221,8 +265,12 @@ export default function Configuracoes() {
       supabase.from("bairros_taxas").select("*").order("nome"),
     ]);
     if (c) {
-      const cfgData = c as Configuracao;
-      setCfg({ ...cfgData, carrossel_imagens: cfgData.carrossel_imagens || [] });
+      const cfgData = c as unknown as Configuracao;
+      setCfg({
+        ...cfgData,
+        carrossel_imagens: cfgData.carrossel_imagens || [],
+        horario_funcionamento: normalizeWeeklySchedule(cfgData),
+      });
     }
     setBairros((b || []) as BairroTaxa[]);
   };
@@ -325,6 +373,7 @@ export default function Configuracoes() {
         tempo_estimado_retirada: Number(cfg.tempo_estimado_retirada ?? 25),
         endereco_estabelecimento: cfg.endereco_estabelecimento ?? null,
         carrossel_imagens: cfg.carrossel_imagens || [],
+        horario_funcionamento: normalizeWeeklySchedule(cfg) as any,
       })
       .eq("id", cfg.id);
     setBusy(false);
@@ -582,6 +631,37 @@ export default function Configuracoes() {
                 <Input type="time" value={cfg.hora_fechamento.slice(0, 5)} onChange={(e) => setCfg({ ...cfg, hora_fechamento: e.target.value + ":00" })} />
               </div>
             </div>
+
+            <div className="space-y-3">
+              <Label>Horario por dia da semana</Label>
+              <div className="space-y-2">
+                {normalizeWeeklySchedule(cfg).map((dia) => (
+                  <div key={dia.dia} className="grid grid-cols-[110px_auto_1fr_1fr] items-center gap-2 rounded-md border p-2">
+                    <span className="text-sm font-medium">{DIAS_SEMANA_LABEL[dia.dia]}</span>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={dia.ativo}
+                        onCheckedChange={(v) => updateScheduleDay(dia.dia, { ativo: v })}
+                      />
+                      <span className="text-xs text-muted-foreground">{dia.ativo ? "Ativo" : "Fechado"}</span>
+                    </div>
+                    <Input
+                      type="time"
+                      value={dia.abertura.slice(0, 5)}
+                      disabled={!dia.ativo}
+                      onChange={(e) => updateScheduleDay(dia.dia, { abertura: e.target.value + ":00" })}
+                    />
+                    <Input
+                      type="time"
+                      value={dia.fechamento.slice(0, 5)}
+                      disabled={!dia.ativo}
+                      onChange={(e) => updateScheduleDay(dia.dia, { fechamento: e.target.value + ":00" })}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Tempo estimado de entrega</Label>
               <Input value={cfg.tempo_entrega_min ?? ""} onChange={(e) => setCfg({ ...cfg, tempo_entrega_min: e.target.value })} maxLength={30} placeholder="Ex: 30-45 min" />

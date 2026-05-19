@@ -818,22 +818,29 @@ export default function CardapioPublico() {
     }
 
     const itensPayload = cart.map((item) => ({
+      // Compatibilidade com versões antigas/novas da RPC
       produto_id: item.produto.id,
+      produtoId: item.produto.id,
       quantidade: item.quantidade,
       preco_unitario: item.precoUnit,
+      precoUnitario: item.precoUnit,
       observacao: item.observacao || null,
       adicionais: item.adicionais.map((adicional) => ({
         adicional_id: adicional.adicionalId,
+        adicionalId: adicional.adicionalId,
         quantidade: adicional.quantidade,
         preco_unitario: adicional.precoUnitario,
+        precoUnitario: adicional.precoUnitario,
       })),
     }));
 
     if (itemGratis) {
       itensPayload.push({
         produto_id: itemGratis.id,
+        produtoId: itemGratis.id,
         quantidade: 1,
         preco_unitario: 0,
+        precoUnitario: 0,
         observacao: `Recompensa fidelidade: ${selectedReward?.nome || itemGratis.nome}`,
         adicionais: [],
       });
@@ -844,7 +851,7 @@ export default function CardapioPublico() {
     const { data: rpcResult, error: rpcError } = await (supabase as any).rpc("create_public_delivery_order", {
       p_owner_id: ownerId,
       p_tipo_entrega: tipoEntrega,
-      p_cliente_nome: nome,
+      p_cliente_nome: nome.trim(),
       p_cliente_telefone: tel.trim(),
       p_endereco: tipoEntrega === "delivery" ? endereco : "Retirada no balcao",
       p_numero: tipoEntrega === "delivery" ? numero : null,

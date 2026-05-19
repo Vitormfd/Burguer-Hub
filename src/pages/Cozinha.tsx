@@ -150,15 +150,16 @@ export default function Cozinha() {
         rotulo = num != null ? `Mesa ${String(num).padStart(2, "0")}` : "Mesa";
       } else {
         const e = entregaMap.get(p.id) as any;
+        const clienteNome = String(e?.cliente_nome || "").trim();
         tipo = p.tipo_entrega === "retirada" ? "retirada" : "delivery";
-        rotulo = e?.cliente_nome ?? (tipo === "retirada" ? "Retirada" : "Delivery");
+        rotulo = clienteNome || (tipo === "retirada" ? "Retirada" : "Delivery");
         online = e?.origem === "online";
       }
       const its = itensAtivos
         .filter((i) => i.pedido_id === p.id)
         .map<KdsItem>((i) => ({
           id: i.id,
-          nome: i.produto_id ? prodMap.get(i.produto_id) ?? "Item" : "Item",
+          nome: i.produto_id ? (prodMap.get(i.produto_id) || "Item") : "Item",
           quantidade: i.quantidade,
           observacao: i.observacao,
           adicionais: adicionaisPorItem.get(i.id) || [],

@@ -40,6 +40,22 @@ const elapsed = (iso: string) => {
   return `${h}h ${min % 60}m`;
 };
 
+const parseKdsItemObservation = (value: string | null) => {
+  if (!value) {
+    return { itemName: null as string | null, observacao: null as string | null };
+  }
+
+  const text = value.trim();
+  const match = text.match(/^\[item:(.+?)\]\s*/i);
+  if (!match) {
+    return { itemName: null as string | null, observacao: text || null };
+  }
+
+  const itemName = (match[1] || "").trim() || null;
+  const observacao = text.slice(match[0].length).trim() || null;
+  return { itemName, observacao };
+};
+
 export default function Cozinha() {
   const { session, loading: authLoading } = useAuth();
   const [cards, setCards] = useState<KdsCard[]>([]);
@@ -161,13 +177,16 @@ export default function Cozinha() {
       }
       const its = itensAtivos
         .filter((i) => i.pedido_id === p.id)
-        .map<KdsItem>((i) => ({
-          id: i.id,
-          nome: i.produto_id ? (prodMap.get(i.produto_id) || "Item") : "Item",
-          quantidade: i.quantidade,
-          observacao: i.observacao,
-          adicionais: adicionaisPorItem.get(i.id) || [],
-        }));
+        .map<KdsItem>((i) => {
+          const parsedObs = parseKdsItemObservation(i.observacao);
+          return {
+            id: i.id,
+            nome: i.produto_id ? (prodMap.get(i.produto_id) || parsedObs.itemName || "Item") : (parsedObs.itemName || "Item"),
+            quantidade: i.quantidade,
+            observacao: parsedObs.observacao,
+            adicionais: adicionaisPorItem.get(i.id) || [],
+          };
+        });
       return {
         pedido_id: p.id,
         tipo,

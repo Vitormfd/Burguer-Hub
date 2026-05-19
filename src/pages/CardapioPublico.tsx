@@ -171,6 +171,13 @@ const withAlpha = (hex: string, alpha: number) => {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 };
 
+const encodeKdsItemObservation = (produtoNome: string, observacao?: string | null) => {
+  const safeName = produtoNome.replace(/\]/g, "").trim();
+  const safeObs = (observacao || "").trim();
+  const marker = `[item:${safeName}]`;
+  return safeObs ? `${marker} ${safeObs}` : marker;
+};
+
 export default function CardapioPublico() {
   const { referencia } = useParams<{ referencia?: string }>();
   
@@ -824,7 +831,7 @@ export default function CardapioPublico() {
       quantidade: item.quantidade,
       preco_unitario: item.precoUnit,
       precoUnitario: item.precoUnit,
-      observacao: item.observacao || null,
+      observacao: encodeKdsItemObservation(item.produto.nome, item.observacao),
       adicionais: item.adicionais.map((adicional) => ({
         adicional_id: adicional.adicionalId,
         adicionalId: adicional.adicionalId,
@@ -841,7 +848,10 @@ export default function CardapioPublico() {
         quantidade: 1,
         preco_unitario: 0,
         precoUnitario: 0,
-        observacao: `Recompensa fidelidade: ${selectedReward?.nome || itemGratis.nome}`,
+        observacao: encodeKdsItemObservation(
+          itemGratis.nome,
+          `Recompensa fidelidade: ${selectedReward?.nome || itemGratis.nome}`
+        ),
         adicionais: [],
       });
     }

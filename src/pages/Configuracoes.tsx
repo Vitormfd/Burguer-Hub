@@ -177,6 +177,7 @@ function TestMsgModal({
           zapi_inactive: "WhatsApp está desativado. Ative e salve antes do teste.",
           credentials_missing: "Credenciais Z-API ausentes na configuração.",
           invalid_phone: "Telefone inválido para envio.",
+          config_not_found: "Nenhuma configuração ativa com credenciais foi encontrada.",
         };
         toast.error(reasonMap[data.reason] || "Envio não realizado");
       } else if (data?.status === "erro") {

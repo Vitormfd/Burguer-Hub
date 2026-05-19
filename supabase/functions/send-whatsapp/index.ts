@@ -71,7 +71,8 @@ Deno.serve(async (req) => {
 
   const { action, configuracao_id, pedido_id, tipo_mensagem, telefone, dados_pedido } = payload ?? {};
 
-  // Fetch Z-API credentials from configuracoes
+  // Fetch Z-API credentials from configuracoes.
+  // If configuracao_id is not provided (automatic flow), prioritize active rows with credentials.
   let cfgQuery = supabase
     .from("configuracoes")
     .select(
@@ -82,12 +83,37 @@ Deno.serve(async (req) => {
 
   if (configuracao_id) {
     cfgQuery = cfgQuery.eq("id", configuracao_id);
+  } else {
+    cfgQuery = cfgQuery
+      .eq("zapi_ativo", true)
+      .not("zapi_instance_id", "is", null)
+      .not("zapi_token", "is", null)
+      .not("zapi_client_token", "is", null);
   }
 
   const { data: cfg, error: cfgErr } = await cfgQuery.limit(1).maybeSingle();
 
-  if (cfgErr || !cfg) {
+  if (cfgErr) {
     return json({ error: "Não foi possível carregar configurações" }, 500);
+  }
+
+  if (!cfg) {
+    if (action === "test_connection") {
+      return json({ ok: false, error: "Nenhuma configuração ativa com credenciais foi encontrada" }, 200);
+    }
+
+    if (pedido_id && tipo_mensagem && telefone) {
+      await supabase.from("whatsapp_logs").insert({
+        pedido_id,
+        telefone: normalizePhone(telefone) || telefone,
+        tipo_mensagem,
+        mensagem_enviada: "",
+        status: "erro",
+        erro_detalhe: "Nenhuma configuração ativa com credenciais foi encontrada",
+      });
+    }
+
+    return json({ skipped: true, reason: "config_not_found" });
   }
 
   const { zapi_instance_id, zapi_token, zapi_client_token } = cfg as Record<string, string | null | boolean>;

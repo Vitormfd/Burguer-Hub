@@ -243,14 +243,23 @@ export default function ProdutoCascadeDialog({
                         !adicional.disponivel && "opacity-50 cursor-not-allowed bg-muted"
                       )}
                     >
-                      {adicional.imagem_url && (
-                        <div className="h-28 rounded-lg overflow-hidden mb-2 bg-muted">
-                          <img src={adicional.imagem_url} alt={adicional.nome} className="w-full h-full object-cover" />
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold leading-tight">{adicional.nome}</div>
+                          <div className="text-sm text-muted-foreground mt-0.5">
+                            {Number(adicional.preco) > 0 ? `+ ${brl(Number(adicional.preco))}` : "Gratis"}
+                          </div>
                         </div>
-                      )}
-                      <div className="font-semibold">{adicional.nome}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {Number(adicional.preco) > 0 ? `+ ${brl(Number(adicional.preco))}` : "Gratis"}
+                        {adicional.imagem_url && (
+                          <div className="h-14 w-14 shrink-0 rounded-md overflow-hidden border bg-muted">
+                            <img
+                              src={adicional.imagem_url}
+                              alt={adicional.nome}
+                              className="w-full h-full object-cover"
+                              onError={(e) => ((e.currentTarget.parentElement as HTMLDivElement).style.display = "none")}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div className="mt-2 flex items-center gap-2">

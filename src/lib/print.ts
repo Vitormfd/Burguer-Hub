@@ -1,3 +1,40 @@
+// ─── Config de impressão ───────────────────────────────────────────────────────
+
+export interface PrintConfig {
+  largura: "58mm" | "80mm";
+  fonte: "pequena" | "normal" | "grande";
+  mostrar_rodape: boolean;
+  rodape_texto: string;
+}
+
+const PRINT_CONFIG_KEY = "burgerhub:print-config:v1";
+
+const DEFAULT_PRINT_CONFIG: PrintConfig = {
+  largura: "80mm",
+  fonte: "normal",
+  mostrar_rodape: true,
+  rodape_texto: "Obrigado pela preferência!",
+};
+
+export function readPrintConfig(): PrintConfig {
+  try {
+    const raw = localStorage.getItem(PRINT_CONFIG_KEY);
+    if (!raw) return { ...DEFAULT_PRINT_CONFIG };
+    const parsed = JSON.parse(raw) as Partial<PrintConfig>;
+    return { ...DEFAULT_PRINT_CONFIG, ...parsed };
+  } catch {
+    return { ...DEFAULT_PRINT_CONFIG };
+  }
+}
+
+export function savePrintConfig(config: PrintConfig): void {
+  try {
+    localStorage.setItem(PRINT_CONFIG_KEY, JSON.stringify(config));
+  } catch {
+    // Ignore storage limits/private mode
+  }
+}
+
 // ─── Tipos públicos ────────────────────────────────────────────────────────────
 
 export interface PrintItem {
@@ -73,7 +110,8 @@ function renderItems(itens: PrintItem[]): string {
 
 // ─── Função principal ──────────────────────────────────────────────────────────
 
-export function printReceipt(data: PrintData): void {
+export function printReceipt(data: PrintData, config?: PrintConfig): void {
+  config = config ?? readPrintConfig();
   const now = new Date();
   const dateStr = now.toLocaleDateString("pt-BR");
   const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -128,6 +166,17 @@ export function printReceipt(data: PrintData): void {
     }
   }
 
+  const fontSizeMap: Record<PrintConfig["fonte"], { base: number; small: number; title: number; total: number }> = {
+    pequena: { base: 10, small: 9,  title: 13, total: 13 },
+    normal:  { base: 12, small: 11, title: 15, total: 15 },
+    grande:  { base: 14, small: 12, title: 17, total: 17 },
+  };
+  const fs = fontSizeMap[config.fonte];
+  const w = config.largura;
+  const rodapeHtml = config.mostrar_rodape && config.rodape_texto
+    ? `<div class="footer">${esc(config.rodape_texto)}</div>`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -135,29 +184,29 @@ export function printReceipt(data: PrintData): void {
   <title>${lojaName}</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Courier New',Courier,monospace;font-size:12px;width:80mm;padding:5mm 4mm;color:#000;background:#fff}
+    body{font-family:'Courier New',Courier,monospace;font-size:${fs.base}px;width:${w};padding:5mm 4mm;color:#000;background:#fff}
     .header{text-align:center;margin-bottom:6px}
-    .header h1{font-size:16px;font-weight:bold;text-transform:uppercase;letter-spacing:2px}
-    .header .datetime{font-size:10px;color:#444;margin-top:2px}
+    .header h1{font-size:${fs.title + 1}px;font-weight:bold;text-transform:uppercase}
+    .header .datetime{font-size:${fs.small - 1}px;color:#000;margin-top:2px}
     .sep{border-top:2px solid #000;margin:5px 0}
-    .sep-dashed{border-top:1px dashed #aaa;margin:4px 0}
-    .section-title{font-size:15px;font-weight:bold;text-align:center;margin:5px 0;text-transform:uppercase;letter-spacing:2px}
-    .pedido-header{font-size:10px;color:#666;margin:3px 0 2px}
+    .sep-dashed{border-top:1px dashed #000;margin:4px 0}
+    .section-title{font-size:${fs.title}px;font-weight:bold;text-align:center;margin:5px 0;text-transform:uppercase}
+    .pedido-header{font-size:${fs.small - 1}px;color:#000;margin:3px 0 2px}
     .item{display:flex;justify-content:space-between;gap:6px;margin:3px 0;font-weight:600}
     .item span:first-child{flex:1}
-    .sub{display:flex;justify-content:space-between;gap:6px;padding-left:10px;font-size:11px;color:#555;margin:1px 0}
+    .sub{display:flex;justify-content:space-between;gap:6px;padding-left:10px;font-size:${fs.small}px;color:#000;margin:1px 0}
     .sub span:first-child{flex:1}
-    .obs{padding-left:10px;font-size:10px;color:#777;font-style:italic;margin:1px 0}
-    .info-line{margin:2px 0;font-size:11px;word-break:break-word}
-    .subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:11px}
+    .obs{padding-left:10px;font-size:${fs.small - 1}px;color:#000;font-style:italic;margin:1px 0}
+    .info-line{margin:2px 0;font-size:${fs.small}px;word-break:break-word}
+    .subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:${fs.small}px}
     .subtotal-line span:first-child{flex:1}
-    .total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;font-size:15px;font-weight:bold}
+    .total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;font-size:${fs.total}px;font-weight:bold}
     .total-line span:first-child{flex:1}
     .troco{font-weight:bold}
-    .footer{text-align:center;font-size:10px;color:#888;margin-top:10px;padding-top:6px;border-top:1px dashed #ccc}
+    .footer{text-align:center;font-size:${fs.small - 1}px;color:#000;margin-top:10px;padding-top:6px;border-top:1px dashed #000}
     @media print{
-      html,body{width:80mm}
-      @page{size:80mm auto;margin:0}
+      html,body{width:${w}}
+      @page{size:${w} auto;margin:0}
     }
   </style>
 </head>
@@ -168,7 +217,7 @@ export function printReceipt(data: PrintData): void {
   </div>
   <div class="sep"></div>
   ${body}
-  <div class="footer">Obrigado pela prefer&ecirc;ncia!</div>
+  ${rodapeHtml}
 </body>
 </html>`;
 
@@ -182,8 +231,10 @@ export function printReceipt(data: PrintData): void {
     // Aguarda renderização antes de chamar print
     setTimeout(() => {
       win.print();
-      win.close();
-    }, 300);
+      // Fecha somente depois que o diálogo de impressão for dispensado
+      // (evita cortar o job antes de enviar para a impressora)
+      win.onafterprint = () => win.close();
+    }, 500);
     return;
   }
 
@@ -196,8 +247,14 @@ export function printReceipt(data: PrintData): void {
     doc.open();
     doc.write(html);
     doc.close();
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe);
+      } else {
+        setTimeout(() => document.body.removeChild(iframe), 5000);
+      }
+    }, 500);
   }
-  setTimeout(() => document.body.removeChild(iframe), 3000);
 }

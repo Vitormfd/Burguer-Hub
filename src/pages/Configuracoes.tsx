@@ -25,7 +25,9 @@ import {
   RefreshCw,
   Send,
   List,
+  Printer,
 } from "lucide-react";
+import { type PrintConfig, readPrintConfig, savePrintConfig } from "@/lib/print";
 import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { brl } from "@/lib/format";
 import { Link } from "react-router-dom";
@@ -249,6 +251,16 @@ export default function Configuracoes() {
   const [logsFiltro, setLogsFiltro] = useState<"todos" | "enviado" | "erro">("todos");
   const [logsLoading, setLogsLoading] = useState(false);
   const [reenvBusy, setReenvBusy] = useState<string | null>(null);
+
+  // Print config state
+  const [printCfg, setPrintCfg] = useState<PrintConfig>(readPrintConfig);
+  const [printSaved, setPrintSaved] = useState(false);
+
+  const savePrint = () => {
+    savePrintConfig(printCfg);
+    setPrintSaved(true);
+    setTimeout(() => setPrintSaved(false), 2000);
+  };
 
   const updateScheduleDay = (day: number, patch: Partial<HorarioFuncionamentoDia>) => {
     if (!cfg) return;
@@ -517,8 +529,9 @@ export default function Configuracoes() {
       </div>
 
       <Tabs defaultValue="geral">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="geral"><Settings className="w-4 h-4 mr-1.5" />Geral</TabsTrigger>
+          <TabsTrigger value="impressao"><Printer className="w-4 h-4 mr-1.5" />Impressão</TabsTrigger>
           <TabsTrigger value="whatsapp"><MessageSquare className="w-4 h-4 mr-1.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="logs" onClick={() => { setLogsOpened(true); loadLogs(); }}><List className="w-4 h-4 mr-1.5" />Logs WhatsApp</TabsTrigger>
         </TabsList>
@@ -729,6 +742,156 @@ export default function Configuracoes() {
 
           <div className="flex justify-end">
             <Button size="lg" onClick={save} disabled={busy}>{busy ? "Salvando..." : "Salvar configuracoes"}</Button>
+          </div>
+        </TabsContent>
+
+        {/* TAB: IMPRESSÃO */}
+        <TabsContent value="impressao" className="space-y-6">
+          {/* Papel e Fonte */}
+          <Card className="p-6 space-y-6">
+            <h2 className="font-display text-2xl">Papel e fonte</h2>
+
+            <div className="space-y-2">
+              <Label>Largura do papel</Label>
+              <div className="flex gap-2">
+                {(["58mm", "80mm"] as const).map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setPrintCfg((p) => ({ ...p, largura: w }))}
+                    className={cn(
+                      "flex-1 rounded-md border py-2 px-4 text-sm font-medium transition-colors",
+                      printCfg.largura === w
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent"
+                    )}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Bobina 58mm ou 80mm. Confirme a largura configurada na impressora.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tamanho da fonte</Label>
+              <div className="flex gap-2">
+                {([["pequena", "Pequena"], ["normal", "Normal"], ["grande", "Grande"]] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => setPrintCfg((p) => ({ ...p, fonte: v }))}
+                    className={cn(
+                      "flex-1 rounded-md border py-2 px-4 text-sm font-medium transition-colors",
+                      printCfg.fonte === v
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Rodapé */}
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Rodapé</h2>
+
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={printCfg.mostrar_rodape}
+                onCheckedChange={(v) => setPrintCfg((p) => ({ ...p, mostrar_rodape: v }))}
+                id="mostrar-rodape"
+              />
+              <Label htmlFor="mostrar-rodape">Exibir mensagem no rodapé</Label>
+            </div>
+
+            {printCfg.mostrar_rodape && (
+              <div className="space-y-2">
+                <Label>Texto do rodapé</Label>
+                <Textarea
+                  value={printCfg.rodape_texto}
+                  onChange={(e) => setPrintCfg((p) => ({ ...p, rodape_texto: e.target.value }))}
+                  placeholder="Ex: Obrigado pela preferência!"
+                  rows={2}
+                  maxLength={120}
+                />
+                <p className="text-xs text-muted-foreground">{printCfg.rodape_texto.length}/120 caracteres</p>
+              </div>
+            )}
+          </Card>
+
+          {/* Preview */}
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Pré-visualização</h2>
+            <p className="text-sm text-muted-foreground">Aproximação visual — as fontes reais da impressora térmica podem variar.</p>
+            <div className="flex justify-center">
+              <div
+                className="bg-white text-black border border-gray-200 shadow-md rounded"
+                style={{
+                  fontFamily: "'Courier New', Courier, monospace",
+                  fontSize: printCfg.fonte === "pequena" ? 10 : printCfg.fonte === "grande" ? 14 : 12,
+                  width: printCfg.largura === "58mm" ? 192 : 272,
+                  padding: "10px 8px",
+                  lineHeight: 1.4,
+                  userSelect: "none",
+                }}
+              >
+                {/* Header */}
+                <div style={{ textAlign: "center", marginBottom: 6 }}>
+                  <div style={{ fontWeight: "bold", textTransform: "uppercase", letterSpacing: 2, fontSize: "1.2em" }}>{cfg?.nome_loja || "MINHA LOJA"}</div>
+                  <div style={{ fontSize: "0.85em", color: "#555", marginTop: 2 }}>19/05/2026 às 14:30</div>
+                </div>
+                <div style={{ borderTop: "2px solid #000", margin: "5px 0" }} />
+
+                {/* Section title */}
+                <div style={{ textAlign: "center", fontWeight: "bold", textTransform: "uppercase", letterSpacing: 2, margin: "4px 0" }}>DELIVERY</div>
+                <div style={{ fontSize: "0.92em" }}>João da Silva</div>
+                <div style={{ fontSize: "0.92em", color: "#555" }}>(11) 99999-9999</div>
+                <div style={{ fontSize: "0.92em", color: "#555" }}>Rua das Flores, 123 — Centro</div>
+
+                <div style={{ borderTop: "1px dashed #aaa", margin: "4px 0" }} />
+
+                {/* Items */}
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, margin: "3px 0" }}>
+                  <span>2x X-Burguer</span><span>R$ 40,00</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", paddingLeft: 10, fontSize: "0.9em", color: "#555" }}>
+                  <span>+1x Bacon extra</span><span>R$ 5,00</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, margin: "3px 0" }}>
+                  <span>1x Refrigerante</span><span>R$ 7,00</span>
+                </div>
+
+                <div style={{ borderTop: "2px solid #000", margin: "5px 0" }} />
+
+                {/* Totals */}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9em" }}>
+                  <span>Subtotal</span><span>R$ 52,00</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9em" }}>
+                  <span>Taxa de entrega</span><span>R$ 5,00</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "1.2em", margin: "4px 0" }}>
+                  <span>TOTAL</span><span>R$ 57,00</span>
+                </div>
+
+                {/* Footer */}
+                {printCfg.mostrar_rodape && printCfg.rodape_texto && (
+                  <>
+                    <div style={{ borderTop: "1px dashed #ccc", margin: "6px 0" }} />
+                    <div style={{ textAlign: "center", fontSize: "0.85em", color: "#888" }}>{printCfg.rodape_texto}</div>
+                  </>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button size="lg" onClick={savePrint} disabled={printSaved}>
+              <Printer className="w-4 h-4 mr-2" />
+              {printSaved ? "Salvo!" : "Salvar configurações de impressão"}
+            </Button>
           </div>
         </TabsContent>
 

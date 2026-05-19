@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Pencil, Trash2, Upload, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Adicional, GrupoAdicional } from "@/types/db";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,8 @@ export default function AdicionaisAdmin() {
   const [adicionalEdit, setAdicionalEdit] = useState<Adicional | null>(null);
   const [adicionalGrupoId, setAdicionalGrupoId] = useState<string>("");
   const [adicionalForm, setAdicionalForm] = useState(emptyAdicional);
+  const [uploadingAdicionalImagem, setUploadingAdicionalImagem] = useState(false);
+  const adicionalImagemRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -168,6 +170,27 @@ export default function AdicionaisAdmin() {
     toast.success(adicionalEdit ? "Adicional atualizado" : "Adicional criado");
     setAdicionalDialogOpen(false);
     load();
+  };
+
+  const uploadImagemAdicional = async (file: File) => {
+    if (!file.type.startsWith("image/")) return toast.error("Selecione uma imagem valida");
+    if (file.size > 2 * 1024 * 1024) return toast.error("Imagem deve ter no maximo 2MB");
+
+    setUploadingAdicionalImagem(true);
+    const ext = file.name.split(".").pop() || "png";
+    const path = `adicionais/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage.from("loja").upload(path, file, {
+      upsert: true,
+      contentType: file.type,
+    });
+
+    setUploadingAdicionalImagem(false);
+    if (error) return toast.error("Erro ao enviar imagem: " + error.message);
+
+    const { data } = supabase.storage.from("loja").getPublicUrl(path);
+    setAdicionalForm((prev) => ({ ...prev, imagem_url: data.publicUrl }));
+    toast.success("Imagem enviada!");
   };
 
   const excluirAdicional = async (id: string) => {
@@ -331,6 +354,37 @@ export default function AdicionaisAdmin() {
             <div className="space-y-1">
               <Label>Imagem URL</Label>
               <Input value={adicionalForm.imagem_url} onChange={(e) => setAdicionalForm((prev) => ({ ...prev, imagem_url: e.target.value }))} maxLength={500} />
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  ref={adicionalImagemRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadImagemAdicional(file);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => adicionalImagemRef.current?.click()}
+                  disabled={uploadingAdicionalImagem}
+                >
+                  <Upload className="h-4 w-4 mr-1" /> {uploadingAdicionalImagem ? "Enviando..." : "Upload local"}
+                </Button>
+                {adicionalForm.imagem_url && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => setAdicionalForm((prev) => ({ ...prev, imagem_url: "" }))}
+                  >
+                    <X className="h-4 w-4 mr-1" /> Remover
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <Label>Disponivel</Label>

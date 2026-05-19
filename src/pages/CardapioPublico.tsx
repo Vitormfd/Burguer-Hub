@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
@@ -803,15 +803,26 @@ export default function CardapioPublico() {
     window.scrollTo({ top, behavior: "smooth" });
   };
 
+  const goToBanner = useCallback((index: number) => {
+    if (bannerSlides.length === 0) return;
+    const nextIndex = ((index % bannerSlides.length) + bannerSlides.length) % bannerSlides.length;
+    setBannerIndex(nextIndex);
+  }, [bannerSlides.length]);
+
+  const goToNextBanner = useCallback(() => {
+    if (bannerSlides.length <= 1) return;
+    setBannerIndex((prev) => (prev + 1) % bannerSlides.length);
+  }, [bannerSlides.length]);
+
   useEffect(() => {
     if (bannerSlides.length <= 1) return;
 
     const timer = window.setInterval(() => {
-      setBannerIndex((prev) => (prev + 1) % bannerSlides.length);
+      goToNextBanner();
     }, 3500);
 
     return () => window.clearInterval(timer);
-  }, [bannerSlides.length]);
+  }, [bannerSlides.length, goToNextBanner]);
 
   useEffect(() => {
     if (bannerSlides.length === 0) {
@@ -820,9 +831,9 @@ export default function CardapioPublico() {
     }
 
     if (bannerIndex >= bannerSlides.length) {
-      setBannerIndex(0);
+      goToBanner(0);
     }
-  }, [bannerIndex, bannerSlides.length]);
+  }, [bannerIndex, bannerSlides.length, goToBanner]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -1233,7 +1244,7 @@ export default function CardapioPublico() {
         <div className="max-w-4xl mx-auto px-3 pb-2">
           <div className="rounded-lg p-0 bg-transparent border-0 shadow-none">
             <div className="mx-auto w-full max-w-[620px]">
-              <div className="relative overflow-hidden rounded-[12px] bg-zinc-100 aspect-[16/7.2] sm:aspect-[16/10.4]">
+              <div className="relative overflow-hidden rounded-[12px] bg-zinc-100 aspect-video">
                 {bannerSlides.length > 0 ? (
                   <>
                     {bannerSlides.map((src, idx) => (
@@ -1269,6 +1280,7 @@ export default function CardapioPublico() {
                       key={`dot-${idx}`}
                       type="button"
                       aria-label={`Ir para banner ${idx + 1}`}
+                      onClick={() => goToBanner(idx)}
                       className={cn(
                         "h-1.5 rounded-full transition-all",
                         idx === bannerIndex ? "w-4 bg-zinc-500" : "w-1.5 bg-zinc-300 hover:bg-zinc-400"

@@ -32,6 +32,7 @@ DECLARE
   v_adicional jsonb;
   v_item_id uuid;
   v_phone text := public.normalize_phone(p_cliente_telefone);
+  v_tipo_entrega public.tipo_entrega;
 BEGIN
   IF p_owner_id IS NULL THEN
     RAISE EXCEPTION 'Loja inválida';
@@ -50,6 +51,13 @@ BEGIN
     RAISE EXCEPTION 'Loja indisponível';
   END IF;
 
+  BEGIN
+    v_tipo_entrega := p_tipo_entrega::public.tipo_entrega;
+  EXCEPTION
+    WHEN others THEN
+      RAISE EXCEPTION 'Tipo de entrega inválido';
+  END;
+
   INSERT INTO public.pedidos (
     owner_id,
     tipo,
@@ -64,7 +72,7 @@ BEGIN
   ) VALUES (
     p_owner_id,
     'delivery',
-    p_tipo_entrega,
+    v_tipo_entrega,
     'pendente',
     v_cliente_id,
     COALESCE(p_subtotal, 0),

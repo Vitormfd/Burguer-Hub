@@ -17,6 +17,7 @@ const schema = z.object({
   icone: z.string().trim().max(4).optional().or(z.literal("")),
   destaque: z.boolean(),
   emoji: z.string().trim().max(4).optional().or(z.literal("")),
+  ordem: z.number().int().min(0).max(9999),
 });
 
 interface Props {
@@ -32,6 +33,7 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
   const [emoji, setEmoji] = useState("");
   const [destaque, setDestaque] = useState(false);
   const [ativo, setAtivo] = useState(true);
+  const [ordem, setOrdem] = useState(0);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -41,11 +43,12 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
       setIcone(categoria?.icone ?? "");
       setEmoji(categoria?.emoji ?? "");
       setDestaque(categoria?.destaque ?? false);
+      setOrdem(categoria?.ordem ?? 0);
     }
   }, [open, categoria]);
 
   const save = async () => {
-    const parsed = schema.safeParse({ nome, ativo, icone, destaque, emoji });
+    const parsed = schema.safeParse({ nome, ativo, icone, destaque, emoji, ordem });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
 
     const data = {
@@ -54,6 +57,7 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
       icone: parsed.data.icone || null,
       destaque: parsed.data.destaque,
       emoji: parsed.data.emoji || null,
+      ordem: parsed.data.ordem,
     };
     setBusy(true);
     const { error } = categoria
@@ -74,6 +78,18 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="cat-ordem">Ordem no cardápio</Label>
+            <Input
+              id="cat-ordem"
+              type="number"
+              min={0}
+              max={9999}
+              value={ordem}
+              onChange={(e) => setOrdem(Number(e.target.value))}
+            />
+            <p className="text-xs text-muted-foreground">Quanto menor o número, mais acima a categoria aparece.</p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="cat-nome">Nome</Label>
             <Input id="cat-nome" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={60} autoFocus />

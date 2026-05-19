@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Utensils, Truck, BookOpen, ChefHat, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent } from "lucide-react";
 import {
@@ -7,6 +8,7 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 const items = [
   { title: "Mesas", url: "/mesas", icon: Utensils },
@@ -34,6 +37,78 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
   const { signOut, user } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+  const previousPendingRef = useRef<number | null>(null);
+
+  const playNewOrderSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+
+      const ctx = new AudioCtx();
+      const master = ctx.createGain();
+      master.gain.value = 0.06;
+      master.connect(ctx.destination);
+
+      const makeBeep = (frequency: number, start: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.9, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+
+      const now = ctx.currentTime;
+      makeBeep(880, now, 0.13);
+      makeBeep(1046, now + 0.17, 0.16);
+
+      setTimeout(() => {
+        void ctx.close();
+      }, 800);
+    } catch {
+      // Silencioso: em alguns navegadores autoplay pode bloquear áudio.
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    const syncPendingCount = async () => {
+      const { count } = await supabase
+        .from("pedidos")
+        .select("id", { head: true, count: "exact" })
+        .eq("status", "pendente");
+
+      const nextCount = count ?? 0;
+      const prevCount = previousPendingRef.current;
+
+      if (prevCount !== null && nextCount > prevCount) {
+        playNewOrderSound();
+      }
+
+      previousPendingRef.current = nextCount;
+      setPendingCount(nextCount);
+    };
+
+    void syncPendingCount();
+
+    const channel = supabase
+      .channel("sidebar-pedidos-pendentes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => {
+        void syncPendingCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   return (
     <Sidebar collapsible="icon">
@@ -66,6 +141,11 @@ export function AppSidebar() {
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
+                    {item.url === "/cozinha" && pendingCount > 0 && (
+                      <SidebarMenuBadge className="bg-destructive text-destructive-foreground rounded-full min-w-5 h-5 px-1.5">
+                        {pendingCount}
+                      </SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
                 );
               })}

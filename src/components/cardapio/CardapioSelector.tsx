@@ -59,7 +59,7 @@ export default function CardapioSelector({
   useEffect(() => {
     (async () => {
       const [{ data: cs }, { data: ps }] = await Promise.all([
-        supabase.from("categorias").select("*").eq("ativo", true).order("nome"),
+        supabase.from("categorias").select("*").eq("ativo", true).order("ordem").order("nome"),
         supabase.from("produtos").select("*").eq("disponivel", true).order("ordem"),
       ]);
       setCategorias((cs || []) as Categoria[]);

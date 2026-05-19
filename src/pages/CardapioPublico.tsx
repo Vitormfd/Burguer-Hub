@@ -277,7 +277,7 @@ export default function CardapioPublico() {
         const ownerId = (c as unknown as Configuracao & { owner_id?: string | null }).owner_id;
 
         const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
-          (supabase.from("categorias") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),
+          (supabase.from("categorias") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("nome"),
           (supabase.from("produtos") as any).select("*").eq("disponivel", true).eq("owner_id", ownerId).order("ordem"),
           (supabase.from("recompensas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("ordem").order("pedidos_necessarios"),
           (supabase.from("bairros_taxas") as any).select("*").eq("ativo", true).eq("owner_id", ownerId).order("nome"),

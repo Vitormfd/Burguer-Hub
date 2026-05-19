@@ -88,6 +88,7 @@ export type Database = {
           icone: string | null
           id: string
           nome: string
+          ordem: number
         }
         Insert: {
           ativo?: boolean
@@ -97,6 +98,7 @@ export type Database = {
           icone?: string | null
           id?: string
           nome: string
+          ordem?: number
         }
         Update: {
           ativo?: boolean
@@ -106,6 +108,7 @@ export type Database = {
           icone?: string | null
           id?: string
           nome?: string
+          ordem?: number
         }
         Relationships: []
       }

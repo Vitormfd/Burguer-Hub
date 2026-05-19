@@ -118,11 +118,15 @@ export default function Cozinha() {
       new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean))
     ) as string[];
 
-    const [{ data: produtos }, { data: mesas }, { data: adicionais }] = await Promise.all([
+    const [{ data: produtos, error: produtosError }, { data: mesas }, { data: adicionais }] = await Promise.all([
       prodIds.length ? supabase.from("produtos").select("id, nome").in("id", prodIds) : Promise.resolve({ data: [] as any[] }),
       mesaIds.length ? supabase.from("mesas").select("id, numero").in("id", mesaIds) : Promise.resolve({ data: [] as any[] }),
       adicionalIds.length ? supabase.from("adicionais").select("id, nome").in("id", adicionalIds) : Promise.resolve({ data: [] as any[] }),
     ]);
+
+    if (produtosError) {
+      toast.error(`Erro ao carregar nomes dos produtos: ${produtosError.message}`);
+    }
 
     const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
     const mesaMap = new Map((mesas || []).map((m) => [m.id, m.numero as number]));

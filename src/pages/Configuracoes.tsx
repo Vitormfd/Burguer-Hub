@@ -367,7 +367,7 @@ export default function Configuracoes() {
       }
 
       const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-        body: { action: "test_connection" },
+        body: { action: "test_connection", configuracao_id: cfg.id },
       });
 
       if (error) {

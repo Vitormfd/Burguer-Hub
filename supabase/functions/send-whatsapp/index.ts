@@ -14,6 +14,7 @@ type TipoMensagem =
 
 interface SendPayload {
   action?: "send" | "test_connection";
+  configuracao_id?: string;
   pedido_id: string;
   tipo_mensagem: TipoMensagem;
   telefone: string;
@@ -68,18 +69,22 @@ Deno.serve(async (req) => {
     return json({ error: "Payload inválido" }, 400);
   }
 
-  const { action, pedido_id, tipo_mensagem, telefone, dados_pedido } = payload ?? {};
+  const { action, configuracao_id, pedido_id, tipo_mensagem, telefone, dados_pedido } = payload ?? {};
 
   // Fetch Z-API credentials from configuracoes
-  const { data: cfg, error: cfgErr } = await supabase
+  let cfgQuery = supabase
     .from("configuracoes")
     .select(
-      "zapi_instance_id, zapi_token, zapi_client_token, zapi_ativo, " +
+      "id, zapi_instance_id, zapi_token, zapi_client_token, zapi_ativo, " +
       "whatsapp_msg_confirmado, whatsapp_msg_em_preparo, whatsapp_msg_saiu_entrega, " +
       "whatsapp_msg_entregue, whatsapp_msg_retirada_pronto, tempo_entrega_min"
-    )
-    .limit(1)
-    .maybeSingle();
+    );
+
+  if (configuracao_id) {
+    cfgQuery = cfgQuery.eq("id", configuracao_id);
+  }
+
+  const { data: cfg, error: cfgErr } = await cfgQuery.limit(1).maybeSingle();
 
   if (cfgErr || !cfg) {
     return json({ error: "Não foi possível carregar configurações" }, 500);

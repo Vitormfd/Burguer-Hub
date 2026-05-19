@@ -1162,7 +1162,7 @@ export default function CardapioPublico() {
       <header className="relative paper-bg">
         <div className="relative h-24 sm:h-30 md:h-36 overflow-hidden">
           {cfg.banner_url ? (
-            <img src={cfg.banner_url} alt="Banner" className="w-full h-full object-cover object-center" />
+            <img src={cfg.banner_url} alt="Banner" className="w-full h-full object-contain object-center" />
           ) : (
             <div className="w-full h-full" style={{ background: `linear-gradient(125deg, ${cfg.cor_primaria}, #00000066)` }} />
           )}
@@ -1233,7 +1233,7 @@ export default function CardapioPublico() {
         <div className="max-w-4xl mx-auto px-3 pb-2">
           <div className="rounded-lg p-0 bg-transparent border-0 shadow-none">
             <div className="mx-auto w-full max-w-[620px]">
-              <div className="relative overflow-hidden rounded-[12px] bg-zinc-100" style={{ aspectRatio: "16 / 10.4" }}>
+              <div className="relative overflow-hidden rounded-[12px] bg-zinc-100 aspect-[16/7.2] sm:aspect-[16/10.4]">
                 {bannerSlides.length > 0 ? (
                   <>
                     {bannerSlides.map((src, idx) => (
@@ -1242,7 +1242,7 @@ export default function CardapioPublico() {
                         src={src}
                         alt={`Banner ${idx + 1}`}
                         className={cn(
-                          "absolute inset-0 h-full w-full object-cover transition-opacity duration-500",
+                          "absolute inset-0 h-full w-full object-contain transition-opacity duration-500",
                           idx === bannerIndex ? "opacity-100" : "opacity-0"
                         )}
                         loading={idx === 0 ? "eager" : "lazy"}

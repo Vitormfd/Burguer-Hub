@@ -546,7 +546,7 @@ export default function Configuracoes() {
                       <Label>{kind === "logo" ? "Logo" : "Banner"}</Label>
                       {url && (
                         <div className="relative w-full rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: kind === "logo" ? "1 / 1" : "16 / 6", maxHeight: kind === "logo" ? 120 : 160 }}>
-                          <img src={url} alt={kind} className="w-full h-full object-cover" />
+                          <img src={url} alt={kind} className={cn("w-full h-full", kind === "logo" ? "object-cover" : "object-contain")} />
                           <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => setUrl(null)}>
                             <X className="w-4 h-4" />
                           </Button>
@@ -573,7 +573,7 @@ export default function Configuracoes() {
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {(cfg.carrossel_imagens || []).map((url, idx) => (
                       <div key={`${url}-${idx}`} className="relative rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
-                        <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
+                        <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-contain" />
                         <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => removeCarouselImage(url)}>
                           <X className="w-4 h-4" />
                         </Button>

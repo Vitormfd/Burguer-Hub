@@ -121,6 +121,7 @@ export type Database = {
           fidelidade_texto: string
           hora_abertura: string
           hora_fechamento: string
+          horario_funcionamento: Json
           id: string
           logo_url: string | null
           nome_loja: string
@@ -144,6 +145,7 @@ export type Database = {
           fidelidade_texto?: string
           hora_abertura?: string
           hora_fechamento?: string
+          horario_funcionamento?: Json
           id?: string
           logo_url?: string | null
           nome_loja?: string
@@ -167,6 +169,7 @@ export type Database = {
           fidelidade_texto?: string
           hora_abertura?: string
           hora_fechamento?: string
+          horario_funcionamento?: Json
           id?: string
           logo_url?: string | null
           nome_loja?: string

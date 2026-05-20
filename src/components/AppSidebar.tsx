@@ -39,6 +39,7 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const { signOut, user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const [storeName, setStoreName] = useState("Minha loja");
   const previousPendingRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -84,6 +85,30 @@ export function AppSidebar() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    let active = true;
+
+    const loadStoreName = async () => {
+      const { data } = await supabase
+        .from("configuracoes")
+        .select("nome_loja")
+        .limit(1)
+        .maybeSingle();
+
+      if (active && data?.nome_loja?.trim()) {
+        setStoreName(data.nome_loja.trim());
+      }
+    };
+
+    void loadStoreName();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
@@ -93,7 +118,7 @@ export function AppSidebar() {
           </div>
           {!collapsed && (
             <div className="flex flex-col leading-tight">
-              <span className="font-display text-xl text-sidebar-foreground">BURGER OS</span>
+              <span className="font-display text-xl text-sidebar-foreground truncate max-w-[150px]">{storeName}</span>
               <span className="text-[10px] text-sidebar-foreground/60 uppercase tracking-wider">Painel</span>
             </div>
           )}

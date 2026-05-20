@@ -265,16 +265,30 @@ export default function CardapioPublico() {
         cfgQuery = cfgQuery.eq("referencia", referencia);
       }
       
-      const [{ data: c }, { data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
-        cfgQuery.maybeSingle(),
-        supabase.from("categorias").select("*").eq("ativo", true).order("ordem").order("nome"),
-        supabase.from("produtos").select("*").eq("disponivel", true).order("ordem").order("nome"),
-        supabase.from("recompensas").select("*").eq("ativo", true).order("ordem").order("pedidos_necessarios"),
-        supabase.from("bairros_taxas").select("*").eq("ativo", true).order("nome"),
+      // First fetch config to get owner_id
+      const { data: c } = await cfgQuery.maybeSingle();
+      
+      if (c) setCfg(c as unknown as Configuracao);
+      
+      // Then fetch other data filtered by owner_id
+      const ownerId = (c as any)?.owner_id;
+      
+      const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
+        ownerId
+          ? (supabase.from("categorias") as any).select("*").eq("owner_id", ownerId).eq("ativo", true).order("ordem").order("nome")
+          : supabase.from("categorias").select("*").eq("ativo", true).order("ordem").order("nome"),
+        ownerId
+          ? (supabase.from("produtos") as any).select("*").eq("owner_id", ownerId).eq("disponivel", true).order("ordem").order("nome")
+          : supabase.from("produtos").select("*").eq("disponivel", true).order("ordem").order("nome"),
+        ownerId
+          ? (supabase.from("recompensas") as any).select("*").eq("owner_id", ownerId).eq("ativo", true).order("ordem").order("pedidos_necessarios")
+          : supabase.from("recompensas").select("*").eq("ativo", true).order("ordem").order("pedidos_necessarios"),
+        ownerId
+          ? (supabase.from("bairros_taxas") as any).select("*").eq("owner_id", ownerId).eq("ativo", true).order("nome")
+          : supabase.from("bairros_taxas").select("*").eq("ativo", true).order("nome"),
         supabase.from("pedido_itens").select("produto_id, quantidade").limit(1000),
       ]);
 
-      if (c) setCfg(c as unknown as Configuracao);
       const cs = (cat || []) as Categoria[];
       setCategorias(cs);
       setProdutos((prod || []) as Produto[]);

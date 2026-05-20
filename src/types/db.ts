@@ -22,6 +22,8 @@ export interface Categoria {
   icone?: string | null;
   destaque?: boolean;
   emoji?: string | null;
+  owner_id?: string;
+  ordem?: number;
 }
 
 export interface Produto {
@@ -36,6 +38,8 @@ export interface Produto {
   imagem_url: string | null;
   promocao?: boolean;
   preco_promocional?: number | null;
+  owner_id?: string;
+  ordem?: number;
 }
 
 export interface Conta {
@@ -154,6 +158,7 @@ export interface Configuracao {
   whatsapp_msg_saiu_entrega?: string;
   whatsapp_msg_entregue?: string;
   whatsapp_msg_retirada_pronto?: string;
+  owner_id?: string;
 }
 
 export interface WhatsappLog {
@@ -192,6 +197,7 @@ export interface Recompensa {
   imagem_url: string | null;
   ordem: number;
   criado_em?: string;
+  owner_id?: string;
 }
 
 export interface Cupom {
@@ -244,4 +250,5 @@ export interface BairroTaxa {
   nome: string;
   taxa: number;
   ativo: boolean;
+  owner_id?: string;
 }

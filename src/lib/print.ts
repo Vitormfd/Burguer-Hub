@@ -63,6 +63,8 @@ export interface PrintDeliveryData {
   cliente_nome: string;
   cliente_telefone: string;
   endereco: string;
+  numero?: string | null;
+  complemento?: string | null;
   bairro?: string | null;
   taxa_entrega: number;
   desconto?: number;
@@ -133,7 +135,9 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     body += `<div class="info-line"><b>${esc(data.cliente_nome)}</b></div>`;
     body += `<div class="info-line">${esc(data.cliente_telefone)}</div>`;
     if (data.tipo === "delivery") {
-      const addr = esc(data.endereco) + (data.bairro ? ` &mdash; ${esc(data.bairro)}` : "");
+      const numero = data.numero ? `, ${esc(data.numero)}` : "";
+      const complemento = data.complemento ? ` - ${esc(data.complemento)}` : "";
+      const addr = `${esc(data.endereco)}${numero}${complemento}` + (data.bairro ? ` &mdash; ${esc(data.bairro)}` : "");
       body += `<div class="info-line">${addr}</div>`;
     } else {
       body += `<div class="info-line">Retirada no balcão</div>`;

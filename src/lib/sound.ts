@@ -53,19 +53,25 @@ export const playNewOrderAlert = () => {
 
     const play = () => {
       const master = ctx.createGain();
-      master.gain.value = 0.12;
+      master.gain.value = 0.22;
       master.connect(ctx.destination);
 
-      const makeBeep = (frequency: number, delaySec: number, durationSec: number) => {
+      const makeBeep = (
+        frequency: number,
+        delaySec: number,
+        durationSec: number,
+        type: OscillatorType,
+        volume: number
+      ) => {
         const start = ctx.currentTime + delaySec;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        osc.type = "sine";
+        osc.type = type;
         osc.frequency.value = frequency;
 
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.85, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(volume, start + 0.008);
         gain.gain.exponentialRampToValueAtTime(0.0001, start + durationSec);
 
         osc.connect(gain);
@@ -74,12 +80,19 @@ export const playNewOrderAlert = () => {
         osc.stop(start + durationSec);
       };
 
-      makeBeep(880, 0, 0.12);
-      makeBeep(1046, 0.16, 0.15);
+      // Trinca de alertas curtos e marcantes, com camada harmônica para sobressair em ambiente de cozinha.
+      makeBeep(920, 0.0, 0.11, "square", 0.95);
+      makeBeep(1840, 0.0, 0.09, "triangle", 0.45);
+
+      makeBeep(920, 0.16, 0.11, "square", 0.95);
+      makeBeep(1840, 0.16, 0.09, "triangle", 0.45);
+
+      makeBeep(1120, 0.34, 0.16, "square", 1.0);
+      makeBeep(2240, 0.34, 0.13, "triangle", 0.5);
 
       setTimeout(() => {
         master.disconnect();
-      }, 700);
+      }, 1000);
     };
 
     if (ctx.state === "suspended") {

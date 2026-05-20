@@ -1358,7 +1358,7 @@ export default function CardapioPublico() {
                               {isTop && <Badge className="bg-amber-100 text-amber-700 rounded-full text-xs">Mais pedido</Badge>}
                             </div>
                             <p className="text-[11px] sm:text-[12px] text-zinc-500 mt-1 line-clamp-2">{p.descricao || "Sem descricao"}</p>
-                            <div className="mt-1 inline-flex rounded-full bg-zinc-200/80 text-zinc-600 px-2 py-0.5 text-[9px] font-medium">Serve 1 pessoa</div>
+                            <div className="mt-1 inline-flex rounded-full bg-zinc-200/80 text-zinc-600 px-2 py-0.5 text-[9px] font-medium">{p.serve_texto || "Serve 1 pessoa"}</div>
                             <div className="mt-2.5 flex items-end gap-1.5 text-zinc-600">
                               <span className="text-[14px] leading-none">A partir de</span>
                               {isPromo && <span className="text-xs line-through text-zinc-400 mb-0.5">{brl(Number(p.preco))}</span>}

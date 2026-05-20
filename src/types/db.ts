@@ -29,6 +29,7 @@ export interface Produto {
   categoria_id: string | null;
   nome: string;
   descricao: string | null;
+  serve_texto?: string | null;
   preco: number;
   disponivel: boolean;
   destaque?: boolean;

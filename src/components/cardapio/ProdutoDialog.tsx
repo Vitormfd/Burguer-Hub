@@ -19,6 +19,7 @@ import { Upload, X } from "lucide-react";
 const schema = z.object({
   nome: z.string().trim().min(2, "Nome muito curto").max(80),
   descricao: z.string().trim().max(300).optional().or(z.literal("")),
+  serve_texto: z.string().trim().max(40).optional().or(z.literal("")),
   preco: z.number().min(0, "Preço inválido").max(9999),
   categoria_id: z.string().uuid().nullable(),
   imagem_url: z.string().trim().max(500).optional().or(z.literal("")),
@@ -41,6 +42,7 @@ interface Props {
 export default function ProdutoDialog({ open, produto, categorias, defaultCategoriaId, onClose, onSaved }: Props) {
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [serveTexto, setServeTexto] = useState("Serve 1 pessoa");
   const [preco, setPreco] = useState("0");
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [imagemUrl, setImagemUrl] = useState("");
@@ -80,6 +82,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
     if (!open) return;
     setNome(produto?.nome ?? "");
     setDescricao(produto?.descricao ?? "");
+    setServeTexto(produto?.serve_texto ?? "Serve 1 pessoa");
     setPreco(produto ? String(produto.preco) : "0");
     setCategoriaId(produto?.categoria_id ?? defaultCategoriaId ?? null);
     setImagemUrl(produto?.imagem_url ?? "");
@@ -177,6 +180,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
     const parsed = schema.safeParse({
       nome,
       descricao,
+      serve_texto: serveTexto,
       preco: Number(preco.replace(",", ".")) || 0,
       categoria_id: categoriaId,
       imagem_url: imagemUrl,
@@ -195,6 +199,7 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
       disponivel: parsed.data.disponivel,
       destaque: parsed.data.destaque,
       descricao: parsed.data.descricao || null,
+      serve_texto: parsed.data.serve_texto || null,
       imagem_url: parsed.data.imagem_url || null,
       promocao: parsed.data.promocao,
       preco_promocional: parsed.data.preco_promocional,
@@ -234,6 +239,17 @@ export default function ProdutoDialog({ open, produto, categorias, defaultCatego
           <div className="space-y-2">
             <Label htmlFor="p-desc">Descrição</Label>
             <Textarea id="p-desc" value={descricao} onChange={(e) => setDescricao(e.target.value)} maxLength={300} rows={3} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="p-serve">Texto de porção</Label>
+            <Input
+              id="p-serve"
+              value={serveTexto}
+              onChange={(e) => setServeTexto(e.target.value)}
+              maxLength={40}
+              placeholder="Ex.: Serve 2 pessoas"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

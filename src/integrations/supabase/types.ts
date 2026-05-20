@@ -733,6 +733,7 @@ export type Database = {
           preco: number
           preco_promocional: number | null
           promocao: boolean
+          serve_texto: string | null
         }
         Insert: {
           categoria_id?: string | null
@@ -746,6 +747,7 @@ export type Database = {
           preco?: number
           preco_promocional?: number | null
           promocao?: boolean
+          serve_texto?: string | null
         }
         Update: {
           categoria_id?: string | null
@@ -759,6 +761,7 @@ export type Database = {
           preco?: number
           preco_promocional?: number | null
           promocao?: boolean
+          serve_texto?: string | null
         }
         Relationships: [
           {

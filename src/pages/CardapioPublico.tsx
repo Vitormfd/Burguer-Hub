@@ -315,6 +315,10 @@ export default function CardapioPublico() {
   }, [cfg]);
 
   const fidelidadeCor = useMemo(() => normalizeHexColor(cfg?.fidelidade_cor), [cfg?.fidelidade_cor]);
+  const fidelidadePedidoMinimo = useMemo(() => {
+    const parsed = Number(cfg?.fidelidade_pedido_minimo ?? 0);
+    return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+  }, [cfg?.fidelidade_pedido_minimo]);
 
   const subtotal = cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
   const totalItens = cart.reduce((s, i) => s + i.quantidade, 0);
@@ -661,6 +665,11 @@ export default function CardapioPublico() {
                 </div>
                 <h3 className={cn("font-bold tracking-tight text-zinc-900", compact ? "text-xl" : "text-3xl")}>Suas recompensas 🎁</h3>
                 <p className="max-w-2xl text-sm" style={{ color: withAlpha(fidelidadeCor, 0.9) }}>{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</p>
+                {fidelidadePedidoMinimo > 0 && (
+                  <p className="max-w-2xl text-xs text-zinc-700">
+                    Contam na fidelidade apenas pedidos a partir de {brl(fidelidadePedidoMinimo)}.
+                  </p>
+                )}
               </div>
               {proximaRecompensa && fidelidadeCliente && (
                 <div className="min-w-[230px] rounded-2xl border bg-zinc-950 px-4 py-3 text-white" style={{ borderColor: withAlpha(fidelidadeCor, 0.42) }}>
@@ -1252,6 +1261,9 @@ export default function CardapioPublico() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/80">Programa de fidelidade</p>
                   <h2 className="text-lg font-bold tracking-tight text-white">{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</h2>
+                  {fidelidadePedidoMinimo > 0 && (
+                    <p className="mt-1 text-xs text-white/90">Pedidos a partir de {brl(fidelidadePedidoMinimo)} contam na fidelidade.</p>
+                  )}
                 </div>
               </div>
               <Button type="button" onClick={openFidelidadeDialog} className="bg-white hover:bg-white/90" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>

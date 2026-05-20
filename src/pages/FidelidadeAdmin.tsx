@@ -66,6 +66,12 @@ const normalizeHexColor = (value?: string | null) => {
   return /^#[0-9A-Fa-f]{6}$/.test(normalized) ? normalized : "#16a34a";
 };
 
+const parseNonNegativeNumber = (value?: string | number | null) => {
+  if (typeof value === "number") return Math.max(value, 0);
+  const parsed = Number(String(value || "0").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+};
+
 export default function FidelidadeAdmin() {
   const [configuracao, setConfiguracao] = useState<Configuracao | null>(null);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -211,6 +217,7 @@ export default function FidelidadeAdmin() {
         fidelidade_ativa: configuracao.fidelidade_ativa,
         fidelidade_texto: configuracao.fidelidade_texto,
         fidelidade_cor: normalizeHexColor(configuracao.fidelidade_cor),
+        fidelidade_pedido_minimo: parseNonNegativeNumber(configuracao.fidelidade_pedido_minimo),
       })
       .eq("id", configuracao.id);
     setConfigBusy(false);
@@ -387,6 +394,26 @@ export default function FidelidadeAdmin() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">Essa cor controla o destaque visual da secao de fidelidade no cardapio publico.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Pedido minimo para contar na fidelidade</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={String(configuracao?.fidelidade_pedido_minimo ?? 0)}
+                onChange={(event) =>
+                  configuracao &&
+                  setConfiguracao({
+                    ...configuracao,
+                    fidelidade_pedido_minimo: parseNonNegativeNumber(event.target.value),
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Pedidos abaixo desse valor nao entram na contagem de pedidos para recompensas.
+              </p>
             </div>
 
             <div className="flex justify-end">

@@ -121,6 +121,7 @@ export type Database = {
           created_at: string
           fidelidade_ativa: boolean
           fidelidade_cor: string
+          fidelidade_pedido_minimo: number
           fidelidade_texto: string
           hora_abertura: string
           hora_fechamento: string
@@ -145,6 +146,7 @@ export type Database = {
           created_at?: string
           fidelidade_ativa?: boolean
           fidelidade_cor?: string
+          fidelidade_pedido_minimo?: number
           fidelidade_texto?: string
           hora_abertura?: string
           hora_fechamento?: string
@@ -169,6 +171,7 @@ export type Database = {
           created_at?: string
           fidelidade_ativa?: boolean
           fidelidade_cor?: string
+          fidelidade_pedido_minimo?: number
           fidelidade_texto?: string
           hora_abertura?: string
           hora_fechamento?: string

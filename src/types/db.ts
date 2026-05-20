@@ -143,6 +143,7 @@ export interface Configuracao {
   fidelidade_ativa?: boolean;
   fidelidade_texto?: string;
   fidelidade_cor?: string;
+  fidelidade_pedido_minimo?: number;
   // Z-API / WhatsApp
   zapi_instance_id?: string | null;
   zapi_token?: string | null;

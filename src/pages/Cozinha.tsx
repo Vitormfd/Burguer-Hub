@@ -62,6 +62,8 @@ export default function Cozinha() {
   const [cards, setCards] = useState<KdsCard[]>([]);
   const [tick, setTick] = useState(0);
   const previousPendingRef = useRef<number | null>(null);
+  const loadInFlightRef = useRef(false);
+  const pendingReloadRef = useRef(false);
 
   // re-render every 30s para atualizar "tempo decorrido"
   useEffect(() => {
@@ -107,131 +109,163 @@ export default function Cozinha() {
   }, []);
 
   const load = useCallback(async () => {
-    const { data: pedidos, error } = await supabase
-      .from("pedidos")
-      .select("id, tipo, tipo_entrega, status, criado_em, conta_id")
-      .in("status", ["pendente", "em_preparo"])
-      .order("criado_em", { ascending: true });
-    if (error) { toast.error(error.message); return; }
-    if (!pedidos?.length) { setCards([]); return; }
-
-    const ids = pedidos.map((p) => p.id);
-    const contaIds = Array.from(new Set(pedidos.map((p) => p.conta_id).filter(Boolean))) as string[];
-
-    const [{ data: itens }, { data: contas }, { data: entregas }] = await Promise.all([
-      supabase.from("pedido_itens").select("id, pedido_id, quantidade, observacao, produto_id, cancelado").in("pedido_id", ids),
-      contaIds.length ? supabase.from("contas").select("id, mesa_id").in("id", contaIds) : Promise.resolve({ data: [] as any[] }),
-      supabase.from("entregas").select("pedido_id, cliente_nome, origem").in("pedido_id", ids),
-    ]);
-
-    const itensAtivos = (itens || []).filter((i) => !i.cancelado);
-
-    const itemIds = itensAtivos.map((i) => i.id);
-    const prodIds = Array.from(new Set(itensAtivos.map((i) => i.produto_id).filter(Boolean))) as string[];
-    const mesaIds = Array.from(new Set((contas || []).map((c) => c.mesa_id).filter(Boolean))) as string[];
-    const { data: itemAdicionais } = itemIds.length
-      ? await supabase
-          .from("pedido_item_adicionais")
-          .select("pedido_item_id, adicional_id, quantidade")
-          .in("pedido_item_id", itemIds)
-      : { data: [] as any[] };
-
-    const adicionalIds = Array.from(
-      new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean))
-    ) as string[];
-
-    const [{ data: produtos, error: produtosError }, { data: mesas }, { data: adicionais }] = await Promise.all([
-      prodIds.length ? supabase.from("produtos").select("id, nome").in("id", prodIds) : Promise.resolve({ data: [] as any[] }),
-      mesaIds.length ? supabase.from("mesas").select("id, numero").in("id", mesaIds) : Promise.resolve({ data: [] as any[] }),
-      adicionalIds.length ? supabase.from("adicionais").select("id, nome").in("id", adicionalIds) : Promise.resolve({ data: [] as any[] }),
-    ]);
-
-    if (produtosError) {
-      toast.error(`Erro ao carregar nomes dos produtos: ${produtosError.message}`);
+    if (loadInFlightRef.current) {
+      pendingReloadRef.current = true;
+      return;
     }
 
-    const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
-    const mesaMap = new Map((mesas || []).map((m) => [m.id, m.numero as number]));
-    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome as string]));
-    const contaToMesa = new Map((contas || []).map((c) => [c.id, c.mesa_id as string | null]));
-    const entregaMap = new Map((entregas || []).map((e) => [e.pedido_id, e]));
-    const adicionaisPorItem = new Map<string, { nome: string; quantidade: number }[]>();
-
-    (itemAdicionais || []).forEach((row: any) => {
-      const current = adicionaisPorItem.get(row.pedido_item_id) || [];
-      current.push({
-        nome: adicionalMap.get(row.adicional_id) ?? "Adicional",
-        quantidade: row.quantidade || 1,
-      });
-      adicionaisPorItem.set(row.pedido_item_id, current);
-    });
-
-    const list: KdsCard[] = pedidos.map((p) => {
-      let rotulo = "—";
-      let online = false;
-      let tipo = p.tipo as Tipo;
-      if (p.tipo === "mesa") {
-        const mesaId = p.conta_id ? contaToMesa.get(p.conta_id) : null;
-        const num = mesaId ? mesaMap.get(mesaId) : null;
-        rotulo = num != null ? `Mesa ${String(num).padStart(2, "0")}` : "Mesa";
-      } else {
-        const e = entregaMap.get(p.id) as any;
-        const clienteNome = String(e?.cliente_nome || "").trim();
-        tipo = p.tipo_entrega === "retirada" ? "retirada" : "delivery";
-        rotulo = clienteNome || (tipo === "retirada" ? "Retirada" : "Delivery");
-        online = e?.origem === "online";
+    loadInFlightRef.current = true;
+    try {
+      const { data: pedidos, error } = await supabase
+        .from("pedidos")
+        .select("id, tipo, tipo_entrega, status, criado_em, conta_id")
+        .in("status", ["pendente", "em_preparo"])
+        .order("criado_em", { ascending: true });
+      if (error) { toast.error(error.message); return; }
+      if (!pedidos?.length) {
+        previousPendingRef.current = 0;
+        setCards([]);
+        return;
       }
-      const its = itensAtivos
-        .filter((i) => i.pedido_id === p.id)
-        .map<KdsItem>((i) => {
-          const parsedObs = parseKdsItemObservation(i.observacao);
-          return {
-            id: i.id,
-            nome: i.produto_id ? (prodMap.get(i.produto_id) || parsedObs.itemName || "Item") : (parsedObs.itemName || "Item"),
-            quantidade: i.quantidade,
-            observacao: parsedObs.observacao,
-            adicionais: adicionaisPorItem.get(i.id) || [],
-          };
+
+      const ids = pedidos.map((p) => p.id);
+      const contaIds = Array.from(new Set(pedidos.map((p) => p.conta_id).filter(Boolean))) as string[];
+
+      const [{ data: itens }, { data: contas }, { data: entregas }] = await Promise.all([
+        supabase.from("pedido_itens").select("id, pedido_id, quantidade, observacao, produto_id, cancelado").in("pedido_id", ids),
+        contaIds.length ? supabase.from("contas").select("id, mesa_id").in("id", contaIds) : Promise.resolve({ data: [] as any[] }),
+        supabase.from("entregas").select("pedido_id, cliente_nome, origem").in("pedido_id", ids),
+      ]);
+
+      const itensAtivos = (itens || []).filter((i) => !i.cancelado);
+
+      const itemIds = itensAtivos.map((i) => i.id);
+      const prodIds = Array.from(new Set(itensAtivos.map((i) => i.produto_id).filter(Boolean))) as string[];
+      const mesaIds = Array.from(new Set((contas || []).map((c) => c.mesa_id).filter(Boolean))) as string[];
+      const { data: itemAdicionais } = itemIds.length
+        ? await supabase
+            .from("pedido_item_adicionais")
+            .select("pedido_item_id, adicional_id, quantidade")
+            .in("pedido_item_id", itemIds)
+        : { data: [] as any[] };
+
+      const adicionalIds = Array.from(
+        new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean))
+      ) as string[];
+
+      const [{ data: produtos, error: produtosError }, { data: mesas }, { data: adicionais }] = await Promise.all([
+        prodIds.length ? supabase.from("produtos").select("id, nome").in("id", prodIds) : Promise.resolve({ data: [] as any[] }),
+        mesaIds.length ? supabase.from("mesas").select("id, numero").in("id", mesaIds) : Promise.resolve({ data: [] as any[] }),
+        adicionalIds.length ? supabase.from("adicionais").select("id, nome").in("id", adicionalIds) : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      if (produtosError) {
+        toast.error(`Erro ao carregar nomes dos produtos: ${produtosError.message}`);
+      }
+
+      const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
+      const mesaMap = new Map((mesas || []).map((m) => [m.id, m.numero as number]));
+      const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome as string]));
+      const contaToMesa = new Map((contas || []).map((c) => [c.id, c.mesa_id as string | null]));
+      const entregaMap = new Map((entregas || []).map((e) => [e.pedido_id, e]));
+      const adicionaisPorItem = new Map<string, { nome: string; quantidade: number }[]>();
+
+      (itemAdicionais || []).forEach((row: any) => {
+        const current = adicionaisPorItem.get(row.pedido_item_id) || [];
+        current.push({
+          nome: adicionalMap.get(row.adicional_id) ?? "Adicional",
+          quantidade: row.quantidade || 1,
         });
-      return {
-        pedido_id: p.id,
-        tipo,
-        status: p.status as Status,
-        criado_em: p.criado_em,
-        rotulo,
-        online,
-        itens: its,
-      };
-    }).filter((card) => card.itens.length > 0);
+        adicionaisPorItem.set(row.pedido_item_id, current);
+      });
 
-    const nextPending = list.filter((card) => card.status === "pendente").length;
-    const prevPending = previousPendingRef.current;
+      const list: KdsCard[] = pedidos.map((p) => {
+        let rotulo = "—";
+        let online = false;
+        let tipo = p.tipo as Tipo;
+        if (p.tipo === "mesa") {
+          const mesaId = p.conta_id ? contaToMesa.get(p.conta_id) : null;
+          const num = mesaId ? mesaMap.get(mesaId) : null;
+          rotulo = num != null ? `Mesa ${String(num).padStart(2, "0")}` : "Mesa";
+        } else {
+          const e = entregaMap.get(p.id) as any;
+          const clienteNome = String(e?.cliente_nome || "").trim();
+          tipo = p.tipo_entrega === "retirada" ? "retirada" : "delivery";
+          rotulo = clienteNome || (tipo === "retirada" ? "Retirada" : "Delivery");
+          online = e?.origem === "online";
+        }
+        const its = itensAtivos
+          .filter((i) => i.pedido_id === p.id)
+          .map<KdsItem>((i) => {
+            const parsedObs = parseKdsItemObservation(i.observacao);
+            return {
+              id: i.id,
+              nome: i.produto_id ? (prodMap.get(i.produto_id) || parsedObs.itemName || "Item") : (parsedObs.itemName || "Item"),
+              quantidade: i.quantidade,
+              observacao: parsedObs.observacao,
+              adicionais: adicionaisPorItem.get(i.id) || [],
+            };
+          });
+        return {
+          pedido_id: p.id,
+          tipo,
+          status: p.status as Status,
+          criado_em: p.criado_em,
+          rotulo,
+          online,
+          itens: its,
+        };
+      }).filter((card) => card.itens.length > 0);
 
-    if (prevPending !== null && nextPending > prevPending) {
-      playNewOrderAlert();
-      toast.success("Novo pedido chegou na cozinha");
+      const nextPending = list.filter((card) => card.status === "pendente").length;
+      const prevPending = previousPendingRef.current;
+
+      if (prevPending !== null && nextPending > prevPending) {
+        playNewOrderAlert();
+        toast.success("Novo pedido chegou na cozinha");
+      }
+
+      previousPendingRef.current = nextPending;
+      setCards(list);
+    } finally {
+      loadInFlightRef.current = false;
+      if (pendingReloadRef.current) {
+        pendingReloadRef.current = false;
+        void load();
+      }
     }
-
-    previousPendingRef.current = nextPending;
-    setCards(list);
   }, []);
 
   useEffect(() => {
     if (!session) return;
-    load();
+    void load();
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void load();
+      }
+    }, 5000);
+
     const ch = supabase
       .channel("kds-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => { void load(); })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pedido_itens" }, (payload) => {
         void notifyItemCancelado(payload);
         void load();
       })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedido_itens" }, () => load())
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pedido_itens" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedido_item_adicionais" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedido_itens" }, () => { void load(); })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pedido_itens" }, () => { void load(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedido_item_adicionais" }, () => { void load(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => { void load(); })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          void load();
+        }
+      });
+    return () => {
+      window.clearInterval(poll);
+      supabase.removeChannel(ch);
+    };
   }, [session, load, notifyItemCancelado]);
 
   const advance = async (c: KdsCard, next: Status) => {

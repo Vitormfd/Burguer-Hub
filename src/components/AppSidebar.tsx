@@ -45,12 +45,15 @@ export function AppSidebar() {
   useEffect(() => {
     if (!user) return;
     bindAudioUnlock();
+    let isActive = true;
 
     const syncPendingCount = async () => {
       const { count } = await supabase
         .from("pedidos")
         .select("id", { head: true, count: "exact" })
         .eq("status", "pendente");
+
+      if (!isActive) return;
 
       const nextCount = count ?? 0;
       const prevCount = previousPendingRef.current;
@@ -64,6 +67,12 @@ export function AppSidebar() {
     };
 
     void syncPendingCount();
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void syncPendingCount();
+      }
+    }, 7000);
 
     const channel = supabase
       .channel("sidebar-pedidos-pendentes")
@@ -81,6 +90,8 @@ export function AppSidebar() {
       .subscribe();
 
     return () => {
+      isActive = false;
+      window.clearInterval(poll);
       supabase.removeChannel(channel);
     };
   }, [user]);

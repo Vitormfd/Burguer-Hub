@@ -7,6 +7,7 @@ import {
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { printReceipt } from "@/lib/print";
+import type { Configuracao } from "@/types/db";
 
 interface Props {
   open: boolean;
@@ -20,8 +21,20 @@ export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, o
   const [cart, setCart] = useState<Cart>([]);
   const [busy, setBusy] = useState(false);
   const [autoPrint, setAutoPrint] = useState(true);
+  const [cfg, setCfg] = useState<Configuracao | null>(null);
 
-  useEffect(() => { if (open) setCart([]); }, [open]);
+  useEffect(() => { 
+    if (open) {
+      setCart([]);
+      // Carregar configuração da loja
+      (async () => {
+        const { data } = await supabase.from("configuracoes").select("*").limit(1).maybeSingle();
+        if (data) {
+          setCfg(data as unknown as Configuracao);
+        }
+      })();
+    }
+  }, [open]);
 
   const handleConfirm = async () => {
     const items = cart;
@@ -64,6 +77,7 @@ export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, o
     if (autoPrint && mesaNumero != null) {
       printReceipt({
         tipo: "mesa",
+        loja_nome: cfg?.nome_loja,
         mesa_numero: mesaNumero,
         pedidos: [{
           numero: 1,

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mesa, Conta, Pedido, PedidoItem, Produto } from "@/types/db";
+import { Mesa, Conta, Pedido, PedidoItem, Produto, Configuracao } from "@/types/db";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -42,12 +42,12 @@ type PedidoComItens = Pedido & {
   } | null;
 };
 
-type MotivoCancelamento = "Erro do atendente" | "Cliente desistiu" | "Item indisponível" | "Outro";
+type MotivoCancelamento = "Erro do atendente" | "Cliente desistiu" | "Item indisponï¿½vel" | "Outro";
 
 const MOTIVOS_CANCELAMENTO: MotivoCancelamento[] = [
   "Erro do atendente",
   "Cliente desistiu",
-  "Item indisponível",
+  "Item indisponï¿½vel",
   "Outro",
 ];
 
@@ -72,6 +72,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   const [textoConfirmacaoConta, setTextoConfirmacaoConta] = useState("");
   const [showOfferFecharZero, setShowOfferFecharZero] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cfg, setCfg] = useState<Configuracao | null>(null);
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<{ tipo: "item" | "pedido"; pedido: PedidoComItens; item?: ItemDetalhado } | null>(null);
@@ -158,7 +159,16 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     })));
   }, [mesa]);
 
-  useEffect(() => { if (mesa) load(); }, [mesa, load]);
+  useEffect(() => { 
+    if (mesa) load();
+    // Carregar configuraÃ§Ã£o da loja uma vez
+    (async () => {
+      const { data } = await supabase.from("configuracoes").select("*").limit(1).maybeSingle();
+      if (data) {
+        setCfg(data as unknown as Configuracao);
+      }
+    })();
+  }, [mesa, load]);
 
   useEffect(() => {
     if (!conta) return;
@@ -237,6 +247,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     if (!mesa || !pedidos.length) return;
     printReceipt({
       tipo: "mesa",
+      loja_nome: cfg?.nome_loja,
       mesa_numero: mesa.numero,
       pedidos: pedidos
         .map((p, idx) => {
@@ -287,7 +298,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   };
 
   const handleFechar = async () => {
-    await closeConta(total, `Mesa ${mesa?.numero} fechada — ${brl(total)}`);
+    await closeConta(total, `Mesa ${mesa?.numero} fechada ï¿½ ${brl(total)}`);
   };
 
   const resetCancelDialog = () => {
@@ -299,7 +310,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
   const openItemCancelDialog = (pedido: PedidoComItens, item: ItemDetalhado) => {
     if (!pedidoCancelavel(pedido.status)) {
-      toast.error("Pedido já finalizado, fale com o gerente");
+      toast.error("Pedido jï¿½ finalizado, fale com o gerente");
       return;
     }
     setCancelTarget({ tipo: "item", pedido, item });
@@ -308,7 +319,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
   const openPedidoCancelDialog = (pedido: PedidoComItens) => {
     if (!pedidoCancelavel(pedido.status)) {
-      toast.error("Pedido já finalizado, fale com o gerente");
+      toast.error("Pedido jï¿½ finalizado, fale com o gerente");
       return;
     }
     setCancelTarget({ tipo: "pedido", pedido });
@@ -330,7 +341,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     if (cancelTarget.tipo === "item" && cancelTarget.item) {
       if (!pedidoCancelavel(cancelTarget.pedido.status)) {
         setBusy(false);
-        toast.error("Pedido já finalizado, fale com o gerente");
+        toast.error("Pedido jï¿½ finalizado, fale com o gerente");
         return;
       }
 
@@ -380,7 +391,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     if (cancelTarget.tipo === "pedido") {
       if (!pedidoCancelavel(cancelTarget.pedido.status)) {
         setBusy(false);
-        toast.error("Pedido já finalizado, fale com o gerente");
+        toast.error("Pedido jï¿½ finalizado, fale com o gerente");
         return;
       }
 
@@ -576,7 +587,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <span className={i.cancelado ? "font-medium line-through text-muted-foreground" : "font-medium"}>
-                                {i.quantidade}× {i.produto?.nome ?? "Produto removido"}
+                                {i.quantidade}ï¿½ {i.produto?.nome ?? "Produto removido"}
                               </span>
                               {i.cancelado && (
                                 <Badge variant="destructive">Cancelado</Badge>
@@ -662,7 +673,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               {cancelTarget?.tipo === "item" ? "Cancelar item" : "Cancelar pedido"}
             </DialogTitle>
             <DialogDescription>
-              Informe o motivo do cancelamento. Esta ação não apaga dados, apenas marca como cancelado.
+              Informe o motivo do cancelamento. Esta aï¿½ï¿½o nï¿½o apaga dados, apenas marca como cancelado.
             </DialogDescription>
           </DialogHeader>
 
@@ -682,7 +693,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
             </div>
 
             <div className="space-y-2">
-              <Label>Observação (opcional)</Label>
+              <Label>Observaï¿½ï¿½o (opcional)</Label>
               <Textarea
                 value={observacaoCancelamento}
                 onChange={(e) => setObservacaoCancelamento(e.target.value)}
@@ -706,7 +717,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
             <AlertDialogTitle className="font-display text-2xl">Fechar conta da mesa {mesa?.numero}?</AlertDialogTitle>
             <AlertDialogDescription>
               Total a cobrar: <span className="font-semibold text-foreground">{brl(total)}</span>.
-              A mesa voltará a ficar livre.
+              A mesa voltarï¿½ a ficar livre.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -723,7 +734,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display text-2xl">Todos os pedidos foram cancelados</AlertDialogTitle>
             <AlertDialogDescription>
-              Você pode fechar a conta com valor R$ 0,00 ou manter a conta aberta para novos pedidos.
+              Vocï¿½ pode fechar a conta com valor R$ 0,00 ou manter a conta aberta para novos pedidos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -740,7 +751,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display text-2xl text-destructive">Cancelar conta inteira?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação vai cancelar todos os pedidos e itens, fechar a conta em R$ 0,00 e liberar a mesa.
+              Esta aï¿½ï¿½o vai cancelar todos os pedidos e itens, fechar a conta em R$ 0,00 e liberar a mesa.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -761,7 +772,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       <Dialog open={confirmarTextoCancelarConta} onOpenChange={(open) => !busy && setConfirmarTextoCancelarConta(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl text-destructive">Confirmação final</DialogTitle>
+            <DialogTitle className="font-display text-2xl text-destructive">Confirmaï¿½ï¿½o final</DialogTitle>
             <DialogDescription>
               Digite <strong>CANCELAR</strong> para confirmar o cancelamento da conta.
             </DialogDescription>

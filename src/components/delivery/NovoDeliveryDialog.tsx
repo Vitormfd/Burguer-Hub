@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { brl } from "@/lib/format";
 import { printReceipt } from "@/lib/print";
-import type { Cliente } from "@/types/db";
+import type { Cliente, Configuracao } from "@/types/db";
 
 const deliverySchema = z.object({
   cliente_nome: z.string().trim().min(2, "Nome muito curto").max(100),
@@ -51,6 +51,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [clienteSelecionado, setClienteSelecionado] = useState<string>("");
   const [numero, setNumero] = useState("");
   const [complemento, setComplemento] = useState("");
+  const [cfg, setCfg] = useState<Configuracao | null>(null);
 
   const normalizeBairro = (value: string) =>
     value
@@ -79,9 +80,10 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     if (!open) return;
     
     (async () => {
-      const [{ data: clientesData, error: clientesError }, { data: bairrosData, error: bairrosError }] = await Promise.all([
+      const [{ data: clientesData, error: clientesError }, { data: bairrosData, error: bairrosError }, { data: cfgData }] = await Promise.all([
         supabase.from("clientes").select("*").order("nome"),
         supabase.from("bairros_taxas").select("nome, taxa").eq("ativo", true).order("nome"),
+        supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
       ]);
 
       if (clientesError) {
@@ -96,6 +98,9 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
 
       setClientes((clientesData || []) as Cliente[]);
       setBairrosTaxas((bairrosData || []) as BairroTaxaOption[]);
+      if (cfgData) {
+        setCfg(cfgData as unknown as Configuracao);
+      }
     })();
   }, [open]);
 
@@ -194,6 +199,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     if (autoPrint) {
       printReceipt({
         tipo: "delivery",
+        loja_nome: cfg?.nome_loja,
         cliente_nome: parsed.data.cliente_nome,
         cliente_telefone: parsed.data.cliente_telefone,
         endereco: parsed.data.endereco,

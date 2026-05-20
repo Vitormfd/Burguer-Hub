@@ -72,7 +72,7 @@ export function AppSidebar() {
       if (document.visibilityState === "visible") {
         void syncPendingCount();
       }
-    }, 7000);
+    }, 15000);
 
     const channel = supabase
       .channel("sidebar-pedidos-pendentes")

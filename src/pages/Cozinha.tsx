@@ -244,7 +244,7 @@ export default function Cozinha() {
       if (document.visibilityState === "visible") {
         void load();
       }
-    }, 5000);
+    }, 15000);
 
     const ch = supabase
       .channel("kds-realtime")

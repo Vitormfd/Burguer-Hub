@@ -359,6 +359,7 @@ export default function CardapioPublico() {
 
   const categoriaById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
   const fidelidadeCliente = fidelidadeBusca?.cliente ?? null;
+  const pedidosNoCiclo = fidelidadeCliente?.pontos ?? 0;
   const selectedReward = useMemo(
     () => recompensasOrdenadas.find((reward) => reward.id === selectedRewardId) ?? null,
     [recompensasOrdenadas, selectedRewardId]
@@ -373,12 +374,12 @@ export default function CardapioPublico() {
   const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
-    return recompensasOrdenadas.filter((reward) => isRewardAvailable(reward, fidelidadeCliente.total_pedidos));
-  }, [fidelidadeCliente, recompensasOrdenadas]);
+    return recompensasOrdenadas.filter((reward) => isRewardAvailable(reward, pedidosNoCiclo));
+  }, [fidelidadeCliente, pedidosNoCiclo, recompensasOrdenadas]);
   const proximaRecompensa = useMemo(() => {
     if (!fidelidadeCliente) return recompensasOrdenadas[0] ?? null;
-    return nextReward(recompensasOrdenadas, fidelidadeCliente.total_pedidos);
-  }, [fidelidadeCliente, recompensasOrdenadas]);
+    return nextReward(recompensasOrdenadas, pedidosNoCiclo);
+  }, [fidelidadeCliente, pedidosNoCiclo, recompensasOrdenadas]);
 
   const normalize = (value: string) =>
     value
@@ -415,10 +416,10 @@ export default function CardapioPublico() {
 
   useEffect(() => {
     if (!selectedReward || !fidelidadeCliente) return;
-    if (!isRewardAvailable(selectedReward, fidelidadeCliente.total_pedidos)) {
+    if (!isRewardAvailable(selectedReward, pedidosNoCiclo)) {
       setSelectedRewardId(null);
     }
-  }, [selectedReward, fidelidadeCliente]);
+  }, [selectedReward, fidelidadeCliente, pedidosNoCiclo]);
 
   useEffect(() => {
     if (!cupomAplicado) return;
@@ -578,12 +579,19 @@ export default function CardapioPublico() {
 
   const buscarClienteFidelidade = async () => {
     const telefoneNormalizado = normalizePhone(tel);
+    const ownerId = (cfg as Configuracao & { owner_id?: string | null } | null)?.owner_id ?? null;
+
+    if (!ownerId) {
+      return toast.error("Nao foi possivel identificar a loja para consultar fidelidade");
+    }
+
     if (telefoneNormalizado.length < 10) {
       return toast.error("Informe um telefone valido para consultar suas recompensas");
     }
 
     setFidelidadeBusy(true);
-    const { data, error } = await supabase.rpc("get_cliente_fidelidade", {
+    const { data, error } = await (supabase as any).rpc("get_cliente_fidelidade", {
+      p_owner_id: ownerId,
       p_telefone: telefoneNormalizado,
     });
     setFidelidadeBusy(false);
@@ -599,7 +607,8 @@ export default function CardapioPublico() {
 
     if (payload.cliente) {
       setNome((current) => current.trim() || payload.cliente?.nome || "");
-      const temDireito = recompensasOrdenadas.some((reward) => isRewardAvailable(reward, payload.cliente!.total_pedidos));
+      const pontosCliente = Number(payload.cliente.pontos || 0);
+      const temDireito = recompensasOrdenadas.some((reward) => isRewardAvailable(reward, pontosCliente));
       if (temDireito && !celebradosRef.current.has(telefoneNormalizado)) {
         celebradosRef.current.add(telefoneNormalizado);
         void confetti({
@@ -628,7 +637,7 @@ export default function CardapioPublico() {
     const mostrarCatalogoRecompensas = !!fidelidadeCliente || telefoneIdentificado;
 
     const titulo = fidelidadeCliente
-      ? `Ola, ${fidelidadeCliente.nome}! Voce tem ${fidelidadeCliente.total_pedidos} pedidos e ${recompensasDisponiveis.length} recompensa(s) disponivel(is).`
+      ? `Ola, ${fidelidadeCliente.nome}! Voce tem ${pedidosNoCiclo} pedido(s) no ciclo atual e ${recompensasDisponiveis.length} recompensa(s) disponivel(is).`
       : "Informe seu telefone para ver quantos pedidos ja acumulou e quais recompensas estao liberadas.";
 
     return (
@@ -676,10 +685,10 @@ export default function CardapioPublico() {
                   <div className="text-[11px] uppercase tracking-[0.22em]" style={{ color: withAlpha(fidelidadeCor, 0.75) }}>Proxima meta</div>
                   <div className="mt-1 font-semibold">{proximaRecompensa.nome}</div>
                   <div className="mt-2 text-xs text-zinc-300">
-                    Faltam {rewardProgress(proximaRecompensa, fidelidadeCliente.total_pedidos).faltam} pedido(s)
+                    Faltam {rewardProgress(proximaRecompensa, pedidosNoCiclo).faltam} pedido(s)
                   </div>
                   <Progress
-                    value={rewardProgress(proximaRecompensa, fidelidadeCliente.total_pedidos).percentual}
+                    value={rewardProgress(proximaRecompensa, pedidosNoCiclo).percentual}
                     className="mt-2 h-2.5 bg-zinc-800"
                   />
                 </div>
@@ -733,8 +742,8 @@ export default function CardapioPublico() {
           ) : (
             <div className={cn("grid gap-3", compact ? "grid-cols-1" : "md:grid-cols-2") }>
               {recompensasOrdenadas.map((reward) => {
-                const disponivel = fidelidadeCliente ? isRewardAvailable(reward, fidelidadeCliente.total_pedidos) : false;
-                const progresso = rewardProgress(reward, fidelidadeCliente?.total_pedidos ?? 0);
+                const disponivel = fidelidadeCliente ? isRewardAvailable(reward, pedidosNoCiclo) : false;
+                const progresso = rewardProgress(reward, pedidosNoCiclo);
                 const selecionado = selectedRewardId === reward.id;
 
                 return (

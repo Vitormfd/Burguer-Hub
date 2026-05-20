@@ -71,6 +71,17 @@ Deno.serve(async (req) => {
 
   const { action, configuracao_id, pedido_id, tipo_mensagem, telefone, dados_pedido } = payload ?? {};
 
+  let ownerIdFromPedido: string | null = null;
+  if (!configuracao_id && pedido_id) {
+    const { data: pedidoData } = await supabase
+      .from("pedidos")
+      .select("owner_id")
+      .eq("id", pedido_id)
+      .maybeSingle();
+
+    ownerIdFromPedido = (pedidoData?.owner_id as string | null) ?? null;
+  }
+
   // Fetch Z-API credentials from configuracoes.
   // If configuracao_id is not provided (automatic flow), prioritize active rows with credentials.
   let cfgQuery = supabase
@@ -85,6 +96,7 @@ Deno.serve(async (req) => {
     cfgQuery = cfgQuery.eq("id", configuracao_id);
   } else {
     cfgQuery = cfgQuery
+      .eq("owner_id", ownerIdFromPedido)
       .eq("zapi_ativo", true)
       .not("zapi_instance_id", "is", null)
       .not("zapi_token", "is", null)

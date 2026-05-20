@@ -496,6 +496,7 @@ export default function Configuracoes() {
     try {
       const { error } = await supabase.functions.invoke("send-whatsapp", {
         body: {
+          configuracao_id: cfg.id,
           pedido_id: log.pedido_id ?? "00000000-0000-0000-0000-000000000000",
           tipo_mensagem: log.tipo_mensagem,
           telefone: log.telefone,

@@ -145,20 +145,20 @@ export default function Cardapio() {
                   <li key={c.id} className="group">
                     <div
                       className={cn(
-                        "flex items-stretch rounded-md transition-colors",
+                        "flex min-w-0 items-stretch rounded-md transition-colors",
                         active ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                       )}
                     >
                       <button
                         onClick={() => setFiltro(c.id)}
-                        className="flex-1 flex justify-between items-center px-3 py-2 text-sm text-left"
+                        className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-left text-sm"
                       >
-                        <span className={cn("truncate", !c.ativo && "italic opacity-60")}>
+                        <span className={cn("min-w-0 flex-1 truncate", !c.ativo && "italic opacity-60")}>
                           {c.nome}
                         </span>
-                        <span className="text-xs opacity-70 ml-2">{countByCat(c.id)}</span>
+                        <span className="ml-2 shrink-0 text-xs opacity-70">{countByCat(c.id)}</span>
                       </button>
-                      <div className="hidden group-hover:flex items-center pr-1 gap-0.5">
+                      <div className="hidden shrink-0 items-center gap-0.5 pr-1 group-hover:flex">
                         <button
                           title={c.ativo ? "Desativar" : "Ativar"}
                           onClick={(e) => { e.stopPropagation(); toggleCat(c); }}

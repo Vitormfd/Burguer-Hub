@@ -212,6 +212,13 @@ const writeCheckoutProfileCache = (phone: string, data: Omit<CachedCheckoutProfi
   }
 };
 
+const normalizeBairroName = (value?: string | null) =>
+  (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
 export default function CardapioPublico() {
   const { referencia } = useParams<{ referencia?: string }>();
   
@@ -443,7 +450,8 @@ export default function CardapioPublico() {
 
   useEffect(() => {
     const phone = normalizePhone(tel);
-    if (phone.length < 10 || hydratedPhoneRef.current === phone) return;
+    const ownerId = (cfg as Configuracao & { owner_id?: string | null } | null)?.owner_id ?? null;
+    if (phone.length < 10 || hydratedPhoneRef.current === phone || !ownerId) return;
 
     hydratedPhoneRef.current = phone;
 
@@ -457,35 +465,35 @@ export default function CardapioPublico() {
     }
 
     void (async () => {
-      const { data } = await (supabase as any)
-        .from("entregas")
-        .select("cliente_nome, endereco, numero, complemento, bairro")
-        .eq("cliente_telefone", phone)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data, error } = await (supabase as any).rpc("get_cliente_fidelidade", {
+        p_owner_id: ownerId,
+        p_telefone: phone,
+      });
 
-      if (!data) return;
+      if (error) return;
 
-      if (!nome.trim() && data.cliente_nome) {
-        setNome(String(data.cliente_nome));
+      const payload = (data || { cliente: null, resgates_pendentes: [] }) as FidelidadeLookupResult;
+      const cliente = payload.cliente;
+      if (!cliente) return;
+
+      if (!nome.trim() && cliente.nome) {
+        setNome(String(cliente.nome));
       }
-      if (!endereco.trim() && data.endereco && String(data.endereco).toLowerCase() !== "retirada no balcao") {
-        setEndereco(String(data.endereco));
+      if (!endereco.trim() && cliente.endereco) {
+        setEndereco(String(cliente.endereco));
       }
-      if (!numero.trim() && data.numero) {
-        setNumero(String(data.numero));
+      if (!numero.trim() && cliente.numero) {
+        setNumero(String(cliente.numero));
       }
-      if (!complemento.trim() && data.complemento) {
-        setComplemento(String(data.complemento));
+      if (!complemento.trim() && cliente.complemento) {
+        setComplemento(String(cliente.complemento));
       }
-      if (!bairroId && data.bairro) {
-        const normalizedBairro = String(data.bairro).trim().toLowerCase();
-        const bairro = bairros.find((item) => item.nome.trim().toLowerCase() === normalizedBairro);
+      if (!bairroId && cliente.bairro) {
+        const bairro = bairros.find((item) => normalizeBairroName(item.nome) === normalizeBairroName(cliente.bairro));
         if (bairro?.id) setBairroId(bairro.id);
       }
     })();
-  }, [tel, bairros, nome, endereco, numero, complemento, bairroId]);
+  }, [tel, bairros, nome, endereco, numero, complemento, bairroId, cfg]);
 
   useEffect(() => {
     if (cfg?.retirada_ativa === false && tipoEntrega === "retirada") {
@@ -1542,8 +1550,8 @@ export default function CardapioPublico() {
             </div>
 
             <h3 className="text-lg font-bold mt-4">Dados do cliente</h3>
-            <div className="space-y-2"><Label>Nome completo *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} /></div>
             <div className="space-y-2"><Label>Telefone *</Label><Input value={tel} onChange={(e) => setTel(e.target.value)} maxLength={20} placeholder="(11) 99999-9999" /></div>
+            <div className="space-y-2"><Label>Nome completo *</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} /></div>
 
             {tipoEntrega === "delivery" ? (
               <>

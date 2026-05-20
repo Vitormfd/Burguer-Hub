@@ -988,7 +988,7 @@ export default function CardapioPublico() {
     }
 
     if (rpcResult?.cliente_id && tipoEntrega === "delivery") {
-      await (supabase as any)
+      const { error: clienteUpdateError } = await (supabase as any)
         .from("clientes")
         .update({
           nome: nome.trim() || null,
@@ -998,6 +998,11 @@ export default function CardapioPublico() {
           bairro: (bairros.find((b) => b.id === bairroId)?.nome || "").trim() || null,
         })
         .eq("id", String(rpcResult.cliente_id));
+
+      if (clienteUpdateError) {
+        // O backend da RPC ja persiste esses dados; isso eh apenas fallback.
+        console.warn("Falha ao atualizar cache de dados do cliente no frontend:", clienteUpdateError.message);
+      }
     }
 
     setBusy(false);

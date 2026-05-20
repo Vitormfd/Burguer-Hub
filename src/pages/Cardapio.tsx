@@ -142,23 +142,23 @@ export default function Cardapio() {
               {categorias.map((c) => {
                 const active = filtro === c.id;
                 return (
-                  <li key={c.id} className="group">
+                  <li key={c.id}>
                     <div
                       className={cn(
-                        "flex min-w-0 items-stretch rounded-md transition-colors",
+                        "min-w-0 rounded-md transition-colors",
                         active ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                       )}
                     >
                       <button
                         onClick={() => setFiltro(c.id)}
-                        className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+                        className="flex w-full min-w-0 items-center justify-between gap-2 overflow-hidden px-3 py-2 text-left text-sm"
                       >
                         <span className={cn("min-w-0 flex-1 truncate", !c.ativo && "italic opacity-60")}>
                           {c.nome}
                         </span>
                         <span className="ml-2 shrink-0 text-xs opacity-70">{countByCat(c.id)}</span>
                       </button>
-                      <div className="hidden shrink-0 items-center gap-0.5 pr-1 group-hover:flex">
+                      <div className={cn("flex items-center justify-end gap-0.5 px-2 pb-2", active ? "text-primary-foreground" : "text-foreground") }>
                         <button
                           title={c.ativo ? "Desativar" : "Ativar"}
                           onClick={(e) => { e.stopPropagation(); toggleCat(c); }}

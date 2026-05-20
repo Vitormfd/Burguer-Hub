@@ -171,9 +171,9 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
   }
 
   const fontSizeMap: Record<PrintConfig["fonte"], { base: number; small: number; title: number; total: number }> = {
-    pequena: { base: 10, small: 9,  title: 13, total: 13 },
-    normal:  { base: 12, small: 11, title: 15, total: 15 },
-    grande:  { base: 14, small: 12, title: 17, total: 17 },
+    pequena: { base: 11, small: 10, title: 14, total: 14 },
+    normal:  { base: 13, small: 12, title: 16, total: 16 },
+    grande:  { base: 15, small: 13, title: 18, total: 18 },
   };
   const fs = fontSizeMap[config.fonte];
   const w = config.largura;
@@ -188,28 +188,28 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
   <title>${lojaName}</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Courier New',Courier,monospace;font-size:${fs.base}px;width:${w};padding:5mm 4mm;color:#000;background:#fff}
+    body{font-family:'Courier New',Courier,monospace;font-size:${fs.base}px;font-weight:700;line-height:1.3;width:${w};padding:5mm 4mm;color:#000;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .header{text-align:center;margin-bottom:6px}
-    .header h1{font-size:${fs.title + 1}px;font-weight:bold;text-transform:uppercase}
-    .header .datetime{font-size:${fs.small - 1}px;color:#000;margin-top:2px}
-    .sep{border-top:2px solid #000;margin:5px 0}
-    .sep-dashed{border-top:1px dashed #000;margin:4px 0}
+    .header h1{font-size:${fs.title + 1}px;font-weight:900;text-transform:uppercase}
+    .header .datetime{font-size:${fs.small}px;font-weight:700;color:#000;margin-top:2px}
+    .sep{border-top:2.4px solid #000;margin:5px 0}
+    .sep-dashed{border-top:1.5px solid #000;margin:4px 0}
     .section-title{font-size:${fs.title}px;font-weight:bold;text-align:center;margin:5px 0;text-transform:uppercase}
-    .pedido-header{font-size:${fs.small - 1}px;color:#000;margin:3px 0 2px}
-    .item{display:flex;justify-content:space-between;gap:6px;margin:3px 0;font-weight:600}
+    .pedido-header{font-size:${fs.small}px;font-weight:700;color:#000;margin:3px 0 2px}
+    .item{display:flex;justify-content:space-between;gap:6px;margin:3px 0;font-weight:800}
     .item span:first-child{flex:1}
-    .sub{display:flex;justify-content:space-between;gap:6px;padding-left:10px;font-size:${fs.small}px;color:#000;margin:1px 0}
+    .sub{display:flex;justify-content:space-between;gap:6px;padding-left:10px;font-size:${fs.small}px;font-weight:700;color:#000;margin:1px 0}
     .sub span:first-child{flex:1}
-    .obs{padding-left:10px;font-size:${fs.small - 1}px;color:#000;font-style:italic;margin:1px 0}
-    .info-line{margin:2px 0;font-size:${fs.small}px;word-break:break-word}
-    .subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:${fs.small}px}
+    .obs{padding-left:10px;font-size:${fs.small}px;font-weight:700;color:#000;margin:1px 0}
+    .info-line{margin:2px 0;font-size:${fs.small}px;font-weight:700;word-break:break-word}
+    .subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:${fs.small}px;font-weight:700}
     .subtotal-line span:first-child{flex:1}
-    .total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;font-size:${fs.total}px;font-weight:bold}
+    .total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;padding:2px 0;border-top:1.6px solid #000;border-bottom:1.6px solid #000;font-size:${fs.total}px;font-weight:900}
     .total-line span:first-child{flex:1}
-    .troco{font-weight:bold}
-    .footer{text-align:center;font-size:${fs.small - 1}px;color:#000;margin-top:10px;padding-top:6px;border-top:1px dashed #000}
+    .troco{font-weight:900}
+    .footer{text-align:center;font-size:${fs.small}px;font-weight:700;color:#000;margin-top:10px;padding-top:6px;border-top:1.5px solid #000}
     @media print{
-      html,body{width:${w}}
+      html,body{width:${w};-webkit-print-color-adjust:exact;print-color-adjust:exact}
       @page{size:${w} auto;margin:0}
     }
   </style>

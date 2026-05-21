@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { bindAudioUnlock, playNewOrderAlert } from "@/lib/sound";
+import { bindAudioUnlock, playNewOrderAlert, showNewOrderDesktopNotification } from "@/lib/sound";
 
 const items = [
   { title: "Mesas", url: "/mesas", icon: Utensils },
@@ -60,6 +60,7 @@ export function AppSidebar() {
 
       if (prevCount !== null && nextCount > prevCount) {
         playNewOrderAlert();
+        showNewOrderDesktopNotification("Novo pedido pendente");
       }
 
       previousPendingRef.current = nextCount;
@@ -69,9 +70,7 @@ export function AppSidebar() {
     void syncPendingCount();
 
     const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void syncPendingCount();
-      }
+      void syncPendingCount();
     }, 15000);
 
     const channel = supabase

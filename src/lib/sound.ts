@@ -1,8 +1,10 @@
 let audioCtx: AudioContext | null = null;
 let unlockBound = false;
 let lastAlertAt = 0;
+let lastDesktopNotificationAt = 0;
 
 const ALERT_DEBOUNCE_MS = 900;
+const DESKTOP_NOTIFICATION_DEBOUNCE_MS = 1200;
 
 const playRestaurantBell = (ctx: AudioContext) => {
   const start = ctx.currentTime;
@@ -89,6 +91,9 @@ export const bindAudioUnlock = () => {
 
   const once = () => {
     unlockAudio();
+    if ("Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
     window.removeEventListener("pointerdown", once);
     window.removeEventListener("keydown", once);
     window.removeEventListener("touchstart", once);
@@ -126,5 +131,25 @@ export const playNewOrderAlert = () => {
     play();
   } catch {
     // Ignore: browsers may block autoplay until user interaction.
+  }
+};
+
+export const showNewOrderDesktopNotification = (message = "Novo pedido chegou") => {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  const now = Date.now();
+  if (now - lastDesktopNotificationAt < DESKTOP_NOTIFICATION_DEBOUNCE_MS) return;
+  lastDesktopNotificationAt = now;
+
+  try {
+    new Notification("Burguer Hub", {
+      body: message,
+      tag: "burguer-hub-new-order",
+      renotify: true,
+      icon: "/favicon.ico",
+    });
+  } catch {
+    // Ignore notification errors from restrictive browser environments.
   }
 };

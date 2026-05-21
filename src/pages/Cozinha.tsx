@@ -9,7 +9,7 @@ import { ChefHat, Clock, Flame, ArrowLeft, Utensils, Truck, Store } from "lucide
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { sendWhatsapp } from "@/lib/whatsapp";
-import { bindAudioUnlock, playNewOrderAlert } from "@/lib/sound";
+import { bindAudioUnlock, playNewOrderAlert, showNewOrderDesktopNotification } from "@/lib/sound";
 
 type Status = "pendente" | "em_preparo" | "pronto" | "entregue";
 type Tipo = "mesa" | "delivery" | "retirada";
@@ -222,6 +222,7 @@ export default function Cozinha() {
 
       if (prevPending !== null && nextPending > prevPending) {
         playNewOrderAlert();
+        showNewOrderDesktopNotification("Novo pedido chegou na cozinha");
         toast.success("Novo pedido chegou na cozinha");
       }
 
@@ -241,9 +242,7 @@ export default function Cozinha() {
     void load();
 
     const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void load();
-      }
+      void load();
     }, 15000);
 
     const ch = supabase

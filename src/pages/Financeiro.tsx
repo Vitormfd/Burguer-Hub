@@ -35,6 +35,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -126,6 +127,8 @@ interface ContaPagar {
   data_pagamento: string | null;
   status: ContaStatus;
   observacoes: string | null;
+  recorrente_mensal?: boolean | null;
+  dia_vencimento?: number | null;
   fornecedores?: Fornecedor | null;
   compras?: Compra | null;
 }
@@ -184,6 +187,16 @@ interface CaixaFormState {
   observacoes: string;
 }
 
+interface ContaFixaFormState {
+  fornecedor_id: string;
+  descricao: string;
+  valor: string;
+  data_vencimento: string;
+  recorrente_mensal: boolean;
+  dia_vencimento: string;
+  observacoes: string;
+}
+
 interface WeeklyReportPoint {
   semana: string;
   faturamento: number;
@@ -193,6 +206,7 @@ interface WeeklyReportPoint {
 interface ReportData {
   faturamento: number;
   custos: number;
+  contasFixas: number;
   lucro: number;
   margem: number;
   caixaAberturas: number;
@@ -248,6 +262,16 @@ const emptyCategoriaForm = (): CategoriaFormState => ({
 
 const emptyCaixaForm = (): CaixaFormState => ({
   valor: "",
+  observacoes: "",
+});
+
+const emptyContaFixaForm = (): ContaFixaFormState => ({
+  fornecedor_id: "none",
+  descricao: "",
+  valor: "",
+  data_vencimento: todayDate(),
+  recorrente_mensal: false,
+  dia_vencimento: String(new Date().getDate()),
   observacoes: "",
 });
 
@@ -341,6 +365,11 @@ export default function Financeiro() {
   const [filtroCompraStatus, setFiltroCompraStatus] = useState("all");
 
   const [filtroContasStatus, setFiltroContasStatus] = useState<"all" | ContaStatus>("all");
+  const [filtroContasOrigem, setFiltroContasOrigem] = useState<"all" | "fixa" | "compra">("all");
+
+  const [contaFixaDialogOpen, setContaFixaDialogOpen] = useState(false);
+  const [contaFixaBusy, setContaFixaBusy] = useState(false);
+  const [contaFixaForm, setContaFixaForm] = useState<ContaFixaFormState>(emptyContaFixaForm());
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [reportMode, setReportMode] = useState<"month" | "custom">("month");
@@ -351,6 +380,7 @@ export default function Financeiro() {
   const [reportData, setReportData] = useState<ReportData>({
     faturamento: 0,
     custos: 0,
+    contasFixas: 0,
     lucro: 0,
     margem: 0,
     caixaAberturas: 0,
@@ -364,6 +394,13 @@ export default function Financeiro() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+
+    const syncRecorrenciaRes = await sb.rpc("gerar_contas_fixas_recorrentes");
+    if (syncRecorrenciaRes.error && syncRecorrenciaRes.error.code !== "42883") {
+      setLoading(false);
+      return toast.error(syncRecorrenciaRes.error.message);
+    }
+
     const [fornRes, catRes, compRes, contasRes, caixasRes] = await Promise.all([
       sb.from("fornecedores").select("*").order("nome"),
       sb.from("categorias_compra").select("*").order("nome"),
@@ -417,7 +454,7 @@ export default function Financeiro() {
     const iniIso = new Date(ini.setHours(0, 0, 0, 0)).toISOString();
     const fimIso = new Date(fim.setHours(23, 59, 59, 999)).toISOString();
 
-    const [contasRes, deliveryRes, custosRes, caixasRes] = await Promise.all([
+    const [contasRes, deliveryRes, custosRes, contasFixasRes, caixasRes] = await Promise.all([
       sb
         .from("contas")
         .select("total")
@@ -437,15 +474,29 @@ export default function Financeiro() {
         .gte("data_compra", iniIso.slice(0, 10))
         .lte("data_compra", fimIso.slice(0, 10)),
       sb
+        .from("contas_pagar")
+        .select("id, valor, data_pagamento")
+        .is("compra_id", null)
+        .eq("status", "pago")
+        .gte("data_pagamento", iniIso.slice(0, 10))
+        .lte("data_pagamento", fimIso.slice(0, 10)),
+      sb
         .from("caixas")
         .select("id, status, valor_inicial, valor_final, aberto_em, fechado_em")
         .or(`aberto_em.gte.${iniIso},fechado_em.gte.${iniIso}`)
         .lte("aberto_em", fimIso),
     ]);
 
-    if (contasRes.error || deliveryRes.error || custosRes.error || caixasRes.error) {
+    if (contasRes.error || deliveryRes.error || custosRes.error || contasFixasRes.error || caixasRes.error) {
       setReportLoading(false);
-      return toast.error(contasRes.error?.message || deliveryRes.error?.message || custosRes.error?.message || caixasRes.error?.message || "Erro ao gerar relatório");
+      return toast.error(
+        contasRes.error?.message ||
+          deliveryRes.error?.message ||
+          custosRes.error?.message ||
+          contasFixasRes.error?.message ||
+          caixasRes.error?.message ||
+          "Erro ao gerar relatório",
+      );
     }
 
     const deliveryIds = ((deliveryRes.data || []) as Array<{ id: string }>).map((pedido) => pedido.id);
@@ -484,7 +535,16 @@ export default function Financeiro() {
       categorias_compra?: { tipo: CategoriaTipo } | null;
     }>;
 
-    const custos = custosRows.reduce((sum, row) => sum + Number(row.valor_total || 0), 0);
+    const custosCompras = custosRows.reduce((sum, row) => sum + Number(row.valor_total || 0), 0);
+
+    const contasFixasRows = (contasFixasRes.data || []) as Array<{
+      id: string;
+      valor: number;
+      data_pagamento: string | null;
+    }>;
+
+    const contasFixas = contasFixasRows.reduce((sum, row) => sum + Number(row.valor || 0), 0);
+    const custos = custosCompras + contasFixas;
     const lucro = faturamento - custos;
     const margem = faturamento > 0 ? (lucro / faturamento) * 100 : 0;
 
@@ -519,6 +579,13 @@ export default function Financeiro() {
       fornecedorMap.set(key, cur);
     });
 
+    if (contasFixas > 0) {
+      fornecedorMap.set("contas-fixas", {
+        nome: "Contas fixas",
+        total: contasFixas,
+      });
+    }
+
     const porFornecedor = Array.from(fornecedorMap.values())
       .map((item) => ({
         fornecedor: item.nome,
@@ -532,6 +599,13 @@ export default function Financeiro() {
       const date = new Date(row.data_compra + "T00:00:00");
       const week = `Sem ${Math.ceil(date.getDate() / 7)}`;
       weekCosts.set(week, (weekCosts.get(week) || 0) + Number(row.valor_total || 0));
+    });
+
+    contasFixasRows.forEach((row) => {
+      if (!row.data_pagamento) return;
+      const date = new Date(row.data_pagamento + "T00:00:00");
+      const week = `Sem ${Math.ceil(date.getDate() / 7)}`;
+      weekCosts.set(week, (weekCosts.get(week) || 0) + Number(row.valor || 0));
     });
 
     const weekRevenue = new Map<string, number>();
@@ -602,6 +676,7 @@ export default function Financeiro() {
     setReportData({
       faturamento,
       custos,
+      contasFixas,
       lucro,
       margem,
       caixaAberturas,
@@ -649,13 +724,18 @@ export default function Financeiro() {
   }, [compras]);
 
   const contasFiltradas = useMemo(() => {
-    const base = contasPagar.filter((conta) => (filtroContasStatus === "all" ? true : conta.status === filtroContasStatus));
+    const base = contasPagar.filter((conta) => {
+      if (filtroContasStatus !== "all" && conta.status !== filtroContasStatus) return false;
+      if (filtroContasOrigem === "fixa" && conta.compra_id !== null) return false;
+      if (filtroContasOrigem === "compra" && conta.compra_id === null) return false;
+      return true;
+    });
     return base.sort((left, right) => {
       const leftTime = new Date(left.data_vencimento).getTime();
       const rightTime = new Date(right.data_vencimento).getTime();
       return leftTime - rightTime;
     });
-  }, [contasPagar, filtroContasStatus]);
+  }, [contasPagar, filtroContasStatus, filtroContasOrigem]);
 
   const contasResumo = useMemo(() => {
     const now = new Date();
@@ -679,7 +759,11 @@ export default function Financeiro() {
       .filter((conta) => conta.status === "pago" && conta.data_pagamento && isInCurrentMonth(conta.data_pagamento))
       .reduce((sum, conta) => sum + Number(conta.valor || 0), 0);
 
-    return { totalPagarMes, totalVencido, totalPagoMes };
+    const totalFixasPendentes = contasPagar
+      .filter((conta) => conta.compra_id === null && conta.status !== "pago")
+      .reduce((sum, conta) => sum + Number(conta.valor || 0), 0);
+
+    return { totalPagarMes, totalVencido, totalPagoMes, totalFixasPendentes };
   }, [contasPagar]);
 
   const caixaAberto = useMemo(() => caixas.find((caixa) => caixa.status === "aberto") || null, [caixas]);
@@ -997,6 +1081,54 @@ export default function Financeiro() {
     await loadAll();
   };
 
+  const openNovaContaFixa = () => {
+    setContaFixaForm(emptyContaFixaForm());
+    setContaFixaDialogOpen(true);
+  };
+
+  const saveContaFixa = async () => {
+    if (!contaFixaForm.descricao.trim()) return toast.error("Informe a descrição da conta fixa");
+    if (!contaFixaForm.data_vencimento) return toast.error("Informe a data de vencimento");
+
+    const valor = Number(parseMoney(contaFixaForm.valor).toFixed(2));
+    if (valor <= 0) return toast.error("Informe um valor maior que zero");
+
+    const diaVencimento = Number(contaFixaForm.dia_vencimento || 0);
+    if (contaFixaForm.recorrente_mensal && (!Number.isFinite(diaVencimento) || diaVencimento < 1 || diaVencimento > 31)) {
+      return toast.error("Informe um dia de vencimento entre 1 e 31");
+    }
+
+    const payload = {
+      compra_id: null,
+      fornecedor_id: contaFixaForm.fornecedor_id === "none" ? null : contaFixaForm.fornecedor_id,
+      descricao: contaFixaForm.descricao.trim(),
+      valor,
+      data_vencimento: contaFixaForm.data_vencimento,
+      status: "pendente" as ContaStatus,
+      recorrente_mensal: contaFixaForm.recorrente_mensal,
+      dia_vencimento: contaFixaForm.recorrente_mensal ? diaVencimento : null,
+      observacoes: contaFixaForm.observacoes.trim() || null,
+    };
+
+    setContaFixaBusy(true);
+    const { error } = await sb.from("contas_pagar").insert(payload);
+    setContaFixaBusy(false);
+
+    if (error) return toast.error(error.message);
+
+    toast.success("Conta fixa cadastrada");
+    setContaFixaDialogOpen(false);
+    setContaFixaForm(emptyContaFixaForm());
+    await loadAll();
+  };
+
+  const removeContaFixa = async (conta: ContaPagar) => {
+    const { error } = await sb.from("contas_pagar").delete().eq("id", conta.id).is("compra_id", null);
+    if (error) return toast.error(error.message);
+    toast.success("Conta fixa excluída");
+    await loadAll();
+  };
+
   const reportPeriodLabel =
     reportMode === "month" ? formatMonthLabel(reportMonth) : reportStart && reportEnd ? `${reportStart} a ${reportEnd}` : "Período customizado";
 
@@ -1212,7 +1344,7 @@ export default function Financeiro() {
         </TabsContent>
 
         <TabsContent value="contas" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <Card className="p-4">
               <p className="text-sm text-muted-foreground">Total a pagar este mês</p>
               <p className="text-2xl font-semibold mt-1">{brl(contasResumo.totalPagarMes)}</p>
@@ -1225,13 +1357,25 @@ export default function Financeiro() {
               <p className="text-sm text-muted-foreground">Total pago este mês</p>
               <p className="text-2xl font-semibold mt-1">{brl(contasResumo.totalPagoMes)}</p>
             </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Contas fixas pendentes</p>
+              <p className="text-2xl font-semibold mt-1">{brl(contasResumo.totalFixasPendentes)}</p>
+            </Card>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant={filtroContasStatus === "all" ? "default" : "outline"} onClick={() => setFiltroContasStatus("all")}>Todos</Button>
-            <Button variant={filtroContasStatus === "pendente" ? "default" : "outline"} onClick={() => setFiltroContasStatus("pendente")}>Pendentes</Button>
-            <Button variant={filtroContasStatus === "vencido" ? "default" : "outline"} onClick={() => setFiltroContasStatus("vencido")}>Vencidos</Button>
-            <Button variant={filtroContasStatus === "pago" ? "default" : "outline"} onClick={() => setFiltroContasStatus("pago")}>Pagos</Button>
+          <div className="flex flex-wrap gap-2 items-center justify-between">
+            <div className="flex flex-wrap gap-2">
+              <Button variant={filtroContasStatus === "all" ? "default" : "outline"} onClick={() => setFiltroContasStatus("all")}>Todos</Button>
+              <Button variant={filtroContasStatus === "pendente" ? "default" : "outline"} onClick={() => setFiltroContasStatus("pendente")}>Pendentes</Button>
+              <Button variant={filtroContasStatus === "vencido" ? "default" : "outline"} onClick={() => setFiltroContasStatus("vencido")}>Vencidos</Button>
+              <Button variant={filtroContasStatus === "pago" ? "default" : "outline"} onClick={() => setFiltroContasStatus("pago")}>Pagos</Button>
+              <Button variant={filtroContasOrigem === "all" ? "default" : "outline"} onClick={() => setFiltroContasOrigem("all")}>Todas origens</Button>
+              <Button variant={filtroContasOrigem === "fixa" ? "default" : "outline"} onClick={() => setFiltroContasOrigem("fixa")}>Contas fixas</Button>
+              <Button variant={filtroContasOrigem === "compra" ? "default" : "outline"} onClick={() => setFiltroContasOrigem("compra")}>Compras</Button>
+            </div>
+            <Button onClick={openNovaContaFixa}>
+              <Plus className="h-4 w-4 mr-1" /> Nova conta fixa
+            </Button>
           </div>
 
           <Card className="p-0 overflow-hidden">
@@ -1239,6 +1383,7 @@ export default function Financeiro() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Fornecedor</TableHead>
+                  <TableHead>Origem</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Vencimento</TableHead>
@@ -1249,13 +1394,27 @@ export default function Financeiro() {
               <TableBody>
                 {contasFiltradas.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhuma conta encontrada.</TableCell>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma conta encontrada.</TableCell>
                   </TableRow>
                 ) : (
                   contasFiltradas.map((conta) => (
                     <TableRow key={conta.id}>
                       <TableCell>{conta.fornecedores?.nome || "Sem fornecedor"}</TableCell>
-                      <TableCell>{conta.descricao}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={conta.compra_id ? "bg-zinc-500/10 text-zinc-700 border-zinc-500/20" : "bg-sky-500/15 text-sky-700 border-sky-500/30"}>
+                          {conta.compra_id ? "Compra" : "Fixa"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span>{conta.descricao}</span>
+                          {conta.compra_id === null && conta.recorrente_mensal && (
+                            <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30">
+                              Recorrente
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">{brl(Number(conta.valor || 0))}</TableCell>
                       <TableCell>{new Date(conta.data_vencimento + "T00:00:00").toLocaleDateString("pt-BR")}</TableCell>
                       <TableCell>
@@ -1272,6 +1431,16 @@ export default function Financeiro() {
                         >
                           Marcar como pago
                         </Button>
+                        {conta.compra_id === null && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="ml-2 hover:text-destructive"
+                            onClick={() => void removeContaFixa(conta)}
+                          >
+                            Excluir
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -1398,7 +1567,7 @@ export default function Financeiro() {
             </div>
           </Card>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <Card className="p-4">
               <p className="text-sm text-muted-foreground flex items-center gap-2"><Wallet className="h-4 w-4" /> Faturamento bruto</p>
               <p className="text-2xl font-semibold mt-1">{brl(reportData.faturamento)}</p>
@@ -1406,6 +1575,10 @@ export default function Financeiro() {
             <Card className="p-4">
               <p className="text-sm text-muted-foreground flex items-center gap-2"><Package className="h-4 w-4" /> Total de custos</p>
               <p className="text-2xl font-semibold mt-1">{brl(reportData.custos)}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground flex items-center gap-2"><Calendar className="h-4 w-4" /> Contas fixas pagas</p>
+              <p className="text-2xl font-semibold mt-1">{brl(reportData.contasFixas)}</p>
             </Card>
             <Card className="p-4">
               <p className="text-sm text-muted-foreground flex items-center gap-2"><Receipt className="h-4 w-4" /> Lucro estimado</p>
@@ -1499,6 +1672,119 @@ export default function Financeiro() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={contaFixaDialogOpen} onOpenChange={setContaFixaDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl">Nova conta fixa</DialogTitle>
+            <DialogDescription>
+              Cadastre custos recorrentes do estabelecimento como luz, água, internet e motoboy.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input
+                value={contaFixaForm.descricao}
+                onChange={(event) => setContaFixaForm((current) => ({ ...current, descricao: event.target.value }))}
+                placeholder="Ex: Conta de energia"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Fornecedor (opcional)</Label>
+              <Select
+                value={contaFixaForm.fornecedor_id}
+                onValueChange={(value) => setContaFixaForm((current) => ({ ...current, fornecedor_id: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione fornecedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem fornecedor</SelectItem>
+                  {fornecedores.map((fornecedor) => (
+                    <SelectItem key={fornecedor.id} value={fornecedor.id}>
+                      {fornecedor.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Valor</Label>
+                <Input
+                  value={contaFixaForm.valor}
+                  onChange={(event) => setContaFixaForm((current) => ({ ...current, valor: event.target.value }))}
+                  inputMode="decimal"
+                  placeholder="Ex: 250,00"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Vencimento</Label>
+                <Input
+                  type="date"
+                  value={contaFixaForm.data_vencimento}
+                  onChange={(event) =>
+                    setContaFixaForm((current) => ({
+                      ...current,
+                      data_vencimento: event.target.value,
+                      dia_vencimento: event.target.value ? String(new Date(event.target.value + "T00:00:00").getDate()) : current.dia_vencimento,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Conta recorrente mensal</p>
+                  <p className="text-xs text-muted-foreground">Gera automaticamente a conta todo mês.</p>
+                </div>
+                <Switch
+                  checked={contaFixaForm.recorrente_mensal}
+                  onCheckedChange={(checked) => setContaFixaForm((current) => ({ ...current, recorrente_mensal: checked }))}
+                />
+              </div>
+
+              {contaFixaForm.recorrente_mensal && (
+                <div className="space-y-2">
+                  <Label>Dia de vencimento mensal</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={contaFixaForm.dia_vencimento}
+                    onChange={(event) => setContaFixaForm((current) => ({ ...current, dia_vencimento: event.target.value }))}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea
+                value={contaFixaForm.observacoes}
+                onChange={(event) => setContaFixaForm((current) => ({ ...current, observacoes: event.target.value }))}
+                placeholder="Detalhes da conta fixa"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContaFixaDialogOpen(false)} disabled={contaFixaBusy}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void saveContaFixa()} disabled={contaFixaBusy}>
+              <Save className="h-4 w-4 mr-1" /> {contaFixaBusy ? "Salvando..." : "Salvar conta fixa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={caixaDialogOpen} onOpenChange={setCaixaDialogOpen}>
         <DialogContent className="max-w-lg">

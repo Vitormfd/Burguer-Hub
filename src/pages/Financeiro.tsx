@@ -68,6 +68,7 @@ type FormaPagamento = "pix" | "boleto" | "cartao" | "dinheiro";
 type UnidadeCompra = "kg" | "g" | "un" | "cx" | "pct" | "l";
 type ContaStatus = "pendente" | "pago" | "vencido";
 type CaixaStatus = "aberto" | "fechado";
+type CaixaMovimentacaoTipo = "retirada" | "suprimento";
 
 interface Fornecedor {
   id: string;
@@ -145,6 +146,16 @@ interface Caixa {
   criado_em: string;
 }
 
+interface CaixaMovimentacao {
+  id: string;
+  caixa_id: string;
+  owner_id: string;
+  tipo: CaixaMovimentacaoTipo;
+  valor: number;
+  descricao: string | null;
+  criado_em: string;
+}
+
 interface CompraItemForm {
   key: string;
   nome: string;
@@ -185,6 +196,11 @@ interface CategoriaFormState {
 interface CaixaFormState {
   valor: string;
   observacoes: string;
+}
+
+interface RetiradaCaixaFormState {
+  valor: string;
+  descricao: string;
 }
 
 interface ContaFixaFormState {
@@ -265,6 +281,11 @@ const emptyCaixaForm = (): CaixaFormState => ({
   observacoes: "",
 });
 
+const emptyRetiradaCaixaForm = (): RetiradaCaixaFormState => ({
+  valor: "",
+  descricao: "",
+});
+
 const emptyContaFixaForm = (): ContaFixaFormState => ({
   fornecedor_id: "none",
   descricao: "",
@@ -333,6 +354,7 @@ export default function Financeiro() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([]);
   const [caixas, setCaixas] = useState<Caixa[]>([]);
+  const [caixaMovimentacoes, setCaixaMovimentacoes] = useState<CaixaMovimentacao[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [compraDialogOpen, setCompraDialogOpen] = useState(false);
@@ -357,6 +379,9 @@ export default function Financeiro() {
   const [caixaDialogMode, setCaixaDialogMode] = useState<"abrir" | "fechar">("abrir");
   const [caixaBusy, setCaixaBusy] = useState(false);
   const [caixaForm, setCaixaForm] = useState<CaixaFormState>(emptyCaixaForm());
+  const [retiradaDialogOpen, setRetiradaDialogOpen] = useState(false);
+  const [retiradaBusy, setRetiradaBusy] = useState(false);
+  const [retiradaForm, setRetiradaForm] = useState<RetiradaCaixaFormState>(emptyRetiradaCaixaForm());
 
   const [filtroCompraInicio, setFiltroCompraInicio] = useState("");
   const [filtroCompraFim, setFiltroCompraFim] = useState("");
@@ -401,7 +426,7 @@ export default function Financeiro() {
       return toast.error(syncRecorrenciaRes.error.message);
     }
 
-    const [fornRes, catRes, compRes, contasRes, caixasRes] = await Promise.all([
+    const [fornRes, catRes, compRes, contasRes, caixasRes, movRes] = await Promise.all([
       sb.from("fornecedores").select("*").order("nome"),
       sb.from("categorias_compra").select("*").order("nome"),
       sb
@@ -410,17 +435,19 @@ export default function Financeiro() {
         .order("data_compra", { ascending: false }),
       sb.from("contas_pagar").select("*, fornecedores(*), compras(*)").order("data_vencimento", { ascending: true }),
       sb.from("caixas").select("*").order("aberto_em", { ascending: false }),
+      sb.from("caixa_movimentacoes").select("*").order("criado_em", { ascending: false }),
     ]);
 
     setLoading(false);
 
-    if (fornRes.error || catRes.error || compRes.error || contasRes.error || caixasRes.error) {
+    if (fornRes.error || catRes.error || compRes.error || contasRes.error || caixasRes.error || movRes.error) {
       return toast.error(
         fornRes.error?.message ||
           catRes.error?.message ||
           compRes.error?.message ||
           contasRes.error?.message ||
           caixasRes.error?.message ||
+          movRes.error?.message ||
           "Erro ao carregar financeiro",
       );
     }
@@ -430,6 +457,7 @@ export default function Financeiro() {
     setCompras((compRes.data || []) as Compra[]);
     setContasPagar((contasRes.data || []) as ContaPagar[]);
     setCaixas((caixasRes.data || []) as Caixa[]);
+    setCaixaMovimentacoes((movRes.data || []) as CaixaMovimentacao[]);
   }, []);
 
   const loadReport = useCallback(async () => {
@@ -770,6 +798,19 @@ export default function Financeiro() {
 
   const caixasHistorico = useMemo(() => caixas.slice().sort((left, right) => right.aberto_em.localeCompare(left.aberto_em)), [caixas]);
 
+  const movimentacoesCaixaAberto = useMemo(() => {
+    if (!caixaAberto) return [] as CaixaMovimentacao[];
+    return caixaMovimentacoes.filter((mov) => mov.caixa_id === caixaAberto.id);
+  }, [caixaMovimentacoes, caixaAberto]);
+
+  const totalRetiradasCaixaAberto = useMemo(
+    () =>
+      movimentacoesCaixaAberto
+        .filter((mov) => mov.tipo === "retirada")
+        .reduce((sum, mov) => sum + Number(mov.valor || 0), 0),
+    [movimentacoesCaixaAberto],
+  );
+
   const fornecedorCompras = useMemo(() => {
     if (!fornecedorSelected) return [] as Compra[];
     return compras
@@ -1063,6 +1104,39 @@ export default function Financeiro() {
 
     setCaixaDialogOpen(false);
     setCaixaForm(emptyCaixaForm());
+    await loadAll();
+  };
+
+  const openRetiradaCaixa = () => {
+    if (!caixaAberto) {
+      toast.error("Abra o caixa para registrar retiradas");
+      return;
+    }
+
+    setRetiradaForm(emptyRetiradaCaixaForm());
+    setRetiradaDialogOpen(true);
+  };
+
+  const saveRetiradaCaixa = async () => {
+    if (!caixaAberto) return toast.error("Não há caixa aberto no momento");
+    if (!retiradaForm.valor.trim()) return toast.error("Informe o valor da retirada");
+
+    const valor = Number(parseMoney(retiradaForm.valor).toFixed(2));
+    if (valor <= 0) return toast.error("Informe um valor maior que zero");
+
+    setRetiradaBusy(true);
+    const { error } = await sb.rpc("registrar_retirada_caixa", {
+      p_caixa_id: caixaAberto.id,
+      p_valor: valor,
+      p_descricao: retiradaForm.descricao.trim() || null,
+    });
+    setRetiradaBusy(false);
+
+    if (error) return toast.error(error.message);
+
+    toast.success("Retirada registrada no caixa");
+    setRetiradaDialogOpen(false);
+    setRetiradaForm(emptyRetiradaCaixaForm());
     await loadAll();
   };
 
@@ -1451,7 +1525,7 @@ export default function Financeiro() {
         </TabsContent>
 
         <TabsContent value="caixa" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <Card className="p-4">
               <p className="text-sm text-muted-foreground">Status atual</p>
               <p className="text-2xl font-semibold mt-1">{caixaAberto ? "Caixa aberto" : "Caixa fechado"}</p>
@@ -1465,6 +1539,10 @@ export default function Financeiro() {
               <p className="text-2xl font-semibold mt-1">
                 {caixaAberto ? new Date(caixaAberto.aberto_em).toLocaleString("pt-BR") : "-"}
               </p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Retiradas na sessão</p>
+              <p className="text-2xl font-semibold mt-1">{brl(totalRetiradasCaixaAberto)}</p>
             </Card>
           </div>
 
@@ -1480,7 +1558,51 @@ export default function Financeiro() {
                 <Wallet className="h-4 w-4 mr-1" />
                 {caixaAberto ? "Fechar caixa" : "Abrir caixa"}
               </Button>
+              <Button variant="outline" onClick={openRetiradaCaixa} disabled={!caixaAberto}>
+                <Truck className="h-4 w-4 mr-1" /> Registrar retirada
+              </Button>
             </div>
+          </Card>
+
+          <Card className="p-0 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!caixaAberto ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                      Abra um caixa para registrar movimentações.
+                    </TableCell>
+                  </TableRow>
+                ) : movimentacoesCaixaAberto.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                      Nenhuma retirada registrada nesta sessão.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  movimentacoesCaixaAberto.map((mov) => (
+                    <TableRow key={mov.id}>
+                      <TableCell>{new Date(mov.criado_em).toLocaleString("pt-BR")}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={mov.tipo === "retirada" ? "bg-amber-500/15 text-amber-700 border-amber-500/30" : "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"}>
+                          {mov.tipo}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{mov.descricao || "-"}</TableCell>
+                      <TableCell className="text-right font-medium">{brl(Number(mov.valor || 0))}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </Card>
 
           <Card className="p-0 overflow-hidden">
@@ -1826,6 +1948,47 @@ export default function Financeiro() {
             </Button>
             <Button onClick={() => void saveCaixa()} disabled={caixaBusy}>
               <Save className="h-4 w-4 mr-1" /> {caixaBusy ? "Salvando..." : caixaDialogMode === "abrir" ? "Abrir caixa" : "Fechar caixa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={retiradaDialogOpen} onOpenChange={setRetiradaDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl">Registrar retirada</DialogTitle>
+            <DialogDescription>
+              Registre saídas do caixa para pagamentos como motoboy, troco ou despesas rápidas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Valor retirado</Label>
+              <Input
+                value={retiradaForm.valor}
+                onChange={(event) => setRetiradaForm((current) => ({ ...current, valor: event.target.value }))}
+                placeholder="Ex: 80,00"
+                inputMode="decimal"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Textarea
+                value={retiradaForm.descricao}
+                onChange={(event) => setRetiradaForm((current) => ({ ...current, descricao: event.target.value }))}
+                placeholder="Ex: pagamento motoboy do dia"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRetiradaDialogOpen(false)} disabled={retiradaBusy}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void saveRetiradaCaixa()} disabled={retiradaBusy}>
+              <Save className="h-4 w-4 mr-1" /> {retiradaBusy ? "Salvando..." : "Salvar retirada"}
             </Button>
           </DialogFooter>
         </DialogContent>

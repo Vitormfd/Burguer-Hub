@@ -66,6 +66,7 @@ type CompraStatus = "pago" | "pendente" | "vencido";
 type FormaPagamento = "pix" | "boleto" | "cartao" | "dinheiro";
 type UnidadeCompra = "kg" | "g" | "un" | "cx" | "pct" | "l";
 type ContaStatus = "pendente" | "pago" | "vencido";
+type CaixaStatus = "aberto" | "fechado";
 
 interface Fornecedor {
   id: string;
@@ -129,6 +130,18 @@ interface ContaPagar {
   compras?: Compra | null;
 }
 
+interface Caixa {
+  id: string;
+  owner_id: string;
+  status: CaixaStatus;
+  valor_inicial: number;
+  valor_final: number | null;
+  observacoes: string | null;
+  aberto_em: string;
+  fechado_em: string | null;
+  criado_em: string;
+}
+
 interface CompraItemForm {
   key: string;
   nome: string;
@@ -166,6 +179,11 @@ interface CategoriaFormState {
   icone: string;
 }
 
+interface CaixaFormState {
+  valor: string;
+  observacoes: string;
+}
+
 interface WeeklyReportPoint {
   semana: string;
   faturamento: number;
@@ -177,6 +195,9 @@ interface ReportData {
   custos: number;
   lucro: number;
   margem: number;
+  caixaAberturas: number;
+  caixaFechamentos: number;
+  caixaSaldo: number;
   ingredientes: number;
   embalagens: number;
   porFornecedor: Array<{ fornecedor: string; total: number; percentual: number }>;
@@ -225,6 +246,11 @@ const emptyCategoriaForm = (): CategoriaFormState => ({
   icone: "",
 });
 
+const emptyCaixaForm = (): CaixaFormState => ({
+  valor: "",
+  observacoes: "",
+});
+
 const cnpjRegex = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
 
 const parseMoney = (value: string) => {
@@ -258,7 +284,8 @@ const maskPhone = (value: string) => {
 
 const todayDate = () => new Date().toISOString().slice(0, 10);
 
-const statusBadgeClass = (status: CompraStatus | ContaStatus) => {
+const statusBadgeClass = (status: CompraStatus | ContaStatus | CaixaStatus) => {
+  if (status === "aberto") return "bg-sky-500/15 text-sky-700 border-sky-500/30";
   if (status === "pago") return "bg-emerald-500/15 text-emerald-700 border-emerald-500/30";
   if (status === "vencido") return "bg-red-500/15 text-red-700 border-red-500/30";
   return "bg-amber-500/15 text-amber-700 border-amber-500/30";
@@ -281,6 +308,7 @@ export default function Financeiro() {
   const [categorias, setCategorias] = useState<CategoriaCompra[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([]);
+  const [caixas, setCaixas] = useState<Caixa[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [compraDialogOpen, setCompraDialogOpen] = useState(false);
@@ -301,6 +329,11 @@ export default function Financeiro() {
   const [categoriaBusy, setCategoriaBusy] = useState(false);
   const [categoriaForm, setCategoriaForm] = useState<CategoriaFormState>(emptyCategoriaForm());
 
+  const [caixaDialogOpen, setCaixaDialogOpen] = useState(false);
+  const [caixaDialogMode, setCaixaDialogMode] = useState<"abrir" | "fechar">("abrir");
+  const [caixaBusy, setCaixaBusy] = useState(false);
+  const [caixaForm, setCaixaForm] = useState<CaixaFormState>(emptyCaixaForm());
+
   const [filtroCompraInicio, setFiltroCompraInicio] = useState("");
   const [filtroCompraFim, setFiltroCompraFim] = useState("");
   const [filtroCompraFornecedor, setFiltroCompraFornecedor] = useState("all");
@@ -320,6 +353,9 @@ export default function Financeiro() {
     custos: 0,
     lucro: 0,
     margem: 0,
+    caixaAberturas: 0,
+    caixaFechamentos: 0,
+    caixaSaldo: 0,
     ingredientes: 0,
     embalagens: 0,
     porFornecedor: [],
@@ -328,7 +364,7 @@ export default function Financeiro() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [fornRes, catRes, compRes, contasRes] = await Promise.all([
+    const [fornRes, catRes, compRes, contasRes, caixasRes] = await Promise.all([
       sb.from("fornecedores").select("*").order("nome"),
       sb.from("categorias_compra").select("*").order("nome"),
       sb
@@ -336,13 +372,19 @@ export default function Financeiro() {
         .select("*, fornecedores(*), categorias_compra(*), compra_itens(*)")
         .order("data_compra", { ascending: false }),
       sb.from("contas_pagar").select("*, fornecedores(*), compras(*)").order("data_vencimento", { ascending: true }),
+      sb.from("caixas").select("*").order("aberto_em", { ascending: false }),
     ]);
 
     setLoading(false);
 
-    if (fornRes.error || catRes.error || compRes.error || contasRes.error) {
+    if (fornRes.error || catRes.error || compRes.error || contasRes.error || caixasRes.error) {
       return toast.error(
-        fornRes.error?.message || catRes.error?.message || compRes.error?.message || contasRes.error?.message || "Erro ao carregar financeiro",
+        fornRes.error?.message ||
+          catRes.error?.message ||
+          compRes.error?.message ||
+          contasRes.error?.message ||
+          caixasRes.error?.message ||
+          "Erro ao carregar financeiro",
       );
     }
 
@@ -350,6 +392,7 @@ export default function Financeiro() {
     setCategorias((catRes.data || []) as CategoriaCompra[]);
     setCompras((compRes.data || []) as Compra[]);
     setContasPagar((contasRes.data || []) as ContaPagar[]);
+    setCaixas((caixasRes.data || []) as Caixa[]);
   }, []);
 
   const loadReport = useCallback(async () => {
@@ -374,7 +417,7 @@ export default function Financeiro() {
     const iniIso = new Date(ini.setHours(0, 0, 0, 0)).toISOString();
     const fimIso = new Date(fim.setHours(23, 59, 59, 999)).toISOString();
 
-    const [contasRes, deliveryRes, custosRes] = await Promise.all([
+    const [contasRes, deliveryRes, custosRes, caixasRes] = await Promise.all([
       sb
         .from("contas")
         .select("total")
@@ -393,11 +436,16 @@ export default function Financeiro() {
         .eq("status_pagamento", "pago")
         .gte("data_compra", iniIso.slice(0, 10))
         .lte("data_compra", fimIso.slice(0, 10)),
+      sb
+        .from("caixas")
+        .select("id, status, valor_inicial, valor_final, aberto_em, fechado_em")
+        .or(`aberto_em.gte.${iniIso},fechado_em.gte.${iniIso}`)
+        .lte("aberto_em", fimIso),
     ]);
 
-    if (contasRes.error || deliveryRes.error || custosRes.error) {
+    if (contasRes.error || deliveryRes.error || custosRes.error || caixasRes.error) {
       setReportLoading(false);
-      return toast.error(contasRes.error?.message || deliveryRes.error?.message || custosRes.error?.message || "Erro ao gerar relatório");
+      return toast.error(contasRes.error?.message || deliveryRes.error?.message || custosRes.error?.message || caixasRes.error?.message || "Erro ao gerar relatório");
     }
 
     const deliveryIds = ((deliveryRes.data || []) as Array<{ id: string }>).map((pedido) => pedido.id);
@@ -439,6 +487,21 @@ export default function Financeiro() {
     const custos = custosRows.reduce((sum, row) => sum + Number(row.valor_total || 0), 0);
     const lucro = faturamento - custos;
     const margem = faturamento > 0 ? (lucro / faturamento) * 100 : 0;
+
+    const caixasRows = (caixasRes.data || []) as Array<{
+      id: string;
+      status: CaixaStatus;
+      valor_inicial: number;
+      valor_final: number | null;
+      aberto_em: string;
+      fechado_em: string | null;
+    }>;
+
+    const caixaAberturas = caixasRows.filter((caixa) => caixa.aberto_em >= iniIso && caixa.aberto_em <= fimIso).length;
+    const caixaFechamentos = caixasRows.filter((caixa) => caixa.fechado_em && caixa.fechado_em >= iniIso && caixa.fechado_em <= fimIso).length;
+    const caixaSaldo = caixasRows
+      .filter((caixa) => caixa.status === "fechado" && caixa.fechado_em && caixa.fechado_em >= iniIso && caixa.fechado_em <= fimIso)
+      .reduce((sum, caixa) => sum + Number(caixa.valor_final || 0) - Number(caixa.valor_inicial || 0), 0);
 
     const ingredientes = custosRows
       .filter((row) => row.categorias_compra?.tipo === "ingrediente")
@@ -541,6 +604,9 @@ export default function Financeiro() {
       custos,
       lucro,
       margem,
+      caixaAberturas,
+      caixaFechamentos,
+      caixaSaldo,
       ingredientes,
       embalagens,
       porFornecedor,
@@ -615,6 +681,10 @@ export default function Financeiro() {
 
     return { totalPagarMes, totalVencido, totalPagoMes };
   }, [contasPagar]);
+
+  const caixaAberto = useMemo(() => caixas.find((caixa) => caixa.status === "aberto") || null, [caixas]);
+
+  const caixasHistorico = useMemo(() => caixas.slice().sort((left, right) => right.aberto_em.localeCompare(left.aberto_em)), [caixas]);
 
   const fornecedorCompras = useMemo(() => {
     if (!fornecedorSelected) return [] as Compra[];
@@ -764,6 +834,26 @@ export default function Financeiro() {
     setCategoriaDialogOpen(true);
   };
 
+  const openAbrirCaixa = () => {
+    setCaixaDialogMode("abrir");
+    setCaixaForm(emptyCaixaForm());
+    setCaixaDialogOpen(true);
+  };
+
+  const openFecharCaixa = () => {
+    if (!caixaAberto) {
+      toast.error("Não há caixa aberto no momento");
+      return;
+    }
+
+    setCaixaDialogMode("fechar");
+    setCaixaForm({
+      valor: "",
+      observacoes: caixaAberto.observacoes || "",
+    });
+    setCaixaDialogOpen(true);
+  };
+
   const openEditarFornecedor = (fornecedor: Fornecedor) => {
     setFornecedorEditId(fornecedor.id);
     setFornecedorForm({
@@ -847,6 +937,51 @@ export default function Financeiro() {
     await loadAll();
   };
 
+  const saveCaixa = async () => {
+    if (!caixaForm.valor.trim()) {
+      return toast.error(caixaDialogMode === "abrir" ? "Informe o valor inicial" : "Informe o valor final");
+    }
+
+    const valor = Number(parseMoney(caixaForm.valor).toFixed(2));
+    const observacoes = caixaForm.observacoes.trim() || null;
+
+    setCaixaBusy(true);
+
+    if (caixaDialogMode === "abrir") {
+      const { error } = await sb.rpc("abrir_caixa", {
+        p_valor_inicial: valor,
+        p_observacoes: observacoes,
+      });
+
+      setCaixaBusy(false);
+
+      if (error) return toast.error(error.message);
+
+      toast.success("Caixa aberto");
+    } else {
+      if (!caixaAberto) {
+        setCaixaBusy(false);
+        return toast.error("Não há caixa aberto para fechar");
+      }
+
+      const { error } = await sb.rpc("fechar_caixa", {
+        p_caixa_id: caixaAberto.id,
+        p_valor_final: valor,
+        p_observacoes: observacoes,
+      });
+
+      setCaixaBusy(false);
+
+      if (error) return toast.error(error.message);
+
+      toast.success("Caixa fechado");
+    }
+
+    setCaixaDialogOpen(false);
+    setCaixaForm(emptyCaixaForm());
+    await loadAll();
+  };
+
   const openFornecedorDetalhe = (fornecedor: Fornecedor) => {
     setFornecedorSelected(fornecedor);
     setFornecedorDetailOpen(true);
@@ -875,15 +1010,33 @@ export default function Financeiro() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-5xl">Financeiro</h1>
-          <p className="text-muted-foreground mt-1">Entradas de compra, fornecedores, contas a pagar e lucro.</p>
+          <p className="text-muted-foreground mt-1">Entradas de compra, caixa, fornecedores, contas a pagar e lucro.</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {caixaAberto ? (
+            <Badge variant="outline" className={statusBadgeClass(caixaAberto.status)}>
+              Caixa aberto
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-zinc-500/10 text-zinc-700 border-zinc-500/20">
+              Caixa fechado
+            </Badge>
+          )}
+
+          <Button onClick={caixaAberto ? openFecharCaixa : openAbrirCaixa}>
+            <Wallet className="h-4 w-4 mr-1" />
+            {caixaAberto ? "Fechar caixa" : "Abrir caixa"}
+          </Button>
         </div>
       </div>
 
       <Tabs defaultValue="compras" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           <TabsTrigger value="compras">Entradas de Compra</TabsTrigger>
           <TabsTrigger value="fornecedores">Fornecedores</TabsTrigger>
           <TabsTrigger value="contas">Contas a Pagar</TabsTrigger>
+          <TabsTrigger value="caixa">Caixa</TabsTrigger>
           <TabsTrigger value="lucro">Relatório de Lucro</TabsTrigger>
         </TabsList>
 
@@ -1128,6 +1281,79 @@ export default function Financeiro() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="caixa" className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Status atual</p>
+              <p className="text-2xl font-semibold mt-1">{caixaAberto ? "Caixa aberto" : "Caixa fechado"}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Valor inicial</p>
+              <p className="text-2xl font-semibold mt-1">{brl(Number(caixaAberto?.valor_inicial || 0))}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Aberto em</p>
+              <p className="text-2xl font-semibold mt-1">
+                {caixaAberto ? new Date(caixaAberto.aberto_em).toLocaleString("pt-BR") : "-"}
+              </p>
+            </Card>
+          </div>
+
+          <Card className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Sessão atual</h3>
+                <p className="text-sm text-muted-foreground">
+                  {caixaAberto ? caixaAberto.observacoes || "Sem observações" : "Abra um caixa para iniciar o controle do dia."}
+                </p>
+              </div>
+              <Button onClick={caixaAberto ? openFecharCaixa : openAbrirCaixa}>
+                <Wallet className="h-4 w-4 mr-1" />
+                {caixaAberto ? "Fechar caixa" : "Abrir caixa"}
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="p-0 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Aberto em</TableHead>
+                  <TableHead>Fechado em</TableHead>
+                  <TableHead className="text-right">Valor inicial</TableHead>
+                  <TableHead className="text-right">Valor final</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Observações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {caixasHistorico.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      Nenhuma sessão de caixa registrada.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  caixasHistorico.map((caixa) => (
+                    <TableRow key={caixa.id}>
+                      <TableCell>{new Date(caixa.aberto_em).toLocaleString("pt-BR")}</TableCell>
+                      <TableCell>{caixa.fechado_em ? new Date(caixa.fechado_em).toLocaleString("pt-BR") : "-"}</TableCell>
+                      <TableCell className="text-right">{brl(Number(caixa.valor_inicial || 0))}</TableCell>
+                      <TableCell className="text-right">{caixa.valor_final != null ? brl(Number(caixa.valor_final || 0)) : "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={statusBadgeClass(caixa.status)}>
+                          {caixa.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[280px] truncate">{caixa.observacoes || "-"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="lucro" className="space-y-4">
           <Card className="p-4">
             <div className="flex flex-wrap items-end gap-3">
@@ -1188,6 +1414,21 @@ export default function Financeiro() {
             <Card className="p-4">
               <p className="text-sm text-muted-foreground flex items-center gap-2"><Clock3 className="h-4 w-4" /> Margem de lucro</p>
               <p className="text-2xl font-semibold mt-1">{reportData.margem.toFixed(2)}%</p>
+            </Card>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Aberturas de caixa</p>
+              <p className="text-2xl font-semibold mt-1">{reportData.caixaAberturas}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Fechamentos de caixa</p>
+              <p className="text-2xl font-semibold mt-1">{reportData.caixaFechamentos}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Saldo líquido do caixa</p>
+              <p className="text-2xl font-semibold mt-1">{brl(reportData.caixaSaldo)}</p>
             </Card>
           </div>
 
@@ -1258,6 +1499,51 @@ export default function Financeiro() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={caixaDialogOpen} onOpenChange={setCaixaDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl">
+              {caixaDialogMode === "abrir" ? "Abrir caixa" : "Fechar caixa"}
+            </DialogTitle>
+            <DialogDescription>
+              {caixaDialogMode === "abrir"
+                ? "Informe o valor inicial para começar a sessão do dia."
+                : "Informe o valor final contado no fechamento do caixa."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{caixaDialogMode === "abrir" ? "Valor inicial" : "Valor final"}</Label>
+              <Input
+                value={caixaForm.valor}
+                onChange={(event) => setCaixaForm((current) => ({ ...current, valor: event.target.value }))}
+                placeholder={caixaDialogMode === "abrir" ? "Ex: 100,00" : "Ex: 1432,80"}
+                inputMode="decimal"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea
+                value={caixaForm.observacoes}
+                onChange={(event) => setCaixaForm((current) => ({ ...current, observacoes: event.target.value }))}
+                placeholder="Anotações da abertura ou fechamento"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCaixaDialogOpen(false)} disabled={caixaBusy}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void saveCaixa()} disabled={caixaBusy}>
+              <Save className="h-4 w-4 mr-1" /> {caixaBusy ? "Salvando..." : caixaDialogMode === "abrir" ? "Abrir caixa" : "Fechar caixa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={compraDialogOpen} onOpenChange={setCompraDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">

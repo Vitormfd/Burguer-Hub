@@ -51,6 +51,20 @@ export interface Conta {
   total: number;
 }
 
+export type CaixaStatus = "aberto" | "fechado";
+
+export interface Caixa {
+  id: string;
+  owner_id: string;
+  status: CaixaStatus;
+  valor_inicial: number;
+  valor_final: number | null;
+  observacoes: string | null;
+  aberto_em: string;
+  fechado_em: string | null;
+  criado_em: string;
+}
+
 export interface Pedido {
   id: string;
   conta_id: string | null;

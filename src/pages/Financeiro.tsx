@@ -380,6 +380,7 @@ export default function Financeiro() {
   const [caixaBusy, setCaixaBusy] = useState(false);
   const [caixaForm, setCaixaForm] = useState<CaixaFormState>(emptyCaixaForm());
   const [retiradaDialogOpen, setRetiradaDialogOpen] = useState(false);
+  const [retiradaDialogMode, setRetiradaDialogMode] = useState<"retirada" | "suprimento">("retirada");
   const [retiradaBusy, setRetiradaBusy] = useState(false);
   const [retiradaForm, setRetiradaForm] = useState<RetiradaCaixaFormState>(emptyRetiradaCaixaForm());
 
@@ -811,6 +812,14 @@ export default function Financeiro() {
     [movimentacoesCaixaAberto],
   );
 
+  const totalSuprimentosCaixaAberto = useMemo(
+    () =>
+      movimentacoesCaixaAberto
+        .filter((mov) => mov.tipo === "suprimento")
+        .reduce((sum, mov) => sum + Number(mov.valor || 0), 0),
+    [movimentacoesCaixaAberto],
+  );
+
   const fornecedorCompras = useMemo(() => {
     if (!fornecedorSelected) return [] as Compra[];
     return compras
@@ -1113,6 +1122,18 @@ export default function Financeiro() {
       return;
     }
 
+    setRetiradaDialogMode("retirada");
+    setRetiradaForm(emptyRetiradaCaixaForm());
+    setRetiradaDialogOpen(true);
+  };
+
+  const openSuprimentoCaixa = () => {
+    if (!caixaAberto) {
+      toast.error("Abra o caixa para registrar suprimentos");
+      return;
+    }
+
+    setRetiradaDialogMode("suprimento");
     setRetiradaForm(emptyRetiradaCaixaForm());
     setRetiradaDialogOpen(true);
   };
@@ -1125,16 +1146,23 @@ export default function Financeiro() {
     if (valor <= 0) return toast.error("Informe um valor maior que zero");
 
     setRetiradaBusy(true);
-    const { error } = await sb.rpc("registrar_retirada_caixa", {
-      p_caixa_id: caixaAberto.id,
-      p_valor: valor,
-      p_descricao: retiradaForm.descricao.trim() || null,
-    });
+    const { error } =
+      retiradaDialogMode === "retirada"
+        ? await sb.rpc("registrar_retirada_caixa", {
+            p_caixa_id: caixaAberto.id,
+            p_valor: valor,
+            p_descricao: retiradaForm.descricao.trim() || null,
+          })
+        : await sb.rpc("registrar_suprimento_caixa", {
+            p_caixa_id: caixaAberto.id,
+            p_valor: valor,
+            p_descricao: retiradaForm.descricao.trim() || null,
+          });
     setRetiradaBusy(false);
 
     if (error) return toast.error(error.message);
 
-    toast.success("Retirada registrada no caixa");
+    toast.success(retiradaDialogMode === "retirada" ? "Retirada registrada no caixa" : "Suprimento registrado no caixa");
     setRetiradaDialogOpen(false);
     setRetiradaForm(emptyRetiradaCaixaForm());
     await loadAll();
@@ -1525,7 +1553,7 @@ export default function Financeiro() {
         </TabsContent>
 
         <TabsContent value="caixa" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-5">
             <Card className="p-4">
               <p className="text-sm text-muted-foreground">Status atual</p>
               <p className="text-2xl font-semibold mt-1">{caixaAberto ? "Caixa aberto" : "Caixa fechado"}</p>
@@ -1544,6 +1572,10 @@ export default function Financeiro() {
               <p className="text-sm text-muted-foreground">Retiradas na sessão</p>
               <p className="text-2xl font-semibold mt-1">{brl(totalRetiradasCaixaAberto)}</p>
             </Card>
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Suprimentos na sessão</p>
+              <p className="text-2xl font-semibold mt-1">{brl(totalSuprimentosCaixaAberto)}</p>
+            </Card>
           </div>
 
           <Card className="p-4">
@@ -1560,6 +1592,9 @@ export default function Financeiro() {
               </Button>
               <Button variant="outline" onClick={openRetiradaCaixa} disabled={!caixaAberto}>
                 <Truck className="h-4 w-4 mr-1" /> Registrar retirada
+              </Button>
+              <Button variant="outline" onClick={openSuprimentoCaixa} disabled={!caixaAberto}>
+                <Plus className="h-4 w-4 mr-1" /> Registrar suprimento
               </Button>
             </div>
           </Card>
@@ -1593,7 +1628,7 @@ export default function Financeiro() {
                       <TableCell>{new Date(mov.criado_em).toLocaleString("pt-BR")}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={mov.tipo === "retirada" ? "bg-amber-500/15 text-amber-700 border-amber-500/30" : "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"}>
-                          {mov.tipo}
+                          {mov.tipo === "retirada" ? "Retirada" : "Suprimento"}
                         </Badge>
                       </TableCell>
                       <TableCell>{mov.descricao || "-"}</TableCell>
@@ -1956,15 +1991,19 @@ export default function Financeiro() {
       <Dialog open={retiradaDialogOpen} onOpenChange={setRetiradaDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display text-3xl">Registrar retirada</DialogTitle>
+            <DialogTitle className="font-display text-3xl">
+              {retiradaDialogMode === "retirada" ? "Registrar retirada" : "Registrar suprimento"}
+            </DialogTitle>
             <DialogDescription>
-              Registre saídas do caixa para pagamentos como motoboy, troco ou despesas rápidas.
+              {retiradaDialogMode === "retirada"
+                ? "Registre saídas do caixa para pagamentos como motoboy, troco ou despesas rápidas."
+                : "Registre entradas de suprimento quando colocar dinheiro no caixa para troco ou emergências."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Valor retirado</Label>
+              <Label>{retiradaDialogMode === "retirada" ? "Valor retirado" : "Valor do suprimento"}</Label>
               <Input
                 value={retiradaForm.valor}
                 onChange={(event) => setRetiradaForm((current) => ({ ...current, valor: event.target.value }))}
@@ -1978,7 +2017,7 @@ export default function Financeiro() {
               <Textarea
                 value={retiradaForm.descricao}
                 onChange={(event) => setRetiradaForm((current) => ({ ...current, descricao: event.target.value }))}
-                placeholder="Ex: pagamento motoboy do dia"
+                placeholder={retiradaDialogMode === "retirada" ? "Ex: pagamento motoboy do dia" : "Ex: coloquei dinheiro para troco"}
               />
             </div>
           </div>
@@ -1988,7 +2027,7 @@ export default function Financeiro() {
               Cancelar
             </Button>
             <Button onClick={() => void saveRetiradaCaixa()} disabled={retiradaBusy}>
-              <Save className="h-4 w-4 mr-1" /> {retiradaBusy ? "Salvando..." : "Salvar retirada"}
+              <Save className="h-4 w-4 mr-1" /> {retiradaBusy ? "Salvando..." : retiradaDialogMode === "retirada" ? "Salvar retirada" : "Salvar suprimento"}
             </Button>
           </DialogFooter>
         </DialogContent>

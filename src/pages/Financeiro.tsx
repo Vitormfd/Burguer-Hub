@@ -348,6 +348,12 @@ const formatMonthLabel = (month: string) => {
   return `${m}/${year}`;
 };
 
+const isRpcMissingFunctionError = (error: { code?: string; message?: string } | null | undefined) => {
+  if (!error) return false;
+  if (error.code === "42883" || error.code === "PGRST202") return true;
+  return (error.message || "").toLowerCase().includes("could not find the function");
+};
+
 export default function Financeiro() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [categorias, setCategorias] = useState<CategoriaCompra[]>([]);
@@ -422,9 +428,9 @@ export default function Financeiro() {
     setLoading(true);
 
     const syncRecorrenciaRes = await sb.rpc("gerar_contas_fixas_recorrentes");
-    if (syncRecorrenciaRes.error && syncRecorrenciaRes.error.code !== "42883") {
-      setLoading(false);
-      return toast.error(syncRecorrenciaRes.error.message);
+    if (syncRecorrenciaRes.error && !isRpcMissingFunctionError(syncRecorrenciaRes.error)) {
+      // Nao bloqueia a carga da tela por falha na sincronizacao auxiliar.
+      toast.error(syncRecorrenciaRes.error.message);
     }
 
     const [fornRes, catRes, compRes, contasRes, caixasRes, movRes] = await Promise.all([

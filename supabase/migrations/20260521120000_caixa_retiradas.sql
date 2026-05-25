@@ -95,4 +95,16 @@ CREATE POLICY "caixa_movimentacoes_owner_all"
   USING (owner_id = auth.uid())
   WITH CHECK (owner_id = auth.uid());
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.caixa_movimentacoes;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE schemaname = 'public'
+      AND tablename = 'caixa_movimentacoes'
+      AND pubname = 'supabase_realtime'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.caixa_movimentacoes';
+  END IF;
+END
+$$;

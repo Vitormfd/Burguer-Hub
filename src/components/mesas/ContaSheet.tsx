@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mesa, Conta, Pedido, PedidoItem, Produto, Configuracao } from "@/types/db";
+import { Mesa, Conta, FormaPagamento, Pedido, PedidoItem, Produto, Configuracao } from "@/types/db";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,14 @@ const statusLabel: Record<Pedido["status"], { label: string; variant: "default" 
 
 const pedidoCancelavel = (status: Pedido["status"]) => status === "pendente" || status === "em_preparo";
 
+const formaPagamentoOptions: FormaPagamento[] = ["pix", "boleto", "cartao", "dinheiro"];
+const formaPagamentoLabel: Record<FormaPagamento, string> = {
+  dinheiro: "Dinheiro",
+  pix: "PIX",
+  cartao: "Cartão",
+  boleto: "Boleto",
+};
+
 export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | null; onClose: () => void; onClosed?: () => void }) {
   const { user } = useAuth();
   const [conta, setConta] = useState<Conta | null>(null);
@@ -73,6 +81,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   const [showOfferFecharZero, setShowOfferFecharZero] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cfg, setCfg] = useState<Configuracao | null>(null);
+  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>("dinheiro");
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<{ tipo: "item" | "pedido"; pedido: PedidoComItens; item?: ItemDetalhado } | null>(null);
@@ -86,8 +95,10 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       .eq("mesa_id", mesa.id).eq("status", "aberta")
       .order("aberta_em", { ascending: false }).limit(1).maybeSingle();
 
-    if (!c) { setConta(null); setPedidos([]); return; }
-    setConta(c as Conta);
+    if (!c) { setConta(null); setPedidos([]); setFormaPagamento("dinheiro"); return; }
+    const contaData = c as Conta & { forma_pagamento?: FormaPagamento | null };
+    setConta(contaData as Conta);
+    setFormaPagamento(contaData.forma_pagamento ?? "dinheiro");
 
     const { data: peds } = await supabase
       .from("pedidos").select("*").eq("conta_id", c.id).order("criado_em");
@@ -266,15 +277,21 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
         })
         .filter((p) => p.itens.length > 0),
       total,
+      forma_pagamento: formaPagamento,
     });
   };
 
-  const closeConta = async (valorFinal: number, mensagem: string) => {
+  const closeConta = async (valorFinal: number, mensagem: string, forma?: FormaPagamento) => {
     if (!conta || !mesa) return;
     setBusy(true);
     const { error: e1 } = await supabase
       .from("contas")
-      .update({ status: "fechada", fechada_em: new Date().toISOString(), total: valorFinal })
+      .update({
+        status: "fechada",
+        fechada_em: new Date().toISOString(),
+        total: valorFinal,
+        forma_pagamento: forma ?? formaPagamento,
+      })
       .eq("id", conta.id);
     if (e1) {
       setBusy(false);
@@ -298,7 +315,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   };
 
   const handleFechar = async () => {
-    await closeConta(total, `Mesa ${mesa?.numero} fechada � ${brl(total)}`);
+    await closeConta(total, `Mesa ${mesa?.numero} fechada a ${brl(total)}`, formaPagamento);
   };
 
   const resetCancelDialog = () => {
@@ -641,6 +658,21 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               <span className="text-sm uppercase tracking-wider text-muted-foreground font-semibold">Total</span>
               <span className="font-display text-4xl text-primary">{brl(total)}</span>
             </div>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Forma de pagamento</Label>
+                <Select value={formaPagamento} onValueChange={(value) => setFormaPagamento(value as FormaPagamento)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma forma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formaPagamentoOptions.map((forma) => (
+                      <SelectItem key={forma} value={forma}>{formaPagamentoLabel[forma]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <Button variant="outline" onClick={() => setNovoOpen(true)} disabled={!conta || busy}>
                 <Plus className="h-4 w-4 mr-1" /> Novo pedido
@@ -717,6 +749,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
             <AlertDialogTitle className="font-display text-2xl">Fechar conta da mesa {mesa?.numero}?</AlertDialogTitle>
             <AlertDialogDescription>
               Total a cobrar: <span className="font-semibold text-foreground">{brl(total)}</span>.
+              Forma: <span className="font-semibold text-foreground">{formaPagamentoLabel[formaPagamento]}</span>.
               A mesa voltar� a ficar livre.
             </AlertDialogDescription>
           </AlertDialogHeader>

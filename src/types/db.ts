@@ -49,6 +49,7 @@ export interface Conta {
   fechada_em: string | null;
   status: ContaStatus;
   total: number;
+  forma_pagamento?: FormaPagamento | null;
 }
 
 export type CaixaStatus = "aberto" | "fechado";

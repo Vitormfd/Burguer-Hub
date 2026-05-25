@@ -55,6 +55,7 @@ export interface PrintMesaData {
     itens: PrintItem[];
   }>;
   total: number;
+  forma_pagamento?: string | null;
 }
 
 export interface PrintDeliveryData {
@@ -130,6 +131,16 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     });
     body += `<div class="sep"></div>`;
     body += `<div class="total-line"><span>TOTAL</span><span>${brlPrint(data.total)}</span></div>`;
+    if (data.forma_pagamento) {
+      const formaLabel: Record<string, string> = {
+        dinheiro: "Dinheiro",
+        pix: "PIX",
+        cartao: "Cartão",
+        boleto: "Boleto",
+      };
+      body += `<div class="sep-dashed"></div>`;
+      body += `<div class="subtotal-line"><span>Pagamento</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
+    }
   } else {
     body += `<div class="section-title">${data.tipo === "retirada" ? "RETIRADA" : "DELIVERY"}</div>`;
     body += `<div class="info-line"><b>${esc(data.cliente_nome)}</b></div>`;

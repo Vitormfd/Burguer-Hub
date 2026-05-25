@@ -357,6 +357,7 @@ export type Database = {
         Row: {
           aberta_em: string
           fechada_em: string | null
+          forma_pagamento: Database["public"]["Enums"]["compra_forma_pagamento"] | null
           id: string
           mesa_id: string | null
           status: Database["public"]["Enums"]["conta_status"]
@@ -365,6 +366,7 @@ export type Database = {
         Insert: {
           aberta_em?: string
           fechada_em?: string | null
+          forma_pagamento?: Database["public"]["Enums"]["compra_forma_pagamento"] | null
           id?: string
           mesa_id?: string | null
           status?: Database["public"]["Enums"]["conta_status"]
@@ -373,6 +375,7 @@ export type Database = {
         Update: {
           aberta_em?: string
           fechada_em?: string | null
+          forma_pagamento?: Database["public"]["Enums"]["compra_forma_pagamento"] | null
           id?: string
           mesa_id?: string | null
           status?: Database["public"]["Enums"]["conta_status"]

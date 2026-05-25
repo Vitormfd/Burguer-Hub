@@ -87,6 +87,10 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   const [cancelTarget, setCancelTarget] = useState<{ tipo: "item" | "pedido"; pedido: PedidoComItens; item?: ItemDetalhado } | null>(null);
   const [motivoCancelamento, setMotivoCancelamento] = useState<MotivoCancelamento | "">("");
   const [observacaoCancelamento, setObservacaoCancelamento] = useState("");
+  const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
+  const [clienteNome, setClienteNome] = useState("");
+  const [clienteTelefone, setClienteTelefone] = useState("");
+  const [pendingCloseConta, setPendingCloseConta] = useState<{ valor: number; forma?: FormaPagamento } | null>(null);
 
   const load = useCallback(async () => {
     if (!mesa) return;
@@ -281,9 +285,29 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     });
   };
 
-  const closeConta = async (valorFinal: number, mensagem: string, forma?: FormaPagamento) => {
+  const closeConta = async (valorFinal: number, forma?: FormaPagamento, telefone?: string, nome?: string) => {
     if (!conta || !mesa) return;
     setBusy(true);
+    
+    // Registrar clientes para fidelidade se telefone for fornecido
+    if (telefone) {
+      const telefoneLimpo = telefone.replace(/\D/g, '');
+      if (telefoneLimpo.length >= 10) {
+        for (const pedido of pedidos) {
+          if (pedido.status !== 'cancelado' && pedido.itens.some(i => !i.cancelado)) {
+            const { error } = await (supabase as any).rpc('register_cliente_mesa_pedido', {
+              p_pedido_id: pedido.id,
+              p_nome: nome || 'Cliente',
+              p_telefone: telefone,
+            });
+            if (error) {
+              console.error('Erro ao registrar cliente para fidelidade:', error);
+            }
+          }
+        }
+      }
+    }
+
     const { error: e1 } = await supabase
       .from("contas")
       .update({
@@ -307,15 +331,25 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       return;
     }
 
-    toast.success(mensagem);
+    toast.success(`Mesa ${mesa?.numero} fechada a ${brl(valorFinal)}`);
     setConfirmFechar(false);
     setShowOfferFecharZero(false);
+    setClienteDialogOpen(false);
+    setClienteNome("");
+    setClienteTelefone("");
+    setPendingCloseConta(null);
     onClose();
     onClosed?.();
   };
 
   const handleFechar = async () => {
-    await closeConta(total, `Mesa ${mesa?.numero} fechada a ${brl(total)}`, formaPagamento);
+    setPendingCloseConta({ valor: total, forma: formaPagamento });
+    setClienteDialogOpen(true);
+  };
+
+  const handleConfirmCliente = async () => {
+    if (!pendingCloseConta) return;
+    await closeConta(pendingCloseConta.valor, pendingCloseConta.forma, clienteTelefone, clienteNome);
   };
 
   const resetCancelDialog = () => {
@@ -772,12 +806,56 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Manter aberta</AlertDialogCancel>
-            <AlertDialogAction onClick={() => closeConta(0, `Mesa ${mesa?.numero} fechada com R$ 0,00`)} disabled={busy}>
+            <AlertDialogAction onClick={() => closeConta(0)} disabled={busy}>
               Fechar conta R$ 0,00
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={clienteDialogOpen} onOpenChange={(open) => !busy && setClienteDialogOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Dados do cliente (opcional)</DialogTitle>
+            <DialogDescription>
+              Para registrar a fidelidade do cliente, informe o telefone. Caso não deseje, deixe em branco e clique em Fechar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cliente-nome">Nome do cliente</Label>
+              <Input
+                id="cliente-nome"
+                value={clienteNome}
+                onChange={(e) => setClienteNome(e.target.value)}
+                placeholder="Opcional"
+                maxLength={100}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cliente-telefone">Telefone para fidelidade</Label>
+              <Input
+                id="cliente-telefone"
+                value={clienteTelefone}
+                onChange={(e) => setClienteTelefone(e.target.value)}
+                placeholder="(11) 99999-9999"
+                maxLength={20}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setClienteDialogOpen(false);
+              setClienteNome("");
+              setClienteTelefone("");
+              setPendingCloseConta(null);
+            }} disabled={busy}>Cancelar</Button>
+            <Button onClick={handleConfirmCliente} disabled={busy}>
+              {busy ? "Fechando..." : "Fechar conta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={confirmCancelarConta} onOpenChange={setConfirmCancelarConta}>
         <AlertDialogContent>

@@ -354,6 +354,16 @@ const isRpcMissingFunctionError = (error: { code?: string; message?: string } | 
   return (error.message || "").toLowerCase().includes("could not find the function");
 };
 
+const isMissingTableError = (error: { code?: string; message?: string } | null | undefined) => {
+  if (!error) return false;
+  const message = (error.message || "").toLowerCase();
+  return (
+    message.includes("could not find the table") ||
+    message.includes("schema cache") ||
+    message.includes("relation \"public.caixa_movimentacoes\" does not exist")
+  );
+};
+
 export default function Financeiro() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [categorias, setCategorias] = useState<CategoriaCompra[]>([]);
@@ -447,16 +457,24 @@ export default function Financeiro() {
 
     setLoading(false);
 
-    if (fornRes.error || catRes.error || compRes.error || contasRes.error || caixasRes.error || movRes.error) {
+    const movTableMissing = movRes.error && isMissingTableError(movRes.error);
+    if (fornRes.error || catRes.error || compRes.error || contasRes.error || caixasRes.error || (!movTableMissing && movRes.error)) {
       return toast.error(
         fornRes.error?.message ||
           catRes.error?.message ||
           compRes.error?.message ||
           contasRes.error?.message ||
           caixasRes.error?.message ||
-          movRes.error?.message ||
+          (!movTableMissing ? movRes.error?.message : undefined) ||
           "Erro ao carregar financeiro",
       );
+    }
+
+    if (movTableMissing) {
+      console.warn("Financeiro: caixa_movimentacoes table missing, skipping movimentos load.", movRes.error?.message);
+      setCaixaMovimentacoes([]);
+    } else {
+      setCaixaMovimentacoes((movRes.data || []) as CaixaMovimentacao[]);
     }
 
     setFornecedores((fornRes.data || []) as Fornecedor[]);
@@ -464,7 +482,6 @@ export default function Financeiro() {
     setCompras((compRes.data || []) as Compra[]);
     setContasPagar((contasRes.data || []) as ContaPagar[]);
     setCaixas((caixasRes.data || []) as Caixa[]);
-    setCaixaMovimentacoes((movRes.data || []) as CaixaMovimentacao[]);
   }, []);
 
   const loadReport = useCallback(async () => {

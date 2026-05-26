@@ -41,9 +41,18 @@ export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, o
     if (!items.length) return toast.error("Adicione pelo menos um item");
 
     setBusy(true);
+    const pedidoPayload: { conta_id: string; tipo: "mesa"; status: "pendente"; owner_id?: string } = {
+      conta_id: contaId,
+      tipo: "mesa",
+      status: "pendente",
+    };
+    if (cfg?.owner_id) {
+      pedidoPayload.owner_id = cfg.owner_id;
+    }
+
     const { data: pedido, error: e1 } = await supabase
       .from("pedidos")
-      .insert({ conta_id: contaId, tipo: "mesa", status: "pendente" })
+      .insert(pedidoPayload)
       .select().single();
     if (e1 || !pedido) { setBusy(false); return toast.error(e1?.message || "Erro"); }
 

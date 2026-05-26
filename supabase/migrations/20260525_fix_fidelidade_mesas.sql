@@ -29,7 +29,25 @@ BEGIN
   END IF;
 
   -- Obter owner_id e subtotal do pedido
-  SELECT p.owner_id, COALESCE(p.subtotal, p.total, 0)
+  SELECT COALESCE(p.owner_id, auth.uid()),
+    COALESCE(
+      NULLIF(p.subtotal, 0),
+      NULLIF(p.total, 0),
+      (
+        SELECT COALESCE(SUM(
+          (pi.quantidade * pi.preco_unitario) +
+          COALESCE((
+            SELECT SUM(pia.quantidade * pia.preco_unitario)
+            FROM public.pedido_item_adicionais pia
+            WHERE pia.pedido_item_id = pi.id
+          ), 0)
+        ), 0)
+        FROM public.pedido_itens pi
+        WHERE pi.pedido_id = p.id
+          AND pi.cancelado = false
+      ),
+      0
+    )
     INTO v_owner_id, v_pedido_subtotal
   FROM public.pedidos p
   WHERE p.id = p_pedido_id;
@@ -37,6 +55,11 @@ BEGIN
   IF v_owner_id IS NULL THEN
     RETURN NULL;
   END IF;
+
+  UPDATE public.pedidos
+  SET owner_id = v_owner_id
+  WHERE id = p_pedido_id
+    AND owner_id IS NULL;
 
   -- Inserir ou atualizar cliente
   INSERT INTO public.clientes (owner_id, nome, telefone)

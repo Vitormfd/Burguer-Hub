@@ -56,6 +56,7 @@ export interface PrintMesaData {
   }>;
   total: number;
   forma_pagamento?: string | null;
+  pagamentos?: Array<{ forma: string; valor: number }>;
 }
 
 export interface PrintDeliveryData {
@@ -131,7 +132,18 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     });
     body += `<div class="sep"></div>`;
     body += `<div class="total-line"><span>TOTAL</span><span>${brlPrint(data.total)}</span></div>`;
-    if (data.forma_pagamento) {
+    if (data.pagamentos?.length) {
+      const formaLabel: Record<string, string> = {
+        dinheiro: "Dinheiro",
+        pix: "PIX",
+        cartao: "Cartão",
+        boleto: "Boleto",
+      };
+      body += `<div class="sep-dashed"></div>`;
+      data.pagamentos.forEach((pagamento) => {
+        body += `<div class="subtotal-line"><span>${esc(formaLabel[pagamento.forma] ?? pagamento.forma)}</span><span>${brlPrint(pagamento.valor)}</span></div>`;
+      });
+    } else if (data.forma_pagamento) {
       const formaLabel: Record<string, string> = {
         dinheiro: "Dinheiro",
         pix: "PIX",

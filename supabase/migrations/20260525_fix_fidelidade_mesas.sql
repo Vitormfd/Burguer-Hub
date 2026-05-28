@@ -129,6 +129,50 @@ BEGIN
 END;
 $$;
 
+-- Função para trigger em pedido_item_adicionais (que não tem pedido_id direto)
+CREATE OR REPLACE FUNCTION public.sync_pedido_subtotal_from_adicionais()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_pedido_id uuid;
+  v_pedido_subtotal numeric(10,2);
+BEGIN
+  -- Obter pedido_id através do pedido_item
+  SELECT pi.pedido_id INTO v_pedido_id
+  FROM public.pedido_itens pi
+  WHERE pi.id = COALESCE(NEW.pedido_item_id, OLD.pedido_item_id);
+
+  IF v_pedido_id IS NULL THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
+  -- Calcular subtotal somando todos os itens + adicionais
+  SELECT COALESCE(SUM(
+    (pi.quantidade * pi.preco_unitario) + 
+    COALESCE((
+      SELECT SUM(pia.quantidade * pia.preco_unitario)
+      FROM public.pedido_item_adicionais pia
+      WHERE pia.pedido_item_id = pi.id
+    ), 0)
+  ), 0)
+    INTO v_pedido_subtotal
+  FROM public.pedido_itens pi
+  WHERE pi.pedido_id = v_pedido_id
+    AND pi.cancelado = false;
+
+  -- Atualizar subtotal do pedido
+  UPDATE public.pedidos
+  SET subtotal = v_pedido_subtotal
+  WHERE id = v_pedido_id
+    AND tipo = 'mesa';
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
 DROP TRIGGER IF EXISTS sync_pedido_subtotal_from_items_insert ON public.pedido_itens;
 CREATE TRIGGER sync_pedido_subtotal_from_items_insert
 AFTER INSERT ON public.pedido_itens
@@ -142,7 +186,7 @@ FOR EACH ROW EXECUTE FUNCTION public.sync_pedido_subtotal_from_items();
 DROP TRIGGER IF EXISTS sync_pedido_subtotal_from_adicionais ON public.pedido_item_adicionais;
 CREATE TRIGGER sync_pedido_subtotal_from_adicionais
 AFTER INSERT OR UPDATE OR DELETE ON public.pedido_item_adicionais
-FOR EACH ROW EXECUTE FUNCTION public.sync_pedido_subtotal_from_items();
+FOR EACH ROW EXECUTE FUNCTION public.sync_pedido_subtotal_from_adicionais();
 
 -- Recalcular subtotal dos pedidos de mesa existentes
 UPDATE public.pedidos p

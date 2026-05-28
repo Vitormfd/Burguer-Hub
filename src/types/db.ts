@@ -52,6 +52,16 @@ export interface Conta {
   forma_pagamento?: FormaPagamento | null;
 }
 
+export type FormaPagamento = "pix" | "boleto" | "cartao" | "dinheiro";
+
+export interface ContaPagamento {
+  id: string;
+  conta_id: string;
+  forma_pagamento: FormaPagamento;
+  valor: number;
+  criado_em: string;
+}
+
 export type CaixaStatus = "aberto" | "fechado";
 
 export interface Caixa {

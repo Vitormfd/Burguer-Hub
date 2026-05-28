@@ -285,3 +285,65 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     }, 500);
   }
 }
+
+// ─── Impressão: Resumo do caixa ───────────────────────────────────────────────
+export interface CashSummary {
+  loja_nome?: string;
+  caixa: {
+    id: string;
+    valor_inicial: number;
+    valor_final: number | null;
+    aberto_em: string;
+    fechado_em: string | null;
+    observacoes?: string | null;
+  };
+  total_vendas: number;
+  contas_count: number;
+  pagamentos: Array<{ forma: string; valor: number }>;
+  movimentacoes: { retirada: number; suprimento: number };
+}
+
+export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
+  config = config ?? readPrintConfig();
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("pt-BR");
+  const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const lojaName = esc(summary.loja_nome || "Burguer Hub");
+
+  const fs = { base: 13, small: 12, title: 16, total: 16 }[config.fonte] ?? 13;
+  const w = config.largura;
+
+  const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+
+  let body = "";
+  body += `<div class="section-title">RESUMO DO CAIXA</div>`;
+  body += `<div class="info-line">Período: ${new Date(summary.caixa.aberto_em).toLocaleString("pt-BR")} — ${summary.caixa.fechado_em ? new Date(summary.caixa.fechado_em).toLocaleString("pt-BR") : "(em aberto)"}</div>`;
+  body += `<div class="sep-dashed"></div>`;
+  body += `<div class="subtotal-line"><span>Caixa aberto</span><span>${brl(summary.caixa.valor_inicial)}</span></div>`;
+  body += `<div class="subtotal-line"><span>Total vendas</span><span>${brl(summary.total_vendas)}</span></div>`;
+  body += `<div class="subtotal-line"><span>Movimentações (retirada)</span><span>${brl(summary.movimentacoes.retirada)}</span></div>`;
+  body += `<div class="subtotal-line"><span>Movimentações (suprimento)</span><span>${brl(summary.movimentacoes.suprimento)}</span></div>`;
+  body += `<div class="sep"></div>`;
+  body += `<div class="section-title">Pagamentos</div>`;
+  summary.pagamentos.forEach((p) => {
+    body += `<div class="subtotal-line"><span>${esc(p.forma)}</span><span>${brl(p.valor)}</span></div>`;
+  });
+  body += `<div class="sep"></div>`;
+  body += `<div class="total-line"><span>Saldo final declarado</span><span>${brl(summary.caixa.valor_final ?? 0)}</span></div>`;
+
+  const rodapeHtml = config.mostrar_rodape && config.rodape_texto ? `<div class="footer">${esc(config.rodape_texto)}</div>` : "";
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${lojaName} - Resumo</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:700;line-height:1.3;width:${w};padding:5mm 4mm;color:#000;background:#fff} .header{text-align:center;margin-bottom:6px}.header h1{font-size:16px;font-weight:900;text-transform:uppercase}.header .datetime{font-size:12px;font-weight:700;margin-top:2px}.sep{border-top:2.4px solid #000;margin:5px 0}.sep-dashed{border-top:1.5px solid #000;margin:4px 0}.section-title{font-size:16px;font-weight:bold;text-align:center;margin:5px 0;text-transform:uppercase}.info-line{margin:2px 0;font-size:12px;font-weight:700}.subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:12px;font-weight:700}.total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;padding:2px 0;border-top:1.6px solid #000;border-bottom:1.6px solid #000;font-size:16px;font-weight:900}.footer{text-align:center;font-size:12px;font-weight:700;margin-top:10px;padding-top:6px;border-top:1.5px solid #000}</style></head><body><div class="header"><h1>${lojaName}</h1><div class="datetime">${dateStr} &agrave;s ${timeStr}</div></div><div class="sep"></div>${body}${rodapeHtml}</body></html>`;
+
+  // Reuse existing print mechanism: open window and print
+  const win = window.open("", "_blank", "width=440,height=680,scrollbars=yes,resizable=yes");
+  if (win) {
+    win.document.open(); win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => { win.print(); win.onafterprint = () => win.close(); }, 500);
+    return;
+  }
+
+  const iframe = document.createElement("iframe"); iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden"; document.body.appendChild(iframe);
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+  if (doc) { doc.open(); doc.write(html); doc.close(); setTimeout(() => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); if (iframe.contentWindow) { iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe); } else { setTimeout(() => document.body.removeChild(iframe), 5000); } }, 500); }
+}

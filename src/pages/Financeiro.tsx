@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { brl } from "@/lib/format";
+import { printCashSummary } from "@/lib/print";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1121,7 +1122,7 @@ export default function Financeiro() {
         return toast.error("Não há caixa aberto para fechar");
       }
 
-      const { error } = await sb.rpc("fechar_caixa", {
+      const { data: caixaClosed, error } = await sb.rpc("fechar_caixa", {
         p_caixa_id: caixaAberto.id,
         p_valor_final: valor,
         p_observacoes: observacoes,
@@ -1132,6 +1133,16 @@ export default function Financeiro() {
       if (error) return toast.error(error.message);
 
       toast.success("Caixa fechado");
+
+      // Após fechar, monta e imprime resumo do caixa automaticamente (se possível)
+      try {
+        if (caixaClosed && (caixaClosed as any).id && typeof window !== "undefined") {
+          const enabled = (localStorage.getItem("bh_auto_print_cash_on_close") ?? "1") === "1";
+          if (enabled) await buildAndPrintCaixaSummary((caixaClosed as any).id);
+        }
+      } catch (err) {
+        console.error("Erro ao imprimir resumo do caixa:", err);
+      }
     }
 
     setCaixaDialogOpen(false);
@@ -1189,6 +1200,63 @@ export default function Financeiro() {
     setRetiradaDialogOpen(false);
     setRetiradaForm(emptyRetiradaCaixaForm());
     await loadAll();
+  };
+
+  const buildAndPrintCaixaSummary = async (caixaId: string) => {
+    try {
+      const { data: caixa } = await sb.from("caixas").select("*").eq("id", caixaId).single();
+      if (!caixa) return;
+
+      const abertoEm = caixa.aberto_em;
+      const fechadoEm = caixa.fechado_em ?? new Date().toISOString();
+
+      // Buscar contas fechadas no período
+      const { data: contas } = await sb
+        .from("contas")
+        .select("id,total,fechada_em,conta_pagamentos(forma_pagamento,valor)")
+        .gte("fechada_em", abertoEm)
+        .lte("fechada_em", fechadoEm);
+
+      const contasList = (contas || []) as any[];
+      const totalVendas = contasList.reduce((s, c) => s + Number(c.total || 0), 0);
+      const contasCount = contasList.length;
+
+      const pagamentosMap: Record<string, number> = {};
+      contasList.forEach((c) => {
+        const pagos = c.conta_pagamentos || [];
+        pagos.forEach((p: any) => {
+          const forma = p.forma_pagamento || p.forma || "outros";
+          pagamentosMap[forma] = (pagamentosMap[forma] || 0) + Number(p.valor || 0);
+        });
+      });
+
+      const pagamentos = Object.entries(pagamentosMap).map(([forma, valor]) => ({ forma, valor }));
+
+      const { data: movs } = await sb.from("caixa_movimentacoes").select("tipo,valor").eq("caixa_id", caixaId);
+      const movsList = (movs || []) as any[];
+      const retirada = movsList.filter((m) => m.tipo === "retirada").reduce((s, m) => s + Number(m.valor || 0), 0);
+      const suprimento = movsList.filter((m) => m.tipo === "suprimento").reduce((s, m) => s + Number(m.valor || 0), 0);
+
+      const summary = {
+        loja_nome: undefined,
+        caixa: {
+          id: caixa.id,
+          valor_inicial: Number(caixa.valor_inicial || 0),
+          valor_final: caixa.valor_final != null ? Number(caixa.valor_final) : null,
+          aberto_em: caixa.aberto_em,
+          fechado_em: caixa.fechado_em,
+          observacoes: caixa.observacoes || null,
+        },
+        total_vendas: Number(totalVendas),
+        contas_count: contasCount,
+        pagamentos,
+        movimentacoes: { retirada, suprimento },
+      };
+
+      printCashSummary(summary as any);
+    } catch (err) {
+      console.error("Erro ao montar resumo do caixa:", err);
+    }
   };
 
   const openFornecedorDetalhe = (fornecedor: Fornecedor) => {

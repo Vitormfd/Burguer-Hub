@@ -28,7 +28,7 @@ import {
   List,
   Printer,
 } from "lucide-react";
-import { type PrintConfig, readPrintConfig, savePrintConfig } from "@/lib/print";
+import { type PrintConfig, readPrintConfig, savePrintConfig, printCashSummary } from "@/lib/print";
 import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { brl } from "@/lib/format";
 import { Link } from "react-router-dom";
@@ -257,6 +257,7 @@ export default function Configuracoes() {
   // Print config state
   const [printCfg, setPrintCfg] = useState<PrintConfig>(readPrintConfig);
   const [printSaved, setPrintSaved] = useState(false);
+  const [autoPrintCash, setAutoPrintCash] = useState<boolean>(true);
 
   // Sound settings (localStorage)
   const [soundPreset, setSoundPreset] = useState<"bell" | "beep" | "chime" | "gong" | "tritone" | "alarm" | "dingdong" | "metallic">("bell");
@@ -269,6 +270,10 @@ export default function Configuracoes() {
       const allowed = ["bell", "beep", "chime", "gong", "tritone", "alarm", "dingdong", "metallic"];
       setSoundPreset((allowed.includes(p) ? (p as any) : "bell"));
       setSoundVolume(Number.isFinite(v) ? Math.max(0.05, Math.min(3, v)) : 1);
+    } catch {}
+    try {
+      const v = localStorage.getItem("bh_auto_print_cash_on_close");
+      setAutoPrintCash(v === null ? true : v === "1");
     } catch {}
   }, []);
 
@@ -288,6 +293,16 @@ export default function Configuracoes() {
     savePrintConfig(printCfg);
     setPrintSaved(true);
     setTimeout(() => setPrintSaved(false), 2000);
+  };
+
+  const saveAutoPrintSetting = (val: boolean) => {
+    try {
+      localStorage.setItem("bh_auto_print_cash_on_close", val ? "1" : "0");
+      setAutoPrintCash(val);
+      toast.success("Preferência de impressão salva");
+    } catch {
+      toast.error("Não foi possível salvar a preferência");
+    }
   };
 
   const updateScheduleDay = (day: number, patch: Partial<HorarioFuncionamentoDia>) => {
@@ -957,6 +972,28 @@ export default function Configuracoes() {
               {printSaved ? "Salvo!" : "Salvar configurações de impressão"}
             </Button>
           </div>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Resumo do caixa</h2>
+            <div className="flex items-center gap-3">
+              <Switch checked={autoPrintCash} onCheckedChange={(v) => saveAutoPrintSetting(!!v)} />
+              <Label>Imprimir resumo do caixa automaticamente ao fechar</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">Ao fechar o caixa, o sistema tentará abrir a janela de impressão com o resumo do dia.</p>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => {
+                // montar um resumo de teste
+                const mock = {
+                  caixa: { id: "test", valor_inicial: 100, valor_final: 257.5, aberto_em: new Date().toISOString(), fechado_em: new Date().toISOString(), observacoes: null },
+                  total_vendas: 300,
+                  contas_count: 12,
+                  pagamentos: [{ forma: "dinheiro", valor: 120 }, { forma: "pix", valor: 180 }],
+                  movimentacoes: { retirada: 50, suprimento: 0 },
+                } as any;
+                printCashSummary(mock);
+              }}>Testar resumo</Button>
+            </div>
+          </Card>
         </TabsContent>
 
         {/* TAB: WHATSAPP */}

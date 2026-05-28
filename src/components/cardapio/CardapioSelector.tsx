@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brl } from "@/lib/format";
+import { emPromocao, precoEfetivo } from "@/lib/produtos";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { Cart, CartItem } from "@/components/cardapio/cartTypes";
 import { cartSubtotal } from "@/components/cardapio/cartTypes";
@@ -120,7 +121,16 @@ export default function CardapioSelector({
                             <div className="font-semibold text-sm leading-tight">{p.nome}</div>
                             {p.descricao && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.descricao}</p>}
                           </div>
-                          <div className="text-primary font-semibold text-sm whitespace-nowrap">{brl(Number(p.preco))}</div>
+                          <div className="text-right shrink-0">
+                            {emPromocao(p) ? (
+                              <div className="flex flex-col items-end leading-tight">
+                                <span className="text-[11px] line-through text-muted-foreground">{brl(Number(p.preco))}</span>
+                                <span className="text-primary font-semibold text-sm">{brl(precoEfetivo(p))}</span>
+                              </div>
+                            ) : (
+                              <div className="text-primary font-semibold text-sm whitespace-nowrap">{brl(precoEfetivo(p))}</div>
+                            )}
+                          </div>
                         </div>
                         <div className="flex justify-end mt-auto pt-1">
                           <Button size="sm" onClick={() => setProdutoSelecionado(p)}>Adicionar</Button>
@@ -203,6 +213,7 @@ export default function CardapioSelector({
         produto={produtoSelecionado}
         onClose={() => setProdutoSelecionado(null)}
         onConfirm={(item) => onCartChange([...cart, item])}
+        priceResolver={precoEfetivo}
         fallbackAllGroups={isHamburger(produtoSelecionado)}
       />
     </>

@@ -45,6 +45,7 @@ import {
   rewardProgress,
 } from "@/lib/fidelidade";
 import { sendWhatsapp } from "@/lib/whatsapp";
+import { precoEfetivo } from "@/lib/produtos";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
@@ -147,9 +148,6 @@ const isOpenNow = (cfg: Configuracao) => {
   const fim = toMinutes(today.fechamento);
   return fim > ini ? cur >= ini && cur <= fim : cur >= ini || cur <= fim;
 };
-
-const precoEfetivo = (p: Produto) =>
-  p.promocao && p.preco_promocional != null ? Number(p.preco_promocional) : Number(p.preco);
 
 const normalizeHexColor = (value?: string | null) => {
   if (!value) return "#16a34a";

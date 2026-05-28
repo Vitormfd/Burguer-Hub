@@ -21,6 +21,8 @@ interface DeliveryRow {
   cliente_nome: string;
   cliente_telefone: string;
   endereco: string;
+  numero: string | null;
+  complemento: string | null;
   bairro: string | null;
   taxa_entrega: number;
   status: EntregaStatus;
@@ -105,6 +107,8 @@ export default function Delivery() {
         cliente_nome: e.cliente_nome,
         cliente_telefone: e.cliente_telefone,
         endereco: e.endereco,
+        numero: e.numero,
+        complemento: e.complemento,
         bairro: e.bairro,
         taxa_entrega: Number(e.taxa_entrega),
         status: e.status as EntregaStatus,
@@ -176,6 +180,8 @@ export default function Delivery() {
       cliente_nome: row.cliente_nome,
       cliente_telefone: row.cliente_telefone,
       endereco: row.endereco,
+      numero: row.numero,
+      complemento: row.complemento,
       bairro: row.bairro,
       taxa_entrega: row.taxa_entrega,
       forma_pagamento: (entrega as { forma_pagamento?: string | null } | null)?.forma_pagamento ?? null,
@@ -328,7 +334,12 @@ export default function Delivery() {
                   {r.tipo_entrega === "delivery" ? (
                     <div className="flex items-start gap-2 text-muted-foreground">
                       <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                      <span>{r.endereco}{r.bairro ? ` — ${r.bairro}` : ""}</span>
+                      <span>
+                        {r.endereco}
+                        {r.numero ? `, ${r.numero}` : ""}
+                        {r.complemento ? ` - ${r.complemento}` : ""}
+                        {r.bairro ? ` — ${r.bairro}` : ""}
+                      </span>
                     </div>
                   ) : (
                     <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">

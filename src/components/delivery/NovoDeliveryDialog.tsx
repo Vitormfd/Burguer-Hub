@@ -232,7 +232,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-5xl max-h-[95vh] flex flex-col overflow-y-auto">
+      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[95vh] flex flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display text-3xl">Novo Delivery</DialogTitle>
         </DialogHeader>

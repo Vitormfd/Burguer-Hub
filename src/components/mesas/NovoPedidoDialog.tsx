@@ -112,7 +112,7 @@ export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, o
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="font-display text-3xl">Novo Pedido</DialogTitle>
         </DialogHeader>

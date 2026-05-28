@@ -99,8 +99,8 @@ export default function CardapioSelector({
 
   return (
     <>
-      <div className="grid md:grid-cols-[1fr_320px] gap-0 border rounded-lg overflow-hidden bg-card">
-        <div className="min-h-0 flex flex-col border-r">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_260px] md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_320px] gap-0 border rounded-lg overflow-hidden bg-card">
+        <div className="min-h-0 flex flex-col sm:border-r">
           <Tabs defaultValue={categorias[0]?.id} className="flex-1 flex flex-col min-h-0">
             <div className="px-4">
               <TabsList className="my-2">
@@ -133,14 +133,14 @@ export default function CardapioSelector({
           </Tabs>
         </div>
 
-        <div className="bg-muted/30 flex flex-col min-h-0">
-          <div className="p-3 border-b flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">{totalItens} item(ns)</div>
+        <div className="bg-muted/30 flex flex-col min-h-0 min-w-0 overflow-hidden">
+          <div className="p-3 border-b flex items-center justify-center">
+            <div className="text-xs text-muted-foreground text-center">{totalItens} item(ns)</div>
           </div>
           <div className={`${heightClass} min-h-0 overflow-y-scroll overscroll-contain touch-pan-y`}>
             <div className="p-3 space-y-2">
               {cart.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-8">Nenhum item adicionado</p>
+                <p className="text-xs text-muted-foreground text-center py-8 break-words">Nenhum item adicionado</p>
               )}
               {cart.map((item) => (
                 <Card key={item.id} className="p-2 space-y-2">

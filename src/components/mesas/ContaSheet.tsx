@@ -627,7 +627,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       }
     }
 
-    await closeConta(0, `Conta da mesa ${mesa.numero} cancelada e encerrada com R$ 0,00`);
+    await closeConta(0);
     setTextoConfirmacaoConta("");
     setConfirmarTextoCancelarConta(false);
   };

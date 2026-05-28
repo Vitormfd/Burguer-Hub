@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { playPreset, bindAudioUnlock } from "@/lib/sound";
 import {
   Settings,
   Plus,
@@ -256,6 +257,32 @@ export default function Configuracoes() {
   // Print config state
   const [printCfg, setPrintCfg] = useState<PrintConfig>(readPrintConfig);
   const [printSaved, setPrintSaved] = useState(false);
+
+  // Sound settings (localStorage)
+  const [soundPreset, setSoundPreset] = useState<"bell" | "beep" | "chime" | "gong" | "tritone" | "alarm" | "dingdong" | "metallic">("bell");
+  const [soundVolume, setSoundVolume] = useState<number>(1);
+
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem("bh_sound_preset") || "bell";
+      const v = Number(localStorage.getItem("bh_sound_volume") ?? "1");
+      const allowed = ["bell", "beep", "chime", "gong", "tritone", "alarm", "dingdong", "metallic"];
+      setSoundPreset((allowed.includes(p) ? (p as any) : "bell"));
+      setSoundVolume(Number.isFinite(v) ? Math.max(0.05, Math.min(3, v)) : 1);
+    } catch {}
+  }, []);
+
+  const saveSoundSettings = (preset: "bell" | "beep" | "chime", volume: number) => {
+    try {
+      localStorage.setItem("bh_sound_preset", preset);
+      localStorage.setItem("bh_sound_volume", String(volume));
+      setSoundPreset(preset);
+      setSoundVolume(volume);
+      toast.success("Preferência de som salva");
+    } catch {
+      toast.error("Não foi possível salvar a preferência de som");
+    }
+  };
 
   const savePrint = () => {
     savePrintConfig(printCfg);
@@ -540,6 +567,41 @@ export default function Configuracoes() {
 
         {/* TAB: GERAL */}
         <TabsContent value="geral" className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl">Notificações sonoras</h2>
+            <div className="grid md:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Timbre</Label>
+                <select value={soundPreset} onChange={(e) => { const v = e.target.value as any; saveSoundSettings(v, soundVolume); }} className="w-full rounded-md border p-2">
+                  <option value="bell">Sino (balcão)</option>
+                  <option value="chime">Sinos curtos (melódico)</option>
+                  <option value="beep">Bip curto</option>
+                  <option value="gong">Gongo (grave longo)</option>
+                  <option value="tritone">Trítono (3-notas)</option>
+                  <option value="alarm">Alarme curto</option>
+                  <option value="dingdong">Ding-dong</option>
+                  <option value="metallic">Ping metálico</option>
+                  <option value="marimba">Marimba (percussivo)</option>
+                  <option value="glass">Sino de vidro (agudo)</option>
+                  <option value="cash">Caixa registradora (ka-ching)</option>
+                  <option value="cowbell">Cowbell</option>
+                  <option value="retro">Pulse retrô</option>
+                  <option value="siren">Sirene curta</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Volume</Label>
+                <div className="flex items-center gap-2">
+                  <input type="range" min={0.05} max={3} step={0.05} value={soundVolume} onChange={(e) => { const v = Number(e.target.value); setSoundVolume(v); }} />
+                  <div className="w-16 text-right">{Math.round(soundVolume * 100)}%</div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button variant="outline" onClick={() => { bindAudioUnlock(); playPreset(soundPreset, soundVolume); }}>Testar som</Button>
+                  <Button onClick={() => saveSoundSettings(soundPreset, soundVolume)}>Salvar preferência</Button>
+                </div>
+              </div>
+            </div>
+          </Card>
           <Card className="p-6 space-y-4">
             <h2 className="font-display text-2xl">Identidade da loja</h2>
             <div className="grid md:grid-cols-2 gap-4">

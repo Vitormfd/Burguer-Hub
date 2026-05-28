@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { Mesa, Conta, ContaPagamento, FormaPagamento, Pedido, PedidoItem, Produto, Configuracao } from "@/types/db";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -85,6 +85,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   const [busy, setBusy] = useState(false);
   const [cfg, setCfg] = useState<Configuracao | null>(null);
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>("dinheiro");
+  const [trocoPara, setTrocoPara] = useState("");
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<{ tipo: "item" | "pedido"; pedido: PedidoComItens; item?: ItemDetalhado } | null>(null);
@@ -102,10 +103,18 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       .eq("mesa_id", mesa.id).eq("status", "aberta")
       .order("aberta_em", { ascending: false }).limit(1).maybeSingle();
 
-    if (!c) { setConta(null); setPedidos([]); setPagamentos([]); setFormaPagamento("dinheiro"); return; }
-    const contaData = c as Conta & { forma_pagamento?: FormaPagamento | null };
-    setConta(contaData as Conta);
+    if (!c) {
+      setConta(null);
+      setPedidos([]);
+      setPagamentos([]);
+      setFormaPagamento("dinheiro");
+      setTrocoPara("");
+      return;
+    }
+    const contaData = c as Conta;
+    setConta(contaData);
     setFormaPagamento(contaData.forma_pagamento ?? "dinheiro");
+    setTrocoPara(contaData.troco_para != null ? String(contaData.troco_para) : "");
 
     const { data: peds } = await supabase
       .from("pedidos").select("*").eq("conta_id", c.id).order("criado_em");
@@ -217,6 +226,21 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
   const pagamentosTotal = pagamentos.reduce((s, pagamento) => s + Number(pagamento.valor), 0);
   const restante = Math.max(0, total - pagamentosTotal);
+  const temPagamentoDinheiro =
+    pagamentos.length === 0
+      ? formaPagamento === "dinheiro"
+      : pagamentos.some((pagamento) => pagamento.forma_pagamento === "dinheiro");
+
+  const parseTrocoPara = () => {
+    const raw = trocoPara.trim();
+    if (!raw) return null;
+    const value = Number(raw.replace(",", "."));
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const trocoParaValor = parseTrocoPara();
+  const trocoCalculado =
+    trocoParaValor != null && trocoParaValor > total ? trocoParaValor - total : null;
 
   const hasItensAtivos = pedidos.some((p) => p.itens.some((i) => !i.cancelado));
 
@@ -252,7 +276,13 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   };
 
   const removePagamento = (index: number) => {
-    setPagamentos((current) => current.filter((_, idx) => idx !== index));
+    setPagamentos((current) => {
+      const next = current.filter((_, idx) => idx !== index);
+      if (!next.some((pagamento) => pagamento.forma_pagamento === "dinheiro")) {
+        setTrocoPara("");
+      }
+      return next;
+    });
   };
 
   const persistPagamentos = async () => {
@@ -338,8 +368,20 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     }
   };
 
+  const validarTroco = () => {
+    if (!temPagamentoDinheiro) return true;
+    const valor = parseTrocoPara();
+    if (valor == null) return true;
+    if (valor < total) {
+      toast.error("O valor do troco deve ser maior ou igual ao total da conta");
+      return false;
+    }
+    return true;
+  };
+
   const handlePrint = () => {
     if (!mesa || !pedidos.length) return;
+    const trocoVal = temPagamentoDinheiro ? parseTrocoPara() : null;
     printReceipt({
       tipo: "mesa",
       loja_nome: cfg?.nome_loja,
@@ -363,6 +405,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       total,
       pagamentos: pagamentos.length > 0 ? pagamentos.map((p) => ({ forma: p.forma_pagamento, valor: Number(p.valor) })) : undefined,
       forma_pagamento: pagamentos.length === 0 ? formaPagamento : undefined,
+      troco_para: trocoVal,
     });
   };
 
@@ -397,6 +440,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       }
     }
 
+    const trocoVal = temPagamentoDinheiro ? parseTrocoPara() : null;
+
     const { error: e1 } = await supabase
       .from("contas")
       .update({
@@ -404,6 +449,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
         fechada_em: new Date().toISOString(),
         total: valorFinal,
         forma_pagamento: forma ?? (pagamentos.length > 0 ? pagamentos[0].forma_pagamento : formaPagamento),
+        troco_para: trocoVal,
       })
       .eq("id", conta.id);
     if (e1) {
@@ -427,6 +473,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     setClienteNome("");
     setClienteTelefone("");
     setPendingCloseConta(null);
+    setTrocoPara("");
     onClose();
     onClosed?.();
   };
@@ -436,6 +483,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       toast.error("O total dos pagamentos deve ser igual ao valor da conta");
       return;
     }
+    if (!validarTroco()) return;
     setPendingCloseConta({ valor: total, forma: pagamentos.length > 0 ? pagamentos[0].forma_pagamento : formaPagamento });
     setClienteDialogOpen(true);
   };
@@ -821,7 +869,15 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                 )}
 
                 <div className="grid gap-2 sm:grid-cols-[1fr_140px_120px]">
-                  <Select value={novoPagamentoForma} onValueChange={(value) => setNovoPagamentoForma(value as FormaPagamento)}>
+                  <Select
+                    value={novoPagamentoForma}
+                    onValueChange={(value) => {
+                      setNovoPagamentoForma(value as FormaPagamento);
+                      if (value !== "dinheiro" && pagamentos.every((p) => p.forma_pagamento !== "dinheiro")) {
+                        setTrocoPara("");
+                      }
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Forma" />
                     </SelectTrigger>
@@ -852,6 +908,50 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
                 {pagamentos.length > 0 && pagamentosTotal !== total && (
                   <div className="text-sm text-destructive">O total dos pagamentos deve ser igual ao valor da conta para fechar.</div>
+                )}
+
+                {pagamentos.length === 0 && (
+                  <div className="space-y-2 pt-1 border-t">
+                    <Label>Forma de pagamento</Label>
+                    <Select
+                      value={formaPagamento}
+                      onValueChange={(value) => {
+                        const forma = value as FormaPagamento;
+                        setFormaPagamento(forma);
+                        if (forma !== "dinheiro") setTrocoPara("");
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formaPagamentoOptions.map((forma) => (
+                          <SelectItem key={forma} value={forma}>{formaPagamentoLabel[forma]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {temPagamentoDinheiro && (
+                  <div className="space-y-2 pt-1 border-t">
+                    <Label htmlFor="mesa-troco">Troco para quanto?</Label>
+                    <Input
+                      id="mesa-troco"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="1"
+                      value={trocoPara}
+                      onChange={(e) => setTrocoPara(e.target.value)}
+                      placeholder="Ex: 100"
+                    />
+                    {trocoCalculado != null && (
+                      <p className="text-xs text-muted-foreground">
+                        Troco a devolver: <span className="font-semibold text-foreground">{brl(trocoCalculado)}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -936,7 +1036,14 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               ) : (
                 <>Forma: <span className="font-semibold text-foreground">{formaPagamentoLabel[formaPagamento]}</span>.</>
               )}
-              A mesa voltar� a ficar livre.
+              {temPagamentoDinheiro && trocoParaValor != null && trocoParaValor >= total && (
+                <> Troco para <span className="font-semibold text-foreground">{brl(trocoParaValor)}</span>
+                  {trocoCalculado != null && (
+                    <> (devolver <span className="font-semibold text-foreground">{brl(trocoCalculado)}</span>)</>
+                  )}.
+                </>
+              )}
+              {" "}A mesa voltará a ficar livre.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

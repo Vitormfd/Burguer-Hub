@@ -50,6 +50,7 @@ export interface Conta {
   status: ContaStatus;
   total: number;
   forma_pagamento?: FormaPagamento | null;
+  troco_para?: number | null;
 }
 
 export type FormaPagamento = "pix" | "boleto" | "cartao" | "dinheiro";

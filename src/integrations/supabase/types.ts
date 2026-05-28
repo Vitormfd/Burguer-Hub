@@ -362,6 +362,7 @@ export type Database = {
           mesa_id: string | null
           status: Database["public"]["Enums"]["conta_status"]
           total: number
+          troco_para: number | null
         }
         Insert: {
           aberta_em?: string
@@ -371,6 +372,7 @@ export type Database = {
           mesa_id?: string | null
           status?: Database["public"]["Enums"]["conta_status"]
           total?: number
+          troco_para?: number | null
         }
         Update: {
           aberta_em?: string
@@ -380,6 +382,7 @@ export type Database = {
           mesa_id?: string | null
           status?: Database["public"]["Enums"]["conta_status"]
           total?: number
+          troco_para?: number | null
         }
         Relationships: [
           {

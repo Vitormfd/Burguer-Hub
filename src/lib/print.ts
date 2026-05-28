@@ -56,6 +56,7 @@ export interface PrintMesaData {
   }>;
   total: number;
   forma_pagamento?: string | null;
+  troco_para?: number | null;
   pagamentos?: Array<{ forma: string; valor: number }>;
 }
 
@@ -152,6 +153,23 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
       };
       body += `<div class="sep-dashed"></div>`;
       body += `<div class="subtotal-line"><span>Pagamento</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
+      if (
+        data.forma_pagamento === "dinheiro" &&
+        data.troco_para != null &&
+        data.troco_para > data.total
+      ) {
+        body += `<div class="subtotal-line"><span>Troco para</span><span>${brlPrint(data.troco_para)}</span></div>`;
+        body += `<div class="subtotal-line troco"><span>Troco</span><span>${brlPrint(data.troco_para - data.total)}</span></div>`;
+      }
+    }
+    if (
+      data.pagamentos?.length &&
+      data.pagamentos.some((p) => p.forma === "dinheiro") &&
+      data.troco_para != null &&
+      data.troco_para > data.total
+    ) {
+      body += `<div class="subtotal-line"><span>Troco para</span><span>${brlPrint(data.troco_para)}</span></div>`;
+      body += `<div class="subtotal-line troco"><span>Troco</span><span>${brlPrint(data.troco_para - data.total)}</span></div>`;
     }
   } else {
     body += `<div class="section-title">${data.tipo === "retirada" ? "RETIRADA" : "DELIVERY"}</div>`;

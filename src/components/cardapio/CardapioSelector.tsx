@@ -5,7 +5,6 @@ import type { Categoria, Produto } from "@/types/db";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brl } from "@/lib/format";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
@@ -103,17 +102,16 @@ export default function CardapioSelector({
       <div className="grid md:grid-cols-[1fr_320px] gap-0 border rounded-lg overflow-hidden bg-card">
         <div className="min-h-0 flex flex-col border-r">
           <Tabs defaultValue={categorias[0]?.id} className="flex-1 flex flex-col min-h-0">
-            <ScrollArea className="px-4">
+            <div className="px-4">
               <TabsList className="my-2">
                 {categorias.map((c) => (
                   <TabsTrigger key={c.id} value={c.id}>{c.nome}</TabsTrigger>
                 ))}
               </TabsList>
-            </ScrollArea>
+            </div>
 
             {categorias.map((c) => (
-              <TabsContent key={c.id} value={c.id} className="flex-1 min-h-0 m-0">
-                <ScrollArea className={`${heightClass} px-4 pb-4`}>
+              <TabsContent key={c.id} value={c.id} className={`${heightClass} min-h-0 m-0 overflow-y-scroll overscroll-contain touch-pan-y px-4 pb-4`}>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {produtos.filter((p) => p.categoria_id === c.id).map((p) => (
                       <Card key={p.id} className="p-3 flex flex-col gap-2 hover:shadow-card transition-shadow">
@@ -130,7 +128,6 @@ export default function CardapioSelector({
                       </Card>
                     ))}
                   </div>
-                </ScrollArea>
               </TabsContent>
             ))}
           </Tabs>
@@ -140,7 +137,7 @@ export default function CardapioSelector({
           <div className="p-3 border-b flex items-center justify-between">
             <div className="text-xs text-muted-foreground">{totalItens} item(ns)</div>
           </div>
-          <ScrollArea className={heightClass}>
+          <div className={`${heightClass} min-h-0 overflow-y-scroll overscroll-contain touch-pan-y`}>
             <div className="p-3 space-y-2">
               {cart.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8">Nenhum item adicionado</p>
@@ -187,7 +184,7 @@ export default function CardapioSelector({
                 </Card>
               ))}
             </div>
-          </ScrollArea>
+          </div>
           <div className="p-3 border-t bg-card space-y-2">
             <div className="flex justify-between text-xs">
               <span>Subtotal</span><span>{brl(subtotal)}</span>

@@ -103,7 +103,7 @@ export default function CardapioSelector({
         <div className="min-h-0 flex flex-col sm:border-r">
           <Tabs defaultValue={categorias[0]?.id} className="flex-1 flex flex-col min-h-0">
             <div className="px-4">
-              <TabsList className="my-2">
+              <TabsList className="my-2 flex-wrap h-auto gap-1 bg-transparent">
                 {categorias.map((c) => (
                   <TabsTrigger key={c.id} value={c.id}>{c.nome}</TabsTrigger>
                 ))}

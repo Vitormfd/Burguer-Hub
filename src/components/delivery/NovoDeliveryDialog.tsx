@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { brl } from "@/lib/format";
 import { printReceipt } from "@/lib/print";
+import { sendWhatsapp } from "@/lib/whatsapp";
 import type { Cliente, Configuracao } from "@/types/db";
 
 const deliverySchema = z.object({
@@ -193,6 +194,14 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     });
     setBusy(false);
     if (e3) return toast.error(e3.message);
+
+    if (parsed.data.cliente_telefone) {
+      sendWhatsapp(pedido.id, "confirmado", parsed.data.cliente_telefone, {
+        nome: parsed.data.cliente_nome,
+        itens: items.map((i) => `${i.quantidade}x ${i.produto.nome}`).join(", "),
+        total: brl(subtotal + parsed.data.taxa_entrega),
+      });
+    }
 
     toast.success("Delivery cadastrado");
 

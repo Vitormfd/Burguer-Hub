@@ -10,7 +10,6 @@ import Mesas from "./pages/Mesas";
 import Delivery from "./pages/Delivery";
 import Cardapio from "./pages/Cardapio";
 import AdicionaisAdmin from "./pages/AdicionaisAdmin";
-import Cozinha from "./pages/Cozinha";
 import Relatorios from "./pages/Relatorios";
 import Configuracoes from "./pages/Configuracoes";
 import CardapioPublico from "./pages/CardapioPublico";
@@ -33,7 +32,6 @@ const App = () => (
             <Route path="/:referencia/cardapio" element={<CardapioPublico />} />
             <Route path="/cardapio" element={<CardapioPublico />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/cozinha" element={<Cozinha />} />
             <Route element={<AppLayout />}>
               <Route path="/" element={<Navigate to="/mesas" replace />} />
               <Route path="/mesas" element={<Mesas />} />

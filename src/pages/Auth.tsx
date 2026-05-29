@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Flame } from "lucide-react";
+import { requestDesktopNotificationPermission, tryUnlockAudio } from "@/lib/sound";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -28,6 +29,8 @@ export default function Auth() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (error) return toast.error(error.message);
+    await tryUnlockAudio();
+    void requestDesktopNotificationPermission();
     toast.success("Bem-vindo!");
     navigate("/", { replace: true });
   };

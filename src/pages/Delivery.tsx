@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store } from "lucide-react";
+import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store, Flame } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,15 +9,18 @@ import { toast } from "sonner";
 import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
 import { printReceipt } from "@/lib/print";
 import { sendWhatsapp } from "@/lib/whatsapp";
+import type { PedidoStatus } from "@/types/db";
 
 type EntregaStatus = "aguardando" | "saiu_para_entrega" | "entregue";
 type EntregaTipo = "delivery" | "retirada";
 type FiltroTipo = "todos" | EntregaTipo;
+type PedidoStatusAtivo = Extract<PedidoStatus, "pendente" | "em_preparo" | "pronto" | "entregue">;
 
 interface DeliveryRow {
   entrega_id: string;
   pedido_id: string;
   tipo_entrega: EntregaTipo;
+  pedido_status: PedidoStatusAtivo;
   cliente_nome: string;
   cliente_telefone: string;
   endereco: string;
@@ -34,6 +37,30 @@ interface DeliveryRow {
     status: "pendente" | "aplicado" | "cancelado";
   } | null;
 }
+
+const pedidoStatusCfg: Record<
+  Extract<PedidoStatusAtivo, "pendente" | "em_preparo" | "pronto">,
+  { label: string; color: string; next: PedidoStatusAtivo | null; nextLabel: string }
+> = {
+  pendente: {
+    label: "Novo",
+    color: "bg-amber-100 text-amber-800 border-amber-200",
+    next: "em_preparo",
+    nextLabel: "Iniciar preparo",
+  },
+  em_preparo: {
+    label: "Em preparo",
+    color: "bg-orange-100 text-orange-800 border-orange-200",
+    next: "pronto",
+    nextLabel: "Marcar pronto",
+  },
+  pronto: {
+    label: "Pronto",
+    color: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    next: null,
+    nextLabel: "",
+  },
+};
 
 const statusCfgDelivery: Record<EntregaStatus, { label: string; icon: typeof Clock; color: string; next: EntregaStatus | null; nextLabel: string }> = {
   aguardando:        { label: "Aguardando",        icon: Clock,         color: "bg-status-pagamento/20 text-status-pagamento border-status-pagamento/30", next: "saiu_para_entrega", nextLabel: "Saiu para entrega" },
@@ -54,6 +81,22 @@ export default function Delivery() {
   const [loading, setLoading] = useState(true);
   const [novoOpen, setNovoOpen] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
+  const notifyItemCancelado = useCallback(async (payload: { new?: { cancelado?: boolean; produto_id?: string | null; pedido_id?: string }; old?: { cancelado?: boolean } }) => {
+    const current = payload?.new;
+    const previous = payload?.old;
+    if (!current?.cancelado || previous?.cancelado || !current.pedido_id) return;
+
+    const [{ data: produto }, { data: entrega }] = await Promise.all([
+      current.produto_id
+        ? supabase.from("produtos").select("nome").eq("id", current.produto_id).maybeSingle()
+        : Promise.resolve({ data: null as { nome: string } | null }),
+      supabase.from("entregas").select("cliente_nome").eq("pedido_id", current.pedido_id).maybeSingle(),
+    ]);
+
+    const rotulo = entrega?.cliente_nome || "Delivery";
+    const nomeItem = produto?.nome || "Item";
+    toast.error(`Item cancelado: ${nomeItem} — ${rotulo}`);
+  }, []);
 
   const load = useCallback(async () => {
     const startOfDay = new Date();
@@ -61,14 +104,18 @@ export default function Delivery() {
 
     const { data: pedidos, error } = await supabase
       .from("pedidos")
-      .select("id, criado_em, tipo_entrega")
+      .select("id, criado_em, tipo_entrega, status")
       .eq("tipo", "delivery")
       .gte("criado_em", startOfDay.toISOString())
       .order("criado_em", { ascending: false });
 
     if (error) { toast.error(error.message); setLoading(false); return; }
     const pedidoIds = (pedidos || []).map((p) => p.id);
-    if (!pedidoIds.length) { setRows([]); setLoading(false); return; }
+    if (!pedidoIds.length) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
 
     const [{ data: entregas }, { data: itens }, { data: resgates }] = await Promise.all([
       supabase.from("entregas").select("*").in("pedido_id", pedidoIds),
@@ -104,6 +151,7 @@ export default function Delivery() {
         entrega_id: e.id,
         pedido_id: e.pedido_id,
         tipo_entrega: (ped.tipo_entrega as EntregaTipo) || "delivery",
+        pedido_status: (ped.status as PedidoStatusAtivo) || "pendente",
         cliente_nome: e.cliente_nome,
         cliente_telefone: e.cliente_telefone,
         endereco: e.endereco,
@@ -123,16 +171,28 @@ export default function Delivery() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
+    const poll = window.setInterval(() => {
+      void load();
+    }, 15000);
+
     const ch = supabase
       .channel("delivery-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos", filter: "tipo=eq.delivery" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedido_itens" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "resgates" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "entregas" }, () => { void load(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos", filter: "tipo=eq.delivery" }, () => { void load(); })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pedido_itens" }, (payload) => {
+        void notifyItemCancelado(payload);
+        void load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedido_itens" }, () => { void load(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "resgates" }, () => { void load(); })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [load]);
+
+    return () => {
+      window.clearInterval(poll);
+      supabase.removeChannel(ch);
+    };
+  }, [load, notifyItemCancelado]);
 
   const printDeliveryCard = useCallback(async (row: DeliveryRow) => {
     const { data: itens } = await supabase
@@ -201,6 +261,36 @@ export default function Delivery() {
     });
   }, []);
 
+  const advancePedido = async (row: DeliveryRow) => {
+    const cfg = pedidoStatusCfg[row.pedido_status as keyof typeof pedidoStatusCfg];
+    if (!cfg?.next) return;
+
+    const { error } = await supabase.from("pedidos").update({ status: cfg.next }).eq("id", row.pedido_id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (row.cliente_telefone) {
+      if (cfg.next === "em_preparo") {
+        sendWhatsapp(row.pedido_id, "em_preparo", row.cliente_telefone, {
+          nome: row.cliente_nome,
+        });
+      } else if (cfg.next === "pronto" && row.tipo_entrega === "retirada") {
+        sendWhatsapp(row.pedido_id, "retirada_pronto", row.cliente_telefone, {
+          nome: row.cliente_nome,
+        });
+      }
+    }
+
+    toast.success(
+      cfg.next === "em_preparo"
+        ? "Pedido em preparo"
+        : "Pedido pronto"
+    );
+    await load();
+  };
+
   const advance = async (row: DeliveryRow) => {
     const cfg = getStatusCfg(row);
     if (!cfg.next) return;
@@ -218,7 +308,11 @@ export default function Delivery() {
         sendWhatsapp(row.pedido_id, "saiu_entrega", row.cliente_telefone, {
           nome: row.cliente_nome,
         });
-      } else if (cfg.next === "saiu_para_entrega" && row.tipo_entrega === "retirada") {
+      } else if (
+        cfg.next === "saiu_para_entrega"
+        && row.tipo_entrega === "retirada"
+        && row.pedido_status !== "pronto"
+      ) {
         sendWhatsapp(row.pedido_id, "retirada_pronto", row.cliente_telefone, {
           nome: row.cliente_nome,
         });
@@ -247,6 +341,8 @@ export default function Delivery() {
   };
 
   const counts = {
+    pedidoPendente: rowsFiltrados.filter((r) => r.pedido_status === "pendente").length,
+    pedidoPreparo: rowsFiltrados.filter((r) => r.pedido_status === "em_preparo").length,
     aguardando: rowsFiltrados.filter((r) => r.status === "aguardando").length,
     saiu: rowsFiltrados.filter((r) => r.status === "saiu_para_entrega").length,
     entregue: rowsFiltrados.filter((r) => r.status === "entregue").length,
@@ -266,16 +362,24 @@ export default function Delivery() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <Card className="p-4 flex items-center gap-3 shadow-soft">
+          <div className="p-2 rounded-lg bg-amber-100"><Flame className="w-5 h-5 text-amber-700" /></div>
+          <div><div className="font-display text-3xl leading-none">{counts.pedidoPendente}</div><div className="text-xs text-muted-foreground">Novos</div></div>
+        </Card>
+        <Card className="p-4 flex items-center gap-3 shadow-soft">
+          <div className="p-2 rounded-lg bg-orange-100"><Clock className="w-5 h-5 text-orange-700" /></div>
+          <div><div className="font-display text-3xl leading-none">{counts.pedidoPreparo}</div><div className="text-xs text-muted-foreground">Em preparo</div></div>
+        </Card>
         <Card className="p-4 flex items-center gap-3 shadow-soft">
           <div className="p-2 rounded-lg bg-status-pagamento/20"><Clock className="w-5 h-5 text-status-pagamento" /></div>
-          <div><div className="font-display text-3xl leading-none">{counts.aguardando}</div><div className="text-xs text-muted-foreground">Aguardando</div></div>
+          <div><div className="font-display text-3xl leading-none">{counts.aguardando}</div><div className="text-xs text-muted-foreground">Aguardando envio</div></div>
         </Card>
         <Card className="p-4 flex items-center gap-3 shadow-soft">
           <div className="p-2 rounded-lg bg-status-ocupada/20"><Bike className="w-5 h-5 text-status-ocupada" /></div>
           <div><div className="font-display text-3xl leading-none">{counts.saiu}</div><div className="text-xs text-muted-foreground">A caminho</div></div>
         </Card>
-        <Card className="p-4 flex items-center gap-3 shadow-soft">
+        <Card className="p-4 flex items-center gap-3 shadow-soft col-span-2 sm:col-span-1">
           <div className="p-2 rounded-lg bg-status-livre/20"><CheckCircle2 className="w-5 h-5 text-status-livre" /></div>
           <div><div className="font-display text-3xl leading-none">{counts.entregue}</div><div className="text-xs text-muted-foreground">Entregues</div></div>
         </Card>
@@ -302,6 +406,10 @@ export default function Delivery() {
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {rowsFiltrados.map((r) => {
             const cfg = getStatusCfg(r);
+            const pedidoCfg =
+              r.pedido_status === "entregue"
+                ? null
+                : pedidoStatusCfg[r.pedido_status as keyof typeof pedidoStatusCfg];
             const Icon = cfg.icon;
             const total = r.itens_total + r.taxa_entrega;
             return (
@@ -314,9 +422,16 @@ export default function Delivery() {
                       {new Date(r.criado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
-                  <Badge variant="outline" className={cfg.color}>
-                    <Icon className="h-3 w-3 mr-1" />{cfg.label}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    {pedidoCfg && (
+                      <Badge variant="outline" className={pedidoCfg.color}>
+                        {pedidoCfg.label}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className={cfg.color}>
+                      <Icon className="h-3 w-3 mr-1" />{cfg.label}
+                    </Badge>
+                  </div>
                 </div>
 
                 <Badge
@@ -372,8 +487,14 @@ export default function Delivery() {
                   <div><div className="text-xs text-muted-foreground">Total</div><div className="font-display text-lg text-primary">{brl(total)}</div></div>
                 </div>
 
+                {pedidoCfg?.next && (
+                  <Button onClick={() => advancePedido(r)} className="mt-auto" size="sm" variant="secondary">
+                    <Flame className="h-3.5 w-3.5 mr-1" />
+                    {pedidoCfg.nextLabel}
+                  </Button>
+                )}
                 {cfg.next && (
-                  <Button onClick={() => advance(r)} className="mt-auto" size="sm">
+                  <Button onClick={() => advance(r)} className={pedidoCfg?.next ? "" : "mt-auto"} size="sm">
                     {cfg.nextLabel}
                   </Button>
                 )}

@@ -81,7 +81,7 @@ export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, o
       if (e3) return toast.error(e3.message);
     }
 
-    toast.success("Pedido enviado para a cozinha");
+    toast.success("Pedido registrado");
 
     if (autoPrint && mesaNumero != null) {
       printReceipt({

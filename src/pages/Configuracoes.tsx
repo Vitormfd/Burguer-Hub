@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { playPreset, bindAudioUnlock } from "@/lib/sound";
+import { playPreset, tryUnlockAudio } from "@/lib/sound";
 import {
   Settings,
   Plus,
@@ -611,7 +611,7 @@ export default function Configuracoes() {
                   <div className="w-16 text-right">{Math.round(soundVolume * 100)}%</div>
                 </div>
                 <div className="flex gap-2 mt-2">
-                  <Button variant="outline" onClick={() => { bindAudioUnlock(); playPreset(soundPreset, soundVolume); }}>Testar som</Button>
+                  <Button variant="outline" onClick={() => { void tryUnlockAudio().then(() => playPreset(soundPreset, soundVolume)); }}>Testar som</Button>
                   <Button onClick={() => saveSoundSettings(soundPreset, soundVolume)}>Salvar preferência</Button>
                 </div>
               </div>

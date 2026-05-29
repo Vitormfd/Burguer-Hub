@@ -1,10 +1,17 @@
 let audioCtx: AudioContext | null = null;
-let unlockBound = false;
+let primedCtx: AudioContext | null = null;
+let unlockListenersBound = false;
+let audioReady = false;
+let audioInitStarted = false;
+let keepAliveTimer: number | null = null;
+let pendingAlerts = 0;
 let lastAlertAt = 0;
 let lastDesktopNotificationAt = 0;
 
+const AUDIO_UNLOCK_KEY = "bh_audio_unlocked";
 const ALERT_DEBOUNCE_MS = 900;
 const DESKTOP_NOTIFICATION_DEBOUNCE_MS = 1200;
+const KEEPALIVE_MS = 20000;
 
 const playRestaurantBell = (ctx: AudioContext, intensity = 1.0) => {
   const start = ctx.currentTime;
@@ -319,61 +326,186 @@ const ensureAudioContext = (): AudioContext | null => {
   return audioCtx;
 };
 
-const unlockAudio = () => {
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  if (ctx.state === "suspended") {
-    void ctx.resume();
+const primeAudio = async (ctx: AudioContext) => {
+  const buffer = ctx.createBuffer(1, 1, 22050);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.0001;
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(0);
+  source.stop(ctx.currentTime + 0.01);
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 20);
+  });
+};
+
+const markAudioUnlocked = () => {
+  audioReady = true;
+  try {
+    sessionStorage.setItem(AUDIO_UNLOCK_KEY, "1");
+  } catch {
+    // ignore
   }
 };
+
+const flushPendingAlerts = () => {
+  if (pendingAlerts <= 0) return;
+  const count = pendingAlerts;
+  pendingAlerts = 0;
+  for (let i = 0; i < count; i += 1) {
+    void playNewOrderAlert(true);
+  }
+};
+
+const startAudioKeepAlive = () => {
+  if (typeof window === "undefined" || keepAliveTimer !== null) return;
+  keepAliveTimer = window.setInterval(() => {
+    void tryUnlockAudio({ silent: true });
+  }, KEEPALIVE_MS);
+};
+
+export const tryUnlockAudio = async (opts?: { silent?: boolean }): Promise<boolean> => {
+  const ctx = ensureAudioContext();
+  if (!ctx) return false;
+
+  try {
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+    if (ctx.state !== "running") return false;
+
+    if (primedCtx !== ctx) {
+      await primeAudio(ctx);
+      primedCtx = ctx;
+      markAudioUnlocked();
+    }
+
+    if (!opts?.silent) {
+      flushPendingAlerts();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const isAudioReady = () => audioReady;
 
 export const bindAudioUnlock = () => {
-  if (typeof window === "undefined" || unlockBound) return;
+  if (typeof window === "undefined" || unlockListenersBound) return;
+  unlockListenersBound = true;
 
-  const once = () => {
-    unlockAudio();
-    if ("Notification" in window && Notification.permission === "default") {
-      void Notification.requestPermission();
-    }
-    window.removeEventListener("pointerdown", once);
-    window.removeEventListener("keydown", once);
-    window.removeEventListener("touchstart", once);
-    unlockBound = true;
+  const onGesture = () => {
+    void tryUnlockAudio();
+    void requestDesktopNotificationPermission();
   };
 
-  window.addEventListener("pointerdown", once, { once: true });
-  window.addEventListener("keydown", once, { once: true });
-  window.addEventListener("touchstart", once, { once: true });
+  window.addEventListener("pointerdown", onGesture, { capture: true, passive: true });
+  window.addEventListener("keydown", onGesture, { capture: true });
+  window.addEventListener("touchstart", onGesture, { capture: true, passive: true });
 };
 
-export const playNewOrderAlert = () => {
+export const requestDesktopNotificationPermission = async () => {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "default") return;
+  try {
+    await Notification.requestPermission();
+  } catch {
+    // ignore
+  }
+};
+
+/** Chamar ao entrar no painel: desbloqueio, keep-alive e alertas em segundo plano. */
+export const initOrderAlertAudio = () => {
+  if (typeof window === "undefined" || audioInitStarted) return;
+  audioInitStarted = true;
+
+  bindAudioUnlock();
+  startAudioKeepAlive();
+
+  const resumeIfPossible = () => {
+    void tryUnlockAudio({ silent: true });
+  };
+
+  window.addEventListener("focus", resumeIfPossible);
+  document.addEventListener("visibilitychange", () => {
+    resumeIfPossible();
+    if (!document.hidden && pendingAlerts > 0) {
+      flushPendingAlerts();
+    }
+  });
+
+  try {
+    if (sessionStorage.getItem(AUDIO_UNLOCK_KEY) === "1") {
+      void tryUnlockAudio({ silent: true });
+    }
+  } catch {
+    // ignore
+  }
+
+  void requestDesktopNotificationPermission();
+};
+
+export const playNewOrderAlert = async (skipDebounce = false) => {
   try {
     const now = Date.now();
-    if (now - lastAlertAt < ALERT_DEBOUNCE_MS) return;
-    lastAlertAt = now;
+    if (!skipDebounce && now - lastAlertAt < ALERT_DEBOUNCE_MS) return;
 
-    playPreset();
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await tryUnlockAudio({ silent: attempt > 0 });
+      const ctx = ensureAudioContext();
+      if (ctx?.state === "running") {
+        if (!skipDebounce) lastAlertAt = now;
+        playPreset();
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 40);
+      });
+    }
+
+    pendingAlerts = Math.min(pendingAlerts + 1, 5);
   } catch {
-    // Ignore: browsers may block autoplay until user interaction.
+    pendingAlerts = Math.min(pendingAlerts + 1, 5);
   }
+};
+
+export const notifyNewDeliveryOrder = (message = "Novo pedido de delivery") => {
+  void playNewOrderAlert();
+  showNewOrderDesktopNotification(message);
 };
 
 export const showNewOrderDesktopNotification = (message = "Novo pedido chegou") => {
   if (typeof window === "undefined" || !("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
 
-  const now = Date.now();
-  if (now - lastDesktopNotificationAt < DESKTOP_NOTIFICATION_DEBOUNCE_MS) return;
-  lastDesktopNotificationAt = now;
+  const show = () => {
+    const now = Date.now();
+    if (now - lastDesktopNotificationAt < DESKTOP_NOTIFICATION_DEBOUNCE_MS) return;
+    lastDesktopNotificationAt = now;
 
-  try {
-    new Notification("Burguer Hub", {
-      body: message,
-      tag: "burguer-hub-new-order",
-      renotify: true,
-      icon: "/favicon.ico",
+    try {
+      new Notification("Burguer Hub", {
+        body: message,
+        tag: "burguer-hub-new-order",
+        renotify: true,
+        silent: false,
+        icon: "/favicon.ico",
+      });
+    } catch {
+      // Ignore notification errors from restrictive browser environments.
+    }
+  };
+
+  if (Notification.permission === "granted") {
+    show();
+    return;
+  }
+
+  if (Notification.permission === "default") {
+    void Notification.requestPermission().then((perm) => {
+      if (perm === "granted") show();
     });
-  } catch {
-    // Ignore notification errors from restrictive browser environments.
   }
 };

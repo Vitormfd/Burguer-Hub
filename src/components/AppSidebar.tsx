@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, ChefHat, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent } from "lucide-react";
+import { Utensils, Truck, BookOpen, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -18,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { bindAudioUnlock, playNewOrderAlert, showNewOrderDesktopNotification } from "@/lib/sound";
 
 const items = [
   { title: "Mesas", url: "/mesas", icon: Utensils },
@@ -28,7 +27,6 @@ const items = [
   { title: "Fidelidade", url: "/admin/fidelidade", icon: Trophy },
   { title: "Cupons", url: "/admin/cupons", icon: TicketPercent },
   { title: "Financeiro", url: "/admin/financeiro", icon: Wallet },
-  { title: "Cozinha", url: "/cozinha", icon: ChefHat },
   { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
   { title: "Configurações", url: "/configuracoes", icon: Settings },
 ];
@@ -44,27 +42,19 @@ export function AppSidebar() {
 
   useEffect(() => {
     if (!user) return;
-    bindAudioUnlock();
     let isActive = true;
 
     const syncPendingCount = async () => {
       const { count } = await supabase
         .from("pedidos")
         .select("id", { head: true, count: "exact" })
+        .eq("tipo", "delivery")
         .eq("status", "pendente");
 
       if (!isActive) return;
 
-      const nextCount = count ?? 0;
-      const prevCount = previousPendingRef.current;
-
-      if (prevCount !== null && nextCount > prevCount) {
-        playNewOrderAlert();
-        showNewOrderDesktopNotification("Novo pedido pendente");
-      }
-
-      previousPendingRef.current = nextCount;
-      setPendingCount(nextCount);
+      previousPendingRef.current = count ?? 0;
+      setPendingCount(count ?? 0);
     };
 
     void syncPendingCount();
@@ -74,16 +64,8 @@ export function AppSidebar() {
     }, 15000);
 
     const channel = supabase
-      .channel("sidebar-pedidos-pendentes")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "pedidos", filter: "status=eq.pendente" },
-        () => {
-          playNewOrderAlert();
-          void syncPendingCount();
-        }
-      )
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => {
+      .channel("sidebar-delivery-pendentes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos", filter: "tipo=eq.delivery" }, () => {
         void syncPendingCount();
       })
       .subscribe();
@@ -150,7 +132,7 @@ export function AppSidebar() {
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
-                    {item.url === "/cozinha" && pendingCount > 0 && (
+                    {item.url === "/delivery" && pendingCount > 0 && (
                       <SidebarMenuBadge className="bg-destructive text-destructive-foreground rounded-full min-w-5 h-5 px-1.5">
                         {pendingCount}
                       </SidebarMenuBadge>

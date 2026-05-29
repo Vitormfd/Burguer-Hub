@@ -2,9 +2,11 @@ import { Outlet, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeliveryOrderAlerts } from "@/hooks/useDeliveryOrderAlerts";
 
 export default function AppLayout() {
   const { session, loading } = useAuth();
+  useDeliveryOrderAlerts(!!session);
 
   if (loading) {
     return (

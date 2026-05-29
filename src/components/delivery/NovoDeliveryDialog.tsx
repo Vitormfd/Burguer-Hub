@@ -241,16 +241,16 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[95vh] flex flex-col overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-display text-3xl">Novo Delivery</DialogTitle>
+      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0 pb-2">
+          <DialogTitle className="font-display text-2xl">Novo Delivery</DialogTitle>
         </DialogHeader>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="d-cliente">Cliente (opcional)</Label>
+        <div className="shrink-0 grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-2 pb-2">
+          <div className="col-span-2 md:col-span-6 space-y-1">
+            <Label htmlFor="d-cliente" className="text-xs">Cliente (opcional)</Label>
             <Select value={clienteSelecionado} onValueChange={handleSelectCliente}>
-              <SelectTrigger id="d-cliente">
+              <SelectTrigger id="d-cliente" className="h-9">
                 <SelectValue placeholder="Selecione um cliente cadastrado..." />
               </SelectTrigger>
               <SelectContent>
@@ -262,58 +262,62 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="d-nome">Nome do cliente *</Label>
-            <Input id="d-nome" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} />
+          <div className="col-span-2 md:col-span-4 space-y-1">
+            <Label htmlFor="d-nome" className="text-xs">Nome do cliente *</Label>
+            <Input id="d-nome" className="h-9" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="d-tel">Telefone *</Label>
-            <Input id="d-tel" value={tel} onChange={(e) => setTel(e.target.value)} maxLength={20} placeholder="(11) 99999-9999" />
+          <div className="col-span-2 md:col-span-2 space-y-1">
+            <Label htmlFor="d-tel" className="text-xs">Telefone *</Label>
+            <Input id="d-tel" className="h-9" value={tel} onChange={(e) => setTel(e.target.value)} maxLength={20} placeholder="(11) 99999-9999" />
           </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="d-end">Endereço *</Label>
-            <Input id="d-end" value={endereco} onChange={(e) => setEndereco(e.target.value)} maxLength={200} placeholder="Rua" />
+          <div className="col-span-2 md:col-span-3 space-y-1">
+            <Label htmlFor="d-end" className="text-xs">Endereço *</Label>
+            <Input id="d-end" className="h-9" value={endereco} onChange={(e) => setEndereco(e.target.value)} maxLength={200} placeholder="Rua" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="d-numero">Número *</Label>
-            <Input id="d-numero" value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} placeholder="123" />
+          <div className="col-span-1 md:col-span-1 space-y-1">
+            <Label htmlFor="d-numero" className="text-xs">Nº *</Label>
+            <Input id="d-numero" className="h-9" value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} placeholder="123" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="d-complemento">Complemento</Label>
-            <Input id="d-complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} maxLength={200} placeholder="Apt, sala, etc" />
+          <div className="col-span-1 md:col-span-2 space-y-1">
+            <Label htmlFor="d-complemento" className="text-xs">Complemento</Label>
+            <Input id="d-complemento" className="h-9" value={complemento} onChange={(e) => setComplemento(e.target.value)} maxLength={200} placeholder="Apt, sala" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="d-bairro">Bairro</Label>
+          <div className="col-span-1 md:col-span-4 space-y-1">
+            <Label htmlFor="d-bairro" className="text-xs">Bairro</Label>
             <Input
               id="d-bairro"
+              className="h-9"
               value={bairro}
               onChange={(e) => setBairro(e.target.value)}
               onBlur={() => applyTaxaFromBairro(bairro, true)}
               maxLength={80}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="d-taxa">Taxa de entrega (R$)</Label>
+          <div className="col-span-1 md:col-span-2 space-y-1">
+            <Label htmlFor="d-taxa" className="text-xs">Taxa (R$)</Label>
             <Input
-              id="d-taxa" type="number" min={0} max={999} step="0.50"
+              id="d-taxa" className="h-9"
+              type="number" min={0} max={999} step="0.50"
               value={taxa} onChange={(e) => setTaxa(e.target.value)}
             />
           </div>
         </div>
 
-        <CardapioSelector
-          cart={cart}
-          onCartChange={setCart}
-          extraTotal={taxaNum}
-          extraRow={
-            <div className="flex justify-between text-xs">
-              <span>Taxa de entrega</span><span>{brl(taxaNum)}</span>
-            </div>
-          }
-          heightClass="h-[35vh]"
-        />
+        <div className="flex-1 min-h-0">
+          <CardapioSelector
+            cart={cart}
+            onCartChange={setCart}
+            extraTotal={taxaNum}
+            extraRow={
+              <div className="flex justify-between text-xs">
+                <span>Taxa de entrega</span><span>{brl(taxaNum)}</span>
+              </div>
+            }
+            heightClass="h-[52vh] min-h-[280px]"
+          />
+        </div>
 
-        <div className="flex items-center justify-between gap-2 pt-2">
+        <div className="shrink-0 flex items-center justify-between gap-2 pt-2">
           <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
             <input
               type="checkbox"

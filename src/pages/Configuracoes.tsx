@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 const VAR_CHIPS: { label: string; value: string }[] = [
   { label: "{{nome}}", value: "{{nome}}" },
   { label: "{{pedido_id}}", value: "{{pedido_id}}" },
+  { label: "{{resumo}}", value: "{{resumo}}" },
   { label: "{{itens}}", value: "{{itens}}" },
   { label: "{{total}}", value: "{{total}}" },
   { label: "{{tempo_estimado}}", value: "{{tempo_estimado}}" },

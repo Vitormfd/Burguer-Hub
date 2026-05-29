@@ -21,6 +21,7 @@ interface SendPayload {
   dados_pedido?: {
     nome?: string;
     itens?: string;
+    resumo?: string;
     total?: string;
     tempo_estimado?: string;
   };
@@ -205,10 +206,14 @@ Deno.serve(async (req) => {
   }
 
   const shortId = pedido_id.slice(0, 8).toUpperCase();
+  const itensLista = dados_pedido?.itens ?? "";
+  const resumoDetalhado = dados_pedido?.resumo?.trim() || itensLista;
+
   const varsMap: Record<string, string> = {
     nome: dados_pedido?.nome ?? "Cliente",
     pedido_id: shortId,
-    itens: dados_pedido?.itens ?? "",
+    itens: itensLista,
+    resumo: resumoDetalhado,
     total: dados_pedido?.total ?? "",
     tempo_estimado: dados_pedido?.tempo_estimado ?? (cfg as Record<string, string>).tempo_entrega_min ?? "30-45 min",
   };

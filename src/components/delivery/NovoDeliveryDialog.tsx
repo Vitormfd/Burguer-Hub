@@ -14,7 +14,11 @@ import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { brl } from "@/lib/format";
 import { printReceipt } from "@/lib/print";
-import { sendWhatsapp } from "@/lib/whatsapp";
+import {
+  formatWhatsappItensLista,
+  formatWhatsappResumoPedido,
+  sendWhatsapp,
+} from "@/lib/whatsapp";
 import type { Cliente, Configuracao } from "@/types/db";
 
 const deliverySchema = z.object({
@@ -198,7 +202,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     if (parsed.data.cliente_telefone) {
       sendWhatsapp(pedido.id, "confirmado", parsed.data.cliente_telefone, {
         nome: parsed.data.cliente_nome,
-        itens: items.map((i) => `${i.quantidade}x ${i.produto.nome}`).join(", "),
+        itens: formatWhatsappItensLista(items),
+        resumo: formatWhatsappResumoPedido(items, { taxaEntrega: parsed.data.taxa_entrega }),
         total: brl(subtotal + parsed.data.taxa_entrega),
       });
     }

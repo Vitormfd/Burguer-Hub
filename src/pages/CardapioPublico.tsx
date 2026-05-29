@@ -44,7 +44,11 @@ import {
   normalizePhone,
   rewardProgress,
 } from "@/lib/fidelidade";
-import { sendWhatsapp } from "@/lib/whatsapp";
+import {
+  formatWhatsappItensLista,
+  formatWhatsappResumoPedido,
+  sendWhatsapp,
+} from "@/lib/whatsapp";
 import { precoEfetivo } from "@/lib/produtos";
 
 type Forma = "dinheiro" | "pix" | "cartao";
@@ -1038,13 +1042,15 @@ export default function CardapioPublico() {
 
     // Dispara mensagem WhatsApp de confirmação (fire-and-forget)
     if (tel.trim()) {
-      const itensTexto = cart
-        .map((i) => `${i.quantidade}x ${i.produto.nome}`)
-        .join(", ");
+      const descontoTotal = descontoFidelidade + descontoCupomAplicado;
       sendWhatsapp(pedidoId, "confirmado", tel.trim(), {
         nome,
-        itens: itensTexto,
-        total: brl(subtotal + taxaEntregaFinal - descontoCupomAplicado),
+        itens: formatWhatsappItensLista(cart),
+        resumo: formatWhatsappResumoPedido(cart, {
+          taxaEntrega: taxaEntregaFinal,
+          desconto: descontoTotal,
+        }),
+        total: brl(totalFinal),
       });
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent } from "lucide-react";
+import { Utensils, Truck, BookOpen, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 const items = [
   { title: "Mesas", url: "/mesas", icon: Utensils },
   { title: "Delivery", url: "/delivery", icon: Truck },
+  { title: "Histórico", url: "/historico", icon: History },
   { title: "Cardápio", url: "/admin/cardapio", icon: BookOpen },
   { title: "Adicionais", url: "/admin/adicionais", icon: ListChecks },
   { title: "Fidelidade", url: "/admin/fidelidade", icon: Trophy },

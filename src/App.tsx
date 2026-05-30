@@ -17,6 +17,7 @@ import FidelidadeAdmin from "./pages/FidelidadeAdmin";
 import CuponsAdmin from "./pages/CuponsAdmin";
 import Financeiro from "./pages/Financeiro";
 import Clientes from "./pages/Clientes";
+import HistoricoPedidos from "./pages/HistoricoPedidos";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
               <Route path="/" element={<Navigate to="/mesas" replace />} />
               <Route path="/mesas" element={<Mesas />} />
               <Route path="/delivery" element={<Delivery />} />
+              <Route path="/historico" element={<HistoricoPedidos />} />
               <Route path="/admin/cardapio" element={<Cardapio />} />
               <Route path="/admin/adicionais" element={<AdicionaisAdmin />} />
               <Route path="/admin/fidelidade" element={<FidelidadeAdmin />} />

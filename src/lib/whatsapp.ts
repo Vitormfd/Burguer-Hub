@@ -22,7 +22,7 @@ export interface WhatsappResumoOpcoes {
 export const formatWhatsappItensLista = (cart: Cart | CartItem[]): string =>
   cart.map((i) => `${i.quantidade}x ${i.produto.nome}`).join(", ");
 
-/** Resumo detalhado para {{resumo}} (itens, adicionais, obs, taxa e descontos). */
+/** Resumo detalhado para {{itens}} / {{resumo}} (itens, adicionais, obs, taxa e descontos). */
 export function formatWhatsappResumoPedido(
   cart: Cart | CartItem[],
   opts: WhatsappResumoOpcoes = {}
@@ -52,6 +52,31 @@ export function formatWhatsappResumoPedido(
   }
 
   return lines.join("\n");
+}
+
+/** Monta dados do pedido para WhatsApp (usa {{itens}} — compatível com edge function atual). */
+export function buildWhatsappPedidoDados(
+  cart: Cart | CartItem[],
+  opts: {
+    nome?: string;
+    total: string;
+    taxaEntrega?: number;
+    desconto?: number;
+    subtotal?: number;
+  }
+): WhatsappDadosPedido {
+  const resumo = formatWhatsappResumoPedido(cart, {
+    taxaEntrega: opts.taxaEntrega,
+    desconto: opts.desconto,
+    subtotal: opts.subtotal,
+  });
+
+  return {
+    nome: opts.nome,
+    itens: resumo,
+    resumo,
+    total: opts.total,
+  };
 }
 
 /**

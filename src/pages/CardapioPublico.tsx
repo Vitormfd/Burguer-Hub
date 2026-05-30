@@ -44,11 +44,7 @@ import {
   normalizePhone,
   rewardProgress,
 } from "@/lib/fidelidade";
-import {
-  formatWhatsappItensLista,
-  formatWhatsappResumoPedido,
-  sendWhatsapp,
-} from "@/lib/whatsapp";
+import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
 import { precoEfetivo } from "@/lib/produtos";
 
 type Forma = "dinheiro" | "pix" | "cartao";
@@ -1043,15 +1039,17 @@ export default function CardapioPublico() {
     // Dispara mensagem WhatsApp de confirmação (fire-and-forget)
     if (tel.trim()) {
       const descontoTotal = descontoFidelidade + descontoCupomAplicado;
-      sendWhatsapp(pedidoId, "confirmado", tel.trim(), {
-        nome,
-        itens: formatWhatsappItensLista(cart),
-        resumo: formatWhatsappResumoPedido(cart, {
+      sendWhatsapp(
+        pedidoId,
+        "confirmado",
+        tel.trim(),
+        buildWhatsappPedidoDados(cart, {
+          nome,
           taxaEntrega: taxaEntregaFinal,
           desconto: descontoTotal,
-        }),
-        total: brl(totalFinal),
-      });
+          total: brl(totalFinal),
+        })
+      );
     }
 
     setSucessoTipoEntrega(tipoEntrega);

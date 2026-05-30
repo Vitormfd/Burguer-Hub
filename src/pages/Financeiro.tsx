@@ -9,6 +9,7 @@ import {
   Package,
   Pencil,
   Plus,
+  Printer,
   Receipt,
   Save,
   Trash2,
@@ -29,7 +30,8 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { brl } from "@/lib/format";
-import { printCashSummary } from "@/lib/print";
+import { buildCaixaResumo } from "@/lib/caixaResumo";
+import { printCashSummary, type CashSummary } from "@/lib/print";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -396,6 +398,8 @@ export default function Financeiro() {
   const [caixaDialogMode, setCaixaDialogMode] = useState<"abrir" | "fechar">("abrir");
   const [caixaBusy, setCaixaBusy] = useState(false);
   const [caixaForm, setCaixaForm] = useState<CaixaFormState>(emptyCaixaForm());
+  const [caixaResumoPreview, setCaixaResumoPreview] = useState<CashSummary | null>(null);
+  const [caixaResumoLoading, setCaixaResumoLoading] = useState(false);
   const [retiradaDialogOpen, setRetiradaDialogOpen] = useState(false);
   const [retiradaDialogMode, setRetiradaDialogMode] = useState<"retirada" | "suprimento">("retirada");
   const [retiradaBusy, setRetiradaBusy] = useState(false);
@@ -844,6 +848,17 @@ export default function Financeiro() {
     [movimentacoesCaixaAberto],
   );
 
+  const valorContadoPreview = useMemo(() => {
+    if (!caixaForm.valor.trim()) return null;
+    const valor = Number(parseMoney(caixaForm.valor).toFixed(2));
+    return Number.isFinite(valor) ? valor : null;
+  }, [caixaForm.valor]);
+
+  const diferencaCaixaPreview = useMemo(() => {
+    if (valorContadoPreview == null || caixaResumoPreview?.dinheiro_esperado == null) return null;
+    return Number((valorContadoPreview - caixaResumoPreview.dinheiro_esperado).toFixed(2));
+  }, [valorContadoPreview, caixaResumoPreview]);
+
   const fornecedorCompras = useMemo(() => {
     if (!fornecedorSelected) return [] as Compra[];
     return compras
@@ -995,8 +1010,16 @@ export default function Financeiro() {
   const openAbrirCaixa = () => {
     setCaixaDialogMode("abrir");
     setCaixaForm(emptyCaixaForm());
+    setCaixaResumoPreview(null);
     setCaixaDialogOpen(true);
   };
+
+  const loadCaixaResumoPreview = useCallback(async (caixaId: string) => {
+    setCaixaResumoLoading(true);
+    const resumo = await buildCaixaResumo(caixaId);
+    setCaixaResumoPreview(resumo);
+    setCaixaResumoLoading(false);
+  }, []);
 
   const openFecharCaixa = () => {
     if (!caixaAberto) {
@@ -1009,7 +1032,9 @@ export default function Financeiro() {
       valor: "",
       observacoes: caixaAberto.observacoes || "",
     });
+    setCaixaResumoPreview(null);
     setCaixaDialogOpen(true);
+    void loadCaixaResumoPreview(caixaAberto.id);
   };
 
   const openEditarFornecedor = (fornecedor: Fornecedor) => {
@@ -1204,56 +1229,9 @@ export default function Financeiro() {
 
   const buildAndPrintCaixaSummary = async (caixaId: string) => {
     try {
-      const { data: caixa } = await sb.from("caixas").select("*").eq("id", caixaId).single();
-      if (!caixa) return;
-
-      const abertoEm = caixa.aberto_em;
-      const fechadoEm = caixa.fechado_em ?? new Date().toISOString();
-
-      // Buscar contas fechadas no período
-      const { data: contas } = await sb
-        .from("contas")
-        .select("id,total,fechada_em,conta_pagamentos(forma_pagamento,valor)")
-        .gte("fechada_em", abertoEm)
-        .lte("fechada_em", fechadoEm);
-
-      const contasList = (contas || []) as any[];
-      const totalVendas = contasList.reduce((s, c) => s + Number(c.total || 0), 0);
-      const contasCount = contasList.length;
-
-      const pagamentosMap: Record<string, number> = {};
-      contasList.forEach((c) => {
-        const pagos = c.conta_pagamentos || [];
-        pagos.forEach((p: any) => {
-          const forma = p.forma_pagamento || p.forma || "outros";
-          pagamentosMap[forma] = (pagamentosMap[forma] || 0) + Number(p.valor || 0);
-        });
-      });
-
-      const pagamentos = Object.entries(pagamentosMap).map(([forma, valor]) => ({ forma, valor }));
-
-      const { data: movs } = await sb.from("caixa_movimentacoes").select("tipo,valor").eq("caixa_id", caixaId);
-      const movsList = (movs || []) as any[];
-      const retirada = movsList.filter((m) => m.tipo === "retirada").reduce((s, m) => s + Number(m.valor || 0), 0);
-      const suprimento = movsList.filter((m) => m.tipo === "suprimento").reduce((s, m) => s + Number(m.valor || 0), 0);
-
-      const summary = {
-        loja_nome: undefined,
-        caixa: {
-          id: caixa.id,
-          valor_inicial: Number(caixa.valor_inicial || 0),
-          valor_final: caixa.valor_final != null ? Number(caixa.valor_final) : null,
-          aberto_em: caixa.aberto_em,
-          fechado_em: caixa.fechado_em,
-          observacoes: caixa.observacoes || null,
-        },
-        total_vendas: Number(totalVendas),
-        contas_count: contasCount,
-        pagamentos,
-        movimentacoes: { retirada, suprimento },
-      };
-
-      printCashSummary(summary as any);
+      const summary = await buildCaixaResumo(caixaId);
+      if (!summary) return;
+      printCashSummary(summary);
     } catch (err) {
       console.error("Erro ao montar resumo do caixa:", err);
     }
@@ -1741,12 +1719,13 @@ export default function Financeiro() {
                   <TableHead className="text-right">Valor final</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Observações</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {caixasHistorico.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Nenhuma sessão de caixa registrada.
                     </TableCell>
                   </TableRow>
@@ -1763,6 +1742,17 @@ export default function Financeiro() {
                         </Badge>
                       </TableCell>
                       <TableCell className="max-w-[280px] truncate">{caixa.observacoes || "-"}</TableCell>
+                      <TableCell className="text-right">
+                        {caixa.status === "fechado" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void buildAndPrintCaixaSummary(caixa.id)}
+                          >
+                            <Printer className="h-3.5 w-3.5 mr-1" /> Resumo
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -2034,8 +2024,14 @@ export default function Financeiro() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={caixaDialogOpen} onOpenChange={setCaixaDialogOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog
+        open={caixaDialogOpen}
+        onOpenChange={(open) => {
+          setCaixaDialogOpen(open);
+          if (!open) setCaixaResumoPreview(null);
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display text-3xl">
               {caixaDialogMode === "abrir" ? "Abrir caixa" : "Fechar caixa"}
@@ -2043,19 +2039,105 @@ export default function Financeiro() {
             <DialogDescription>
               {caixaDialogMode === "abrir"
                 ? "Informe o valor inicial para começar a sessão do dia."
-                : "Informe o valor final contado no fechamento do caixa."}
+                : "Confira os valores do sistema abaixo e informe o dinheiro contado no caixa físico."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {caixaDialogMode === "fechar" && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3 text-sm">
+                <p className="font-semibold">Conferência com o sistema</p>
+                {caixaResumoLoading ? (
+                  <p className="text-muted-foreground">Calculando vendas do período...</p>
+                ) : caixaResumoPreview ? (
+                  <>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">
+                          Mesas ({caixaResumoPreview.vendas_mesas?.quantidade ?? caixaResumoPreview.contas_count})
+                        </span>
+                        <span className="font-medium">{brl(caixaResumoPreview.vendas_mesas?.total ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">
+                          Delivery ({caixaResumoPreview.vendas_delivery?.quantidade ?? 0})
+                        </span>
+                        <span className="font-medium">{brl(caixaResumoPreview.vendas_delivery?.total ?? 0)}</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between gap-2 border-t pt-2 font-medium">
+                      <span>Total vendas (sistema)</span>
+                      <span>{brl(caixaResumoPreview.total_vendas)}</span>
+                    </div>
+                    {caixaResumoPreview.pagamentos.length > 0 && (
+                      <div className="space-y-1 border-t pt-2">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Por forma de pagamento</p>
+                        {caixaResumoPreview.pagamentos.map((p) => (
+                          <div key={p.forma} className="flex justify-between gap-2">
+                            <span>{p.forma}</span>
+                            <span>{brl(p.valor)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="space-y-1 border-t pt-2">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Valor inicial</span>
+                        <span>{brl(caixaResumoPreview.caixa.valor_inicial)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Retiradas</span>
+                        <span>- {brl(caixaResumoPreview.movimentacoes.retirada)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Suprimentos</span>
+                        <span>+ {brl(caixaResumoPreview.movimentacoes.suprimento)}</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between gap-2 rounded-md bg-primary/10 px-3 py-2 font-semibold text-primary">
+                      <span>Dinheiro esperado no caixa</span>
+                      <span>{brl(caixaResumoPreview.dinheiro_esperado ?? 0)}</span>
+                    </div>
+                    {diferencaCaixaPreview != null && (
+                      <div
+                        className={`flex justify-between gap-2 rounded-md px-3 py-2 font-semibold ${
+                          diferencaCaixaPreview === 0
+                            ? "bg-emerald-500/15 text-emerald-800"
+                            : diferencaCaixaPreview > 0
+                              ? "bg-amber-500/15 text-amber-900"
+                              : "bg-destructive/15 text-destructive"
+                        }`}
+                      >
+                        <span>
+                          {diferencaCaixaPreview === 0
+                            ? "Conferido"
+                            : diferencaCaixaPreview > 0
+                              ? "Sobra no caixa"
+                              : "Falta no caixa"}
+                        </span>
+                        <span>{brl(diferencaCaixaPreview)}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Não foi possível carregar o resumo do período.</p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>{caixaDialogMode === "abrir" ? "Valor inicial" : "Valor final"}</Label>
+              <Label>{caixaDialogMode === "abrir" ? "Valor inicial" : "Valor contado no caixa (dinheiro)"}</Label>
               <Input
                 value={caixaForm.valor}
                 onChange={(event) => setCaixaForm((current) => ({ ...current, valor: event.target.value }))}
                 placeholder={caixaDialogMode === "abrir" ? "Ex: 100,00" : "Ex: 1432,80"}
                 inputMode="decimal"
               />
+              {caixaDialogMode === "fechar" && (
+                <p className="text-xs text-muted-foreground">
+                  Informe o total de dinheiro físico (notas e moedas) para comparar com o esperado acima.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

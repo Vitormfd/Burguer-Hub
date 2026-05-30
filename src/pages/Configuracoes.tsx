@@ -986,10 +986,15 @@ export default function Configuracoes() {
                 // montar um resumo de teste
                 const mock = {
                   caixa: { id: "test", valor_inicial: 100, valor_final: 257.5, aberto_em: new Date().toISOString(), fechado_em: new Date().toISOString(), observacoes: null },
+                  vendas_mesas: { total: 180, quantidade: 8 },
+                  vendas_delivery: { total: 120, quantidade: 4 },
                   total_vendas: 300,
-                  contas_count: 12,
-                  pagamentos: [{ forma: "dinheiro", valor: 120 }, { forma: "pix", valor: 180 }],
-                  movimentacoes: { retirada: 50, suprimento: 0 },
+                  contas_count: 8,
+                  delivery_count: 4,
+                  pagamentos: [{ forma: "Dinheiro", valor: 120 }, { forma: "PIX", valor: 180 }],
+                  movimentacoes: { retirada: 50, suprimento: 20 },
+                  dinheiro_esperado: 190,
+                  diferenca: 67.5,
                 } as any;
                 printCashSummary(mock);
               }}>Testar resumo</Button>

@@ -310,10 +310,15 @@ export interface CashSummary {
     fechado_em: string | null;
     observacoes?: string | null;
   };
+  vendas_mesas?: { total: number; quantidade: number };
+  vendas_delivery?: { total: number; quantidade: number };
   total_vendas: number;
   contas_count: number;
+  delivery_count?: number;
   pagamentos: Array<{ forma: string; valor: number }>;
   movimentacoes: { retirada: number; suprimento: number };
+  dinheiro_esperado?: number;
+  diferenca?: number | null;
 }
 
 export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
@@ -328,21 +333,44 @@ export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
 
   const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 
+  const vendasMesas = summary.vendas_mesas ?? { total: summary.total_vendas, quantidade: summary.contas_count };
+  const vendasDelivery = summary.vendas_delivery ?? { total: 0, quantidade: summary.delivery_count ?? 0 };
+  const dinheiroEsperado =
+    summary.dinheiro_esperado ??
+    summary.caixa.valor_inicial +
+      (summary.pagamentos.find((p) => p.forma.toLowerCase().includes("dinheiro"))?.valor || 0) +
+      summary.movimentacoes.suprimento -
+      summary.movimentacoes.retirada;
+
   let body = "";
   body += `<div class="section-title">RESUMO DO CAIXA</div>`;
   body += `<div class="info-line">Período: ${new Date(summary.caixa.aberto_em).toLocaleString("pt-BR")} — ${summary.caixa.fechado_em ? new Date(summary.caixa.fechado_em).toLocaleString("pt-BR") : "(em aberto)"}</div>`;
   body += `<div class="sep-dashed"></div>`;
-  body += `<div class="subtotal-line"><span>Caixa aberto</span><span>${brl(summary.caixa.valor_inicial)}</span></div>`;
+  body += `<div class="section-title">Vendas no sistema</div>`;
+  body += `<div class="subtotal-line"><span>Mesas (${vendasMesas.quantidade})</span><span>${brl(vendasMesas.total)}</span></div>`;
+  body += `<div class="subtotal-line"><span>Delivery (${vendasDelivery.quantidade})</span><span>${brl(vendasDelivery.total)}</span></div>`;
   body += `<div class="subtotal-line"><span>Total vendas</span><span>${brl(summary.total_vendas)}</span></div>`;
-  body += `<div class="subtotal-line"><span>Movimentações (retirada)</span><span>${brl(summary.movimentacoes.retirada)}</span></div>`;
-  body += `<div class="subtotal-line"><span>Movimentações (suprimento)</span><span>${brl(summary.movimentacoes.suprimento)}</span></div>`;
+  body += `<div class="sep-dashed"></div>`;
+  body += `<div class="section-title">Por forma de pagamento</div>`;
+  if (summary.pagamentos.length) {
+    summary.pagamentos.forEach((p) => {
+      body += `<div class="subtotal-line"><span>${esc(p.forma)}</span><span>${brl(p.valor)}</span></div>`;
+    });
+  } else {
+    body += `<div class="info-line">Nenhum pagamento registrado no período.</div>`;
+  }
+  body += `<div class="sep-dashed"></div>`;
+  body += `<div class="section-title">Movimentações do caixa</div>`;
+  body += `<div class="subtotal-line"><span>Valor inicial (abertura)</span><span>${brl(summary.caixa.valor_inicial)}</span></div>`;
+  body += `<div class="subtotal-line"><span>Retiradas</span><span>- ${brl(summary.movimentacoes.retirada)}</span></div>`;
+  body += `<div class="subtotal-line"><span>Suprimentos</span><span>+ ${brl(summary.movimentacoes.suprimento)}</span></div>`;
   body += `<div class="sep"></div>`;
-  body += `<div class="section-title">Pagamentos</div>`;
-  summary.pagamentos.forEach((p) => {
-    body += `<div class="subtotal-line"><span>${esc(p.forma)}</span><span>${brl(p.valor)}</span></div>`;
-  });
-  body += `<div class="sep"></div>`;
-  body += `<div class="total-line"><span>Saldo final declarado</span><span>${brl(summary.caixa.valor_final ?? 0)}</span></div>`;
+  body += `<div class="total-line"><span>Dinheiro esperado no caixa</span><span>${brl(dinheiroEsperado)}</span></div>`;
+  body += `<div class="total-line"><span>Valor contado (fechamento)</span><span>${brl(summary.caixa.valor_final ?? 0)}</span></div>`;
+  if (summary.diferenca != null) {
+    const diffLabel = summary.diferenca === 0 ? "Conferido" : summary.diferenca > 0 ? "Sobra" : "Falta";
+    body += `<div class="total-line"><span>Diferença (${diffLabel})</span><span>${brl(summary.diferenca)}</span></div>`;
+  }
 
   const rodapeHtml = config.mostrar_rodape && config.rodape_texto ? `<div class="footer">${esc(config.rodape_texto)}</div>` : "";
 

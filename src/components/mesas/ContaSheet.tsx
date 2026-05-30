@@ -28,7 +28,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoPedidoDialog from "./NovoPedidoDialog";
-import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle } from "lucide-react";
+import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
+import { pedidoEditavel } from "@/lib/pedidoEdit";
+import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle, Pencil } from "lucide-react";
 import { printReceipt } from "@/lib/print";
 
 type ItemAdicional = { nome: string; quantidade: number; preco_unitario: number };
@@ -77,6 +79,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   const [novoPagamentoForma, setNovoPagamentoForma] = useState<FormaPagamento>("pix");
   const [pagamentoValor, setPagamentoValor] = useState<string>("");
   const [novoOpen, setNovoOpen] = useState(false);
+  const [editPedido, setEditPedido] = useState<PedidoComItens | null>(null);
   const [confirmFechar, setConfirmFechar] = useState(false);
   const [confirmCancelarConta, setConfirmCancelarConta] = useState(false);
   const [confirmarTextoCancelarConta, setConfirmarTextoCancelarConta] = useState(false);
@@ -773,8 +776,16 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                       </span>
                     </div>
 
-                    {pedidoCancelavel(p.status) && hasItensNaoCancelados && (
-                      <div className="mb-3">
+                    {pedidoEditavel(p.status) && hasItensNaoCancelados && (
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditPedido(p)}
+                          disabled={busy}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" /> Editar pedido
+                        </Button>
                         <Button
                           variant="destructive"
                           size="sm"
@@ -1019,6 +1030,18 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           onCreated={() => { setNovoOpen(false); load(); }}
         />
       )}
+
+      <EditarPedidoDialog
+        open={!!editPedido}
+        pedidoId={editPedido?.id ?? null}
+        variant="mesa"
+        mesaNumero={mesa?.numero}
+        onClose={() => setEditPedido(null)}
+        onSaved={async () => {
+          if (conta) await refreshContaTotal(conta.id);
+          await load();
+        }}
+      />
 
       <Dialog open={cancelDialogOpen} onOpenChange={(open) => !busy && (open ? setCancelDialogOpen(true) : resetCancelDialog())}>
         <DialogContent>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store, Flame } from "lucide-react";
+import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store, Flame, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
+import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
+import { pedidoEditavel } from "@/lib/pedidoEdit";
 import { printReceipt } from "@/lib/print";
 import { sendWhatsapp } from "@/lib/whatsapp";
 import type { PedidoStatus } from "@/types/db";
@@ -80,6 +82,7 @@ export default function Delivery() {
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [novoOpen, setNovoOpen] = useState(false);
+  const [editRow, setEditRow] = useState<DeliveryRow | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const notifyItemCancelado = useCallback(async (payload: { new?: { cancelado?: boolean; produto_id?: string | null; pedido_id?: string }; old?: { cancelado?: boolean } }) => {
     const current = payload?.new;
@@ -498,6 +501,16 @@ export default function Delivery() {
                     {cfg.nextLabel}
                   </Button>
                 )}
+                {pedidoEditavel(r.pedido_status) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-1"
+                    onClick={() => setEditRow(r)}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar pedido
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -516,6 +529,15 @@ export default function Delivery() {
         open={novoOpen}
         onClose={() => setNovoOpen(false)}
         onCreated={() => { setNovoOpen(false); load(); }}
+      />
+
+      <EditarPedidoDialog
+        open={!!editRow}
+        pedidoId={editRow?.pedido_id ?? null}
+        variant="delivery"
+        tipoEntrega={editRow?.tipo_entrega ?? "delivery"}
+        onClose={() => setEditRow(null)}
+        onSaved={() => load()}
       />
     </div>
   );

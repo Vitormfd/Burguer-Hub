@@ -1,14 +1,33 @@
 import { useEffect, useState, useCallback } from "react";
-import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store, Flame, Pencil } from "lucide-react";
+import { Truck, Plus, Phone, MapPin, Clock, Bike, CheckCircle2, Package, Printer, Store, Flame, Pencil, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
 import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
 import { pedidoEditavel } from "@/lib/pedidoEdit";
+import {
+  MOTIVOS_CANCELAMENTO,
+  cancelarPedidoCompleto,
+  motivoComObservacao,
+  pedidoCancelavel,
+  type MotivoCancelamento,
+} from "@/lib/pedidoCancelamento";
 import { printReceipt } from "@/lib/print";
 import { sendWhatsapp } from "@/lib/whatsapp";
 import type { PedidoStatus } from "@/types/db";
@@ -79,11 +98,18 @@ const statusCfgRetirada: Record<EntregaStatus, { label: string; icon: typeof Clo
 const getStatusCfg = (row: DeliveryRow) => row.tipo_entrega === "retirada" ? statusCfgRetirada[row.status] : statusCfgDelivery[row.status];
 
 export default function Delivery() {
+  const { user } = useAuth();
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [novoOpen, setNovoOpen] = useState(false);
   const [editRow, setEditRow] = useState<DeliveryRow | null>(null);
+  const [cancelRow, setCancelRow] = useState<DeliveryRow | null>(null);
+  const [motivoCancelamento, setMotivoCancelamento] = useState<MotivoCancelamento | "">("");
+  const [observacaoCancelamento, setObservacaoCancelamento] = useState("");
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
+
+  const nomeOperador = user?.user_metadata?.nome || user?.email || "Operador";
   const notifyItemCancelado = useCallback(async (payload: { new?: { cancelado?: boolean; produto_id?: string | null; pedido_id?: string }; old?: { cancelado?: boolean } }) => {
     const current = payload?.new;
     const previous = payload?.old;
@@ -109,6 +135,7 @@ export default function Delivery() {
       .from("pedidos")
       .select("id, criado_em, tipo_entrega, status")
       .eq("tipo", "delivery")
+      .neq("status", "cancelado")
       .gte("criado_em", startOfDay.toISOString())
       .order("criado_em", { ascending: false });
 
@@ -122,7 +149,7 @@ export default function Delivery() {
 
     const [{ data: entregas }, { data: itens }, { data: resgates }] = await Promise.all([
       supabase.from("entregas").select("*").in("pedido_id", pedidoIds),
-      supabase.from("pedido_itens").select("pedido_id, quantidade, preco_unitario").in("pedido_id", pedidoIds),
+      supabase.from("pedido_itens").select("pedido_id, quantidade, preco_unitario, cancelado").in("pedido_id", pedidoIds),
       supabase.from("resgates").select("id, pedido_id, recompensa_id, status").in("pedido_id", pedidoIds),
     ]);
 
@@ -133,6 +160,7 @@ export default function Delivery() {
 
     const totals = new Map<string, number>();
     (itens || []).forEach((i) => {
+      if (i.cancelado) return;
       totals.set(i.pedido_id, (totals.get(i.pedido_id) || 0) + Number(i.preco_unitario) * i.quantidade);
     });
 
@@ -201,7 +229,8 @@ export default function Delivery() {
     const { data: itens } = await supabase
       .from("pedido_itens")
       .select("id, quantidade, preco_unitario, observacao, produto_id")
-      .eq("pedido_id", row.pedido_id);
+      .eq("pedido_id", row.pedido_id)
+      .eq("cancelado", false);
 
     const itensList = itens || [];
     const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
@@ -331,6 +360,51 @@ export default function Delivery() {
   };
 
   const rowsFiltrados = rows.filter((row) => filtroTipo === "todos" ? true : row.tipo_entrega === filtroTipo);
+
+  const resetCancelDialog = () => {
+    setCancelRow(null);
+    setMotivoCancelamento("");
+    setObservacaoCancelamento("");
+  };
+
+  const openCancelDialog = (row: DeliveryRow) => {
+    if (!pedidoCancelavel(row.pedido_status)) {
+      toast.error("Pedido já finalizado, fale com o gerente");
+      return;
+    }
+    setCancelRow(row);
+  };
+
+  const handleConfirmCancelamento = async () => {
+    if (!cancelRow || !motivoCancelamento) {
+      toast.error("Selecione o motivo do cancelamento");
+      return;
+    }
+
+    if (!pedidoCancelavel(cancelRow.pedido_status)) {
+      toast.error("Pedido já finalizado, fale com o gerente");
+      return;
+    }
+
+    setCancelBusy(true);
+    const motivoFinal = motivoComObservacao(motivoCancelamento, observacaoCancelamento);
+    const { error } = await cancelarPedidoCompleto(cancelRow.pedido_id, motivoFinal, nomeOperador);
+
+    if (error) {
+      setCancelBusy(false);
+      toast.error(error);
+      return;
+    }
+
+    if (cancelRow.resgate?.status === "pendente") {
+      await supabase.from("resgates").update({ status: "cancelado" }).eq("id", cancelRow.resgate.id);
+    }
+
+    setCancelBusy(false);
+    toast.success("Pedido cancelado com sucesso");
+    resetCancelDialog();
+    await load();
+  };
 
   const updateResgateStatus = async (row: DeliveryRow, status: "aplicado" | "cancelado") => {
     if (!row.resgate) return;
@@ -502,14 +576,22 @@ export default function Delivery() {
                   </Button>
                 )}
                 {pedidoEditavel(r.pedido_status) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-1"
-                    onClick={() => setEditRow(r)}
-                  >
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar pedido
-                  </Button>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditRow(r)}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" /> Editar pedido
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => openCancelDialog(r)}
+                    >
+                      <XCircle className="h-3.5 w-3.5 mr-1" /> Cancelar pedido
+                    </Button>
+                  </div>
                 )}
                 <Button
                   variant="outline"
@@ -539,6 +621,63 @@ export default function Delivery() {
         onClose={() => setEditRow(null)}
         onSaved={() => load()}
       />
+
+      <Dialog
+        open={!!cancelRow}
+        onOpenChange={(open) => !cancelBusy && !open && resetCancelDialog()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Cancelar pedido</DialogTitle>
+            <DialogDescription>
+              {cancelRow
+                ? `Cancelar o pedido de ${cancelRow.cliente_nome}? Os dados permanecem no histórico, apenas marcados como cancelados.`
+                : "Informe o motivo do cancelamento."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Motivo do cancelamento</Label>
+              <Select
+                value={motivoCancelamento}
+                onValueChange={(value) => setMotivoCancelamento(value as MotivoCancelamento)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um motivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOTIVOS_CANCELAMENTO.map((motivo) => (
+                    <SelectItem key={motivo} value={motivo}>{motivo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observação (opcional)</Label>
+              <Textarea
+                value={observacaoCancelamento}
+                onChange={(e) => setObservacaoCancelamento(e.target.value)}
+                placeholder="Detalhes adicionais"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={resetCancelDialog} disabled={cancelBusy}>
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleConfirmCancelamento()}
+              disabled={cancelBusy || !motivoCancelamento}
+            >
+              {cancelBusy ? "Cancelando..." : "Confirmar cancelamento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -318,7 +318,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
                 <span>Taxa de entrega</span><span>{brl(taxaNum)}</span>
               </div>
             }
-            heightClass="h-[52vh] min-h-[280px]"
+            heightClass="h-[65vh] min-h-[350px]"
           />
         </div>
 

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brl } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { emPromocao, precoEfetivo } from "@/lib/produtos";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import type { Cart, CartItem } from "@/components/cardapio/cartTypes";
@@ -97,13 +98,19 @@ export default function CardapioSelector({
   };
 
   const totalItens = cart.reduce((sum, item) => sum + item.quantidade, 0);
+  const fillParent = heightClass === "h-full";
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_260px] md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_320px] gap-0 border rounded-lg overflow-hidden bg-card">
-        <div className="min-h-0 flex flex-col sm:border-r">
-          <Tabs defaultValue={categorias[0]?.id} className="flex-1 flex flex-col min-h-0">
-            <div className="px-4">
+      <div
+        className={cn(
+          "grid grid-cols-1 sm:grid-cols-[1fr_260px] md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_320px] gap-0 border rounded-lg overflow-hidden bg-card min-h-0",
+          fillParent ? "h-full" : heightClass,
+        )}
+      >
+        <div className="min-h-0 flex flex-col overflow-hidden sm:border-r">
+          <Tabs defaultValue={categorias[0]?.id} className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="shrink-0 px-4">
               <TabsList className="my-2 flex-wrap h-auto gap-2 bg-transparent">
                 {categorias.map((c) => (
                   <TabsTrigger key={c.id} value={c.id}>{c.nome}</TabsTrigger>
@@ -112,42 +119,46 @@ export default function CardapioSelector({
             </div>
 
             {categorias.map((c) => (
-              <TabsContent key={c.id} value={c.id} className={`${heightClass} min-h-0 m-0 overflow-y-scroll overscroll-contain touch-pan-y px-4 pb-4`}>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {produtos.filter((p) => p.categoria_id === c.id).map((p) => (
-                      <Card key={p.id} className="p-3 flex flex-col gap-2 hover:shadow-card transition-shadow">
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <div className="font-semibold text-sm leading-tight">{p.nome}</div>
-                            {p.descricao && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.descricao}</p>}
-                          </div>
-                          <div className="text-right shrink-0">
-                            {emPromocao(p) ? (
-                              <div className="flex flex-col items-end leading-tight">
-                                <span className="text-[11px] line-through text-muted-foreground">{brl(Number(p.preco))}</span>
-                                <span className="text-primary font-semibold text-sm">{brl(precoEfetivo(p))}</span>
-                              </div>
-                            ) : (
-                              <div className="text-primary font-semibold text-sm whitespace-nowrap">{brl(precoEfetivo(p))}</div>
-                            )}
-                          </div>
+              <TabsContent
+                key={c.id}
+                value={c.id}
+                className="flex-1 min-h-0 m-0 mt-0 overflow-y-auto overscroll-contain touch-pan-y px-4 pb-4 data-[state=inactive]:hidden"
+              >
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {produtos.filter((p) => p.categoria_id === c.id).map((p) => (
+                    <Card key={p.id} className="p-3 flex flex-col gap-2 hover:shadow-card transition-shadow">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <div className="font-semibold text-sm leading-tight">{p.nome}</div>
+                          {p.descricao && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.descricao}</p>}
                         </div>
-                        <div className="flex justify-end mt-auto pt-1">
-                          <Button size="sm" onClick={() => setProdutoSelecionado(p)}>Adicionar</Button>
+                        <div className="text-right shrink-0">
+                          {emPromocao(p) ? (
+                            <div className="flex flex-col items-end leading-tight">
+                              <span className="text-[11px] line-through text-muted-foreground">{brl(Number(p.preco))}</span>
+                              <span className="text-primary font-semibold text-sm">{brl(precoEfetivo(p))}</span>
+                            </div>
+                          ) : (
+                            <div className="text-primary font-semibold text-sm whitespace-nowrap">{brl(precoEfetivo(p))}</div>
+                          )}
                         </div>
-                      </Card>
-                    ))}
-                  </div>
+                      </div>
+                      <div className="flex justify-end mt-auto pt-1">
+                        <Button size="sm" onClick={() => setProdutoSelecionado(p)}>Adicionar</Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
               </TabsContent>
             ))}
           </Tabs>
         </div>
 
         <div className="bg-muted/30 flex flex-col min-h-0 min-w-0 overflow-hidden">
-          <div className="p-3 border-b flex items-center justify-center">
+          <div className="shrink-0 p-3 border-b flex items-center justify-center">
             <div className="text-xs text-muted-foreground text-center">{totalItens} item(ns)</div>
           </div>
-          <div className={`${heightClass} min-h-0 overflow-y-scroll overscroll-contain touch-pan-y`}>
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
             <div className="p-3 space-y-2">
               {cart.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8 break-words">Nenhum item adicionado</p>

@@ -313,7 +313,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-screen flex flex-col overflow-hidden">
+      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[92vh] flex flex-col overflow-hidden gap-3">
         <DialogHeader className="shrink-0 pb-2">
           <DialogTitle className="font-display text-2xl">Novo Delivery</DialogTitle>
         </DialogHeader>
@@ -440,7 +440,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
           </div>
         </div>
 
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <CardapioSelector
             cart={cart}
             onCartChange={setCart}
@@ -450,7 +450,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
                 <span>Taxa de entrega</span><span>{brl(taxaNum)}</span>
               </div>
             }
-            heightClass="flex-1 min-h-0"
+            heightClass="h-full"
           />
         </div>
 

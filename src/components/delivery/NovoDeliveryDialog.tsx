@@ -7,9 +7,6 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { brl } from "@/lib/format";
@@ -54,7 +51,17 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [complemento, setComplemento] = useState("");
   const [cfg, setCfg] = useState<Configuracao | null>(null);
   const [bairroOpen, setBairroOpen] = useState(false);
+  const [clienteBusca, setClienteBusca] = useState("");
+  const [clienteOpen, setClienteOpen] = useState(false);
   const bairroWrapRef = useRef<HTMLDivElement>(null);
+  const clienteWrapRef = useRef<HTMLDivElement>(null);
+
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
 
   const normalizeBairro = (value: string) =>
     value
@@ -117,14 +124,14 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     setBairro("");
     setTaxa("0");
     setClienteSelecionado("");
+    setClienteBusca("");
     setBairroOpen(false);
+    setClienteOpen(false);
   };
 
-  const handleSelectCliente = (clienteId: string) => {
-    const cliente = clientes.find(c => c.id === clienteId);
-    if (!cliente) return;
-    
-    setClienteSelecionado(clienteId);
+  const handleSelectCliente = (cliente: Cliente) => {
+    setClienteSelecionado(cliente.id);
+    setClienteBusca(`${cliente.nome} - ${cliente.telefone}`);
     setNome(cliente.nome);
     setTel(cliente.telefone);
     setEndereco(cliente.endereco || "");
@@ -133,6 +140,13 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     applyTaxaFromBairro(bairroCliente, true);
     setNumero(cliente.numero || "");
     setComplemento(cliente.complemento || "");
+    setClienteOpen(false);
+  };
+
+  const clearClienteSelecionado = () => {
+    setClienteSelecionado("");
+    setClienteBusca("");
+    setClienteOpen(false);
   };
 
   useEffect(() => {
@@ -146,10 +160,29 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     return bairrosTaxas.filter((item) => normalizeBairro(item.nome).includes(termo));
   }, [bairro, bairrosTaxas]);
 
+  const clientesFiltrados = useMemo(() => {
+    const termo = clienteBusca.trim();
+    if (!termo) return clientes;
+
+    const termoNorm = normalizeSearch(termo);
+    const termoDigits = termo.replace(/\D/g, "");
+
+    return clientes.filter((cliente) => {
+      const nomeMatch = normalizeSearch(cliente.nome).includes(termoNorm);
+      const telMatch = termoDigits.length >= 3
+        && cliente.telefone.replace(/\D/g, "").includes(termoDigits);
+      return nomeMatch || telMatch;
+    });
+  }, [clienteBusca, clientes]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (bairroWrapRef.current && !bairroWrapRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (bairroWrapRef.current && !bairroWrapRef.current.contains(target)) {
         setBairroOpen(false);
+      }
+      if (clienteWrapRef.current && !clienteWrapRef.current.contains(target)) {
+        setClienteOpen(false);
       }
     };
 
@@ -288,18 +321,53 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         <div className="shrink-0 grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-2 pb-2">
           <div className="col-span-2 md:col-span-6 space-y-1">
             <Label htmlFor="d-cliente" className="text-xs">Cliente (opcional)</Label>
-            <Select value={clienteSelecionado} onValueChange={handleSelectCliente}>
-              <SelectTrigger id="d-cliente" className="h-9">
-                <SelectValue placeholder="Selecione um cliente cadastrado..." />
-              </SelectTrigger>
-              <SelectContent>
-                {clientes.map((cliente) => (
-                  <SelectItem key={cliente.id} value={cliente.id}>
-                    {cliente.nome} - {cliente.telefone}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative" ref={clienteWrapRef}>
+              <Input
+                id="d-cliente"
+                className="h-9"
+                value={clienteBusca}
+                onChange={(e) => {
+                  setClienteBusca(e.target.value);
+                  setClienteSelecionado("");
+                  setClienteOpen(true);
+                }}
+                onFocus={() => setClienteOpen(true)}
+                placeholder="Buscar cliente por nome ou telefone..."
+                autoComplete="off"
+              />
+              {clienteOpen && (
+                <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+                  {clienteSelecionado && (
+                    <button
+                      type="button"
+                      className="w-full border-b px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={clearClienteSelecionado}
+                    >
+                      Limpar selecao
+                    </button>
+                  )}
+                  {clientesFiltrados.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      Nenhum cliente encontrado.
+                    </div>
+                  ) : (
+                    clientesFiltrados.map((cliente) => (
+                      <button
+                        key={cliente.id}
+                        type="button"
+                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-accent"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSelectCliente(cliente)}
+                      >
+                        <span className="font-medium">{cliente.nome}</span>
+                        <span className="text-xs text-muted-foreground">{cliente.telefone}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="col-span-2 md:col-span-4 space-y-1">
             <Label htmlFor="d-nome" className="text-xs">Nome do cliente *</Label>

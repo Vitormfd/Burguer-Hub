@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { brl } from "@/lib/format";
+import { normalizePhone } from "@/lib/fidelidade";
 import { toast } from "sonner";
 
 interface ClienteRow {
@@ -60,6 +61,11 @@ const emptyRewardForm = {
   ordem: "0",
 };
 
+const emptyClienteForm = {
+  nome: "",
+  telefone: "",
+};
+
 const normalizeHexColor = (value?: string | null) => {
   if (!value) return "#16a34a";
   const normalized = value.trim();
@@ -86,6 +92,9 @@ export default function FidelidadeAdmin() {
   const [clienteDetalheOpen, setClienteDetalheOpen] = useState(false);
   const [clienteDetalhe, setClienteDetalhe] = useState<ClienteDetalhe | null>(null);
   const [clienteDetalheBusy, setClienteDetalheBusy] = useState(false);
+  const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
+  const [clienteForm, setClienteForm] = useState(emptyClienteForm);
+  const [clienteBusy, setClienteBusy] = useState(false);
   const [configBusy, setConfigBusy] = useState(false);
 
   const produtoMap = useMemo(() => new Map(produtos.map((produto) => [produto.id, produto.nome])), [produtos]);
@@ -192,6 +201,37 @@ export default function FidelidadeAdmin() {
     setRecompensas((current) => current.map((item) => item.id === reward.id ? { ...item, ativo: !item.ativo } : item));
   };
 
+  const openNewCliente = () => {
+    setClienteForm(emptyClienteForm);
+    setClienteDialogOpen(true);
+  };
+
+  const saveCliente = async () => {
+    const nome = clienteForm.nome.trim();
+    const telefone = normalizePhone(clienteForm.telefone);
+
+    if (nome.length < 2) return toast.error("Informe o nome do cliente");
+    if (telefone.length < 10) return toast.error("Informe um telefone valido");
+
+    setClienteBusy(true);
+    const { error } = await supabase.from("clientes").insert({
+      nome,
+      telefone,
+    });
+    setClienteBusy(false);
+
+    if (error) {
+      if (error.code === "23505") {
+        return toast.error("Ja existe um cliente com este telefone");
+      }
+      return toast.error(error.message);
+    }
+
+    toast.success("Cliente criado");
+    setClienteDialogOpen(false);
+    void loadClientes();
+  };
+
   const openClienteDetalhe = async (clienteId: string) => {
     setClienteDetalheOpen(true);
     setClienteDetalheBusy(true);
@@ -296,17 +336,22 @@ export default function FidelidadeAdmin() {
         </TabsContent>
 
         <TabsContent value="clientes" className="space-y-4">
-          <Card className="p-4">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={clienteBusca}
-                onChange={(event) => setClienteBusca(event.target.value)}
-                placeholder="Buscar por nome ou telefone"
-                className="pl-9"
-              />
-            </div>
-          </Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Card className="p-4 flex-1 max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={clienteBusca}
+                  onChange={(event) => setClienteBusca(event.target.value)}
+                  placeholder="Buscar por nome ou telefone"
+                  className="pl-9"
+                />
+              </div>
+            </Card>
+            <Button onClick={openNewCliente}>
+              <Plus className="w-4 h-4 mr-2" /> Novo cliente
+            </Button>
+          </div>
 
           <Card className="p-0 overflow-hidden">
             <Table>
@@ -503,6 +548,45 @@ export default function FidelidadeAdmin() {
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setRewardDialogOpen(false)} disabled={rewardBusy}>Cancelar</Button>
             <Button onClick={saveReward} disabled={rewardBusy}>{rewardBusy ? "Salvando..." : "Salvar"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clienteDialogOpen} onOpenChange={setClienteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl">Novo cliente</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                value={clienteForm.nome}
+                onChange={(event) => setClienteForm({ ...clienteForm, nome: event.target.value })}
+                placeholder="Nome completo"
+                maxLength={100}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input
+                value={clienteForm.telefone}
+                onChange={(event) => setClienteForm({ ...clienteForm, telefone: event.target.value })}
+                placeholder="(11) 99999-9999"
+                maxLength={20}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setClienteDialogOpen(false)} disabled={clienteBusy}>
+              Cancelar
+            </Button>
+            <Button onClick={saveCliente} disabled={clienteBusy}>
+              {clienteBusy ? "Salvando..." : "Criar cliente"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

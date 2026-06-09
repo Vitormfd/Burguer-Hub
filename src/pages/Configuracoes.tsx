@@ -31,6 +31,7 @@ import {
 import { type PrintConfig, readPrintConfig, savePrintConfig, printCashSummary } from "@/lib/print";
 import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { brl } from "@/lib/format";
+import { configureWhatsappWebhook } from "@/lib/whatsapp";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -246,6 +247,8 @@ export default function Configuracoes() {
   const [zapiStatus, setZapiStatus] = useState<"idle" | "ok" | "error">("idle");
   const [zapiErrMsg, setZapiErrMsg] = useState("");
   const [zapiPhone, setZapiPhone] = useState("");
+  const [configuringWebhook, setConfiguringWebhook] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [testingConn, setTestingConn] = useState(false);
   const [testMsgTipo, setTestMsgTipo] = useState<TipoMensagemWhatsapp | null>(null);
 
@@ -449,6 +452,8 @@ export default function Configuracoes() {
         zapi_token: cfg.zapi_token ?? null,
         zapi_client_token: cfg.zapi_client_token ?? null,
         zapi_ativo: cfg.zapi_ativo ?? false,
+        whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
+        whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
         whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
         whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
         whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
@@ -459,6 +464,46 @@ export default function Configuracoes() {
     setBusyWpp(false);
     if (error) toast.error(error.message);
     else toast.success("Configuracoes WhatsApp salvas");
+  };
+
+  const webhookEndpoint = import.meta.env.VITE_SUPABASE_URL
+    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/zapi-webhook`
+    : "";
+
+  const configureWebhook = async () => {
+    if (!cfg || !hasCredentials) {
+      return toast.error("Preencha e salve as credenciais Z-API primeiro");
+    }
+    setConfiguringWebhook(true);
+    try {
+      const { error: saveErr } = await supabase
+        .from("configuracoes")
+        .update({
+          zapi_instance_id: cfg.zapi_instance_id ?? null,
+          zapi_token: cfg.zapi_token ?? null,
+          zapi_client_token: cfg.zapi_client_token ?? null,
+          zapi_ativo: cfg.zapi_ativo ?? false,
+          whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
+        } as any)
+        .eq("id", cfg.id);
+
+      if (saveErr) {
+        toast.error(saveErr.message);
+        return;
+      }
+
+      const result = await configureWhatsappWebhook(cfg.id);
+      if (result.ok) {
+        setWebhookUrl(result.webhook_url || webhookEndpoint);
+        toast.success("Webhook configurado na Z-API com sucesso!");
+      } else {
+        toast.error(result.error || "Falha ao configurar webhook");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao configurar webhook");
+    } finally {
+      setConfiguringWebhook(false);
+    }
   };
 
   // test Z-API connection
@@ -1075,6 +1120,81 @@ export default function Configuracoes() {
                 )}
               </div>
             )}
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl flex items-center gap-2">
+              <MessageSquare className="w-6 h-6 text-amber-500" /> Pedidos via WhatsApp
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Chatbot automatizado para clientes fazerem pedidos pelo WhatsApp sem atendente humano.
+              O cliente digita <strong>menu</strong> e segue o fluxo guiado até a confirmação.
+            </p>
+
+            {hasCredentials && (
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={!!cfg.whatsapp_pedido_ativo}
+                  onCheckedChange={(v) => setCfg({ ...cfg, whatsapp_pedido_ativo: v })}
+                />
+                <span className="text-sm font-medium">Ativar pedidos via WhatsApp</span>
+                {cfg.whatsapp_pedido_ativo && (
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 ml-auto">Bot ativo</Badge>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Mensagem de boas-vindas</Label>
+              <Textarea
+                rows={6}
+                value={cfg.whatsapp_msg_boas_vindas ?? ""}
+                onChange={(e) => setCfg({ ...cfg, whatsapp_msg_boas_vindas: e.target.value })}
+                placeholder="Mensagem enviada quando o cliente inicia uma conversa..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Variavel disponivel: {"{{loja}}"} (nome da loja)
+              </p>
+            </div>
+
+            {webhookEndpoint && (
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <p className="text-sm font-medium">Webhook de recebimento (Z-API)</p>
+                <code className="block text-xs break-all bg-background p-2 rounded border">
+                  {webhookUrl || webhookEndpoint}
+                </code>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(webhookUrl || webhookEndpoint);
+                      toast.success("URL copiada");
+                    }}
+                  >
+                    Copiar URL
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={configureWebhook}
+                    disabled={configuringWebhook || !hasCredentials}
+                  >
+                    {configuringWebhook
+                      ? <><RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Configurando...</>
+                      : "Configurar webhook automaticamente"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Configure o webhook &quot;Ao receber&quot; na Z-API apontando para esta URL,
+                  ou use o botao acima para configurar automaticamente.
+                </p>
+              </div>
+            )}
+
+            <div className="text-sm text-muted-foreground space-y-1 border-t pt-4">
+              <p className="font-medium text-foreground">Comandos do cliente:</p>
+              <p><code>menu</code> — Ver cardapio | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Desistir | <code>ajuda</code> — Ajuda</p>
+            </div>
           </Card>
 
           <Card className="p-6 space-y-5">

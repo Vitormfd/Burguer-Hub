@@ -13,7 +13,7 @@ type TipoMensagem =
   | "retirada_pronto";
 
 interface SendPayload {
-  action?: "send" | "test_connection";
+  action?: "send" | "test_connection" | "configure_webhook";
   configuracao_id?: string;
   pedido_id: string;
   tipo_mensagem: TipoMensagem;
@@ -130,6 +130,53 @@ Deno.serve(async (req) => {
   }
 
   const { zapi_instance_id, zapi_token, zapi_client_token } = cfg as Record<string, string | null | boolean>;
+
+  // Configure Z-API received webhook for WhatsApp orders bot
+  if (action === "configure_webhook") {
+    if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
+      return json({ ok: false, error: "Credenciais Z-API ausentes em configuracoes" }, 200);
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    if (!supabaseUrl) {
+      return json({ ok: false, error: "SUPABASE_URL ausente" }, 500);
+    }
+
+    const webhookUrl = `${supabaseUrl}/functions/v1/zapi-webhook`;
+
+    try {
+      const receivedUrl = `https://api.z-api.io/instances/${zapi_instance_id}/token/${zapi_token}/update-webhook-received`;
+      const res = await fetch(receivedUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Client-Token": zapi_client_token as string,
+        },
+        body: JSON.stringify({ value: webhookUrl }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        return json({ ok: false, error: `HTTP ${res.status}: ${errBody}` }, 200);
+      }
+
+      await fetch(
+        `https://api.z-api.io/instances/${zapi_instance_id}/token/${zapi_token}/update-notify-sent-by-me`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Client-Token": zapi_client_token as string,
+          },
+          body: JSON.stringify({ notifySentByMe: false }),
+        },
+      );
+
+      return json({ ok: true, webhook_url: webhookUrl }, 200);
+    } catch (err) {
+      return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
+    }
+  }
 
   // Connection test always runs through backend to avoid exposing credentials in frontend
   if (action === "test_connection") {

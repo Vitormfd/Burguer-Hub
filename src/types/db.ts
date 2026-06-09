@@ -179,6 +179,8 @@ export interface Configuracao {
   zapi_token?: string | null;
   zapi_client_token?: string | null;
   zapi_ativo?: boolean;
+  whatsapp_pedido_ativo?: boolean;
+  whatsapp_msg_boas_vindas?: string;
   whatsapp_msg_confirmado?: string;
   whatsapp_msg_em_preparo?: string;
   whatsapp_msg_saiu_entrega?: string;

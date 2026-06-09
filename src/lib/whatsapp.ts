@@ -83,6 +83,21 @@ export function buildWhatsappPedidoDados(
  * Dispara a Edge Function send-whatsapp de forma fire-and-forget.
  * Nunca lança exceção — erros são silenciados para não bloquear o fluxo.
  */
+/** Configura o webhook de recebimento na Z-API para o chatbot de pedidos. */
+export async function configureWhatsappWebhook(
+  configuracao_id: string,
+): Promise<{ ok: boolean; webhook_url?: string; error?: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+      body: { action: "configure_webhook", configuracao_id },
+    });
+    if (error) return { ok: false, error: error.message };
+    return data as { ok: boolean; webhook_url?: string; error?: string };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Erro desconhecido" };
+  }
+}
+
 export async function sendWhatsapp(
   pedido_id: string,
   tipo_mensagem: TipoMensagemWhatsapp,

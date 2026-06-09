@@ -1,1 +1,4 @@
 project_id = "iehcswmrufrpbvnwldkw"
+
+[functions.zapi-webhook]
+verify_jwt = false

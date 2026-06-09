@@ -31,15 +31,21 @@ function extractMessage(payload: ZapiIncomingMessage): {
     };
   }
 
-  return {
-    text: payload.text?.message || "",
-    selectedId: null,
-  };
+  const textObj = payload.text as { message?: string } | string | undefined;
+  const text = typeof textObj === "string"
+    ? textObj
+    : textObj?.message || "";
+
+  return { text, selectedId: null };
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method === "GET") {
+    return json({ ok: true, service: "zapi-webhook", hint: "POST only from Z-API" });
   }
 
   if (req.method !== "POST") {
@@ -52,6 +58,14 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
+
+  console.log("zapi-webhook received:", {
+    instanceId: payload.instanceId,
+    phone: payload.phone,
+    fromMe: payload.fromMe,
+    isGroup: payload.isGroup,
+    type: (payload as Record<string, unknown>).type,
+  });
 
   // Ignora mensagens enviadas por nós, grupos e callbacks sem conteúdo
   if (payload.fromMe || payload.isGroup) {
@@ -66,6 +80,7 @@ Deno.serve(async (req) => {
 
   const { text, selectedId } = extractMessage(payload);
   if (!text && !selectedId) {
+    console.warn("zapi-webhook: payload sem texto", JSON.stringify(payload).slice(0, 500));
     return json({ ok: true, skipped: "no_content" });
   }
 
@@ -73,6 +88,7 @@ Deno.serve(async (req) => {
   const loja = await findLojaByInstance(supabase, instanceId);
 
   if (!loja) {
+    console.warn("zapi-webhook: loja nao encontrada para", instanceId);
     return json({ ok: true, skipped: "loja_not_found_or_inactive" });
   }
 

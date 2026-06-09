@@ -1188,6 +1188,11 @@ export default function Configuracoes() {
                   Configure o webhook &quot;Ao receber&quot; na Z-API apontando para esta URL,
                   ou use o botao acima para configurar automaticamente.
                 </p>
+                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-900 dark:text-amber-200">
+                  <strong>Obrigatorio:</strong> na function <code>zapi-webhook</code> do Supabase
+                  (Edge Functions → zapi-webhook → Details), desative <strong>Enforce JWT Verification</strong>.
+                  Sem isso a Z-API recebe erro 401 e o bot nao responde.
+                </div>
               </div>
             )}
 

@@ -20,20 +20,45 @@ export async function findLojaByInstance(
   supabase: SupabaseClient,
   instanceId: string,
 ): Promise<LojaConfig | null> {
-  const { data } = await supabase
+  const normalizedId = instanceId.trim();
+
+  const { data, error } = await supabase
     .from("configuracoes")
     .select(
       "id, owner_id, nome_loja, zapi_instance_id, zapi_token, zapi_client_token, " +
       "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
       "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento",
     )
-    .eq("zapi_instance_id", instanceId)
-    .eq("zapi_ativo", true)
+    .ilike("zapi_instance_id", normalizedId)
     .eq("whatsapp_pedido_ativo", true)
     .not("zapi_token", "is", null)
     .not("zapi_client_token", "is", null)
     .limit(1)
     .maybeSingle();
+
+  if (error) {
+    console.error("findLojaByInstance DB error:", error.message);
+    return null;
+  }
+
+  if (!data) {
+    const { data: anyCfg } = await supabase
+      .from("configuracoes")
+      .select("zapi_instance_id, whatsapp_pedido_ativo, zapi_ativo")
+      .ilike("zapi_instance_id", normalizedId)
+      .limit(1)
+      .maybeSingle();
+
+    if (anyCfg) {
+      console.warn("Loja encontrada mas bot inativo ou credenciais ausentes:", {
+        instanceId: normalizedId,
+        whatsapp_pedido_ativo: anyCfg.whatsapp_pedido_ativo,
+        zapi_ativo: anyCfg.zapi_ativo,
+      });
+    } else {
+      console.warn("Nenhuma configuracao para instanceId:", normalizedId);
+    }
+  }
 
   return data as LojaConfig | null;
 }

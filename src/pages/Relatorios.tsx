@@ -35,7 +35,7 @@ interface RangeKpi {
   delivery: number;
   retirada: number;
   mesa: number;
-  topProdutos: { nome: string; quantidade: number; receita: number }[];
+  vendasPorProduto: { nome: string; quantidade: number; receita: number }[];
 }
 
 interface CancelamentoDetalhe {
@@ -64,7 +64,7 @@ const emptyToday: TodayKpi = { faturamento: 0, emAnalise: 0, emProducao: 0, pron
 const emptyRange: RangeKpi = {
   faturamento: 0, pedidos: 0, ticket: 0,
   faturamentoPrev: 0, pedidosPrev: 0, ticketPrev: 0,
-  delivery: 0, retirada: 0, mesa: 0, topProdutos: [],
+  delivery: 0, retirada: 0, mesa: 0, vendasPorProduto: [],
 };
 
 const emptyCancelamentos: CancelamentosHojeKpi = {
@@ -97,7 +97,7 @@ async function fetchRangeData(ini: string, fim: string) {
 
   if (allIds.length) {
     const [{ data: itens }, entR] = await Promise.all([
-      supabase.from("pedido_itens").select("pedido_id, produto_id, quantidade, preco_unitario").in("pedido_id", allIds),
+      supabase.from("pedido_itens").select("pedido_id, produto_id, quantidade, preco_unitario").in("pedido_id", allIds).eq("cancelado", false),
       pedDel.length
         ? supabase.from("entregas").select("taxa_entrega").in("pedido_id", pedDel.map((p) => p.id))
         : Promise.resolve({ data: [] as any[] }),
@@ -127,6 +127,32 @@ async function fetchRangeData(ini: string, fim: string) {
     mesa: pedMesa.length,
     acc,
   };
+}
+
+async function buildVendasPorProduto(acc: Map<string, { quantidade: number; receita: number }>) {
+  const { data: produtos } = await supabase.from("produtos").select("id, nome").order("nome");
+  const catalogIds = new Set((produtos || []).map((p) => p.id));
+
+  const lista: { nome: string; quantidade: number; receita: number }[] = (produtos || []).map((p) => {
+    const v = acc.get(p.id);
+    return {
+      nome: p.nome as string,
+      quantidade: v?.quantidade ?? 0,
+      receita: v?.receita ?? 0,
+    };
+  });
+
+  for (const [pid, v] of acc) {
+    if (pid === "—" || catalogIds.has(pid)) continue;
+    lista.push({ nome: "Produto removido", quantidade: v.quantidade, receita: v.receita });
+  }
+
+  if (acc.has("—")) {
+    const v = acc.get("—")!;
+    lista.push({ nome: "Produto removido (sem ID)", quantidade: v.quantidade, receita: v.receita });
+  }
+
+  return lista.sort((a, b) => b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
 export default function Relatorios() {
@@ -189,21 +215,13 @@ export default function Relatorios() {
       fetchRangeData(iniPrev, fimPrev),
     ]);
 
-    const prodIds = Array.from(cur.acc.keys()).filter((k) => k !== "—");
-    const { data: produtos } = prodIds.length
-      ? await supabase.from("produtos").select("id, nome").in("id", prodIds)
-      : { data: [] };
-    const nameMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
-    const topProdutos = Array.from(cur.acc.entries())
-      .map(([pid, v]) => ({ nome: pid === "—" ? "Produto removido" : (nameMap.get(pid) ?? "—"), ...v }))
-      .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 5);
+    const vendasPorProduto = await buildVendasPorProduto(cur.acc);
 
     setData({
       faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
       faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
       delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-      topProdutos,
+      vendasPorProduto,
     });
     setLoading(false);
   }, []);
@@ -332,21 +350,13 @@ export default function Relatorios() {
       fetchRangeData(iniPrev, fimPrev),
     ]);
 
-    const prodIds = Array.from(cur.acc.keys()).filter((k) => k !== "—");
-    const { data: produtos } = prodIds.length
-      ? await supabase.from("produtos").select("id, nome").in("id", prodIds)
-      : { data: [] };
-    const nameMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
-    const topProdutos = Array.from(cur.acc.entries())
-      .map(([pid, v]) => ({ nome: pid === "—" ? "Produto removido" : (nameMap.get(pid) ?? "—"), ...v }))
-      .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 5);
+    const vendasPorProduto = await buildVendasPorProduto(cur.acc);
 
     setData({
       faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
       faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
       delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-      topProdutos,
+      vendasPorProduto,
     });
     setLoading(false);
   }, []);
@@ -375,7 +385,9 @@ export default function Relatorios() {
   };
 
   const totalModalidade = data.delivery + data.retirada + data.mesa || 1;
-  const maxQtd = data.topProdutos[0]?.quantidade ?? 1;
+  const maxQtd = Math.max(...data.vendasPorProduto.map((p) => p.quantidade), 1);
+  const totalItensVendidos = data.vendasPorProduto.reduce((s, p) => s + p.quantidade, 0);
+  const totalReceitaProdutos = data.vendasPorProduto.reduce((s, p) => s + p.receita, 0);
 
   return (
     <div className="space-y-6">
@@ -563,35 +575,52 @@ export default function Relatorios() {
         </Card>
       </div>
 
-      {/* Top 5 produtos */}
       <Card className="shadow-card">
-        <div className="p-5 border-b flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="font-display text-2xl">Top 5 produtos</h2>
+        <div className="p-5 border-b flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-primary" />
+            <div>
+              <h2 className="font-display text-2xl">Vendas por produto</h2>
+              <p className="text-sm text-muted-foreground">Panorama completo de itens vendidos no período</p>
+            </div>
+          </div>
+          {!loading && (
+            <div className="flex flex-wrap gap-6 text-sm">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Itens vendidos</div>
+                <div className="font-display text-2xl">{totalItensVendidos}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Receita dos produtos</div>
+                <div className="font-display text-2xl text-primary">{brl(totalReceitaProdutos)}</div>
+              </div>
+            </div>
+          )}
         </div>
         {loading ? (
           <div className="p-8 text-center text-muted-foreground">Calculando...</div>
-        ) : data.topProdutos.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">Nenhum item vendido neste período.</div>
+        ) : data.vendasPorProduto.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground">Nenhum produto cadastrado no cardápio.</div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12">#</TableHead>
                 <TableHead>Produto</TableHead>
-                <TableHead className="w-[35%]">Volume</TableHead>
-                <TableHead className="text-right w-24">Qtd.</TableHead>
+                <TableHead className="w-[35%]">Participação</TableHead>
+                <TableHead className="text-right w-24">Qtd. vendida</TableHead>
                 <TableHead className="text-right w-32">Receita</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.topProdutos.map((p, i) => (
-                <TableRow key={p.nome + i}>
-                  <TableCell className="font-display text-xl text-muted-foreground">{i + 1}</TableCell>
+              {data.vendasPorProduto.map((p) => (
+                <TableRow key={p.nome} className={p.quantidade === 0 ? "opacity-60" : undefined}>
                   <TableCell className="font-medium">{p.nome}</TableCell>
                   <TableCell>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full bg-gradient-primary" style={{ width: `${(p.quantidade / maxQtd) * 100}%` }} />
+                      <div
+                        className="h-full bg-gradient-primary"
+                        style={{ width: `${(p.quantidade / maxQtd) * 100}%` }}
+                      />
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-semibold">{p.quantidade}</TableCell>

@@ -17,6 +17,7 @@ import {
   brl,
   cartSubtotal,
   encodeKdsObservation,
+  formatPhoneZapi,
   formatBoasVindas,
   formatCart,
   formatPagamento,
@@ -782,10 +783,12 @@ async function finalizeOrder(
   }));
 
   try {
+    const telefoneNormalizado = formatPhoneZapi(telefone);
+
     const result = await createWhatsappOrder(supabase, cfg.owner_id, {
       tipo_entrega: dados.tipo_entrega!,
       cliente_nome: dados.cliente!.nome!,
-      cliente_telefone: telefone,
+      cliente_telefone: telefoneNormalizado,
       endereco: dados.tipo_entrega === "delivery"
         ? dados.cliente!.endereco!
         : "Retirada no balcão",
@@ -833,7 +836,7 @@ async function finalizeOrder(
           body: JSON.stringify({
             pedido_id: result.pedido_id,
             tipo_mensagem: "confirmado",
-            telefone,
+            telefone: telefoneNormalizado,
             dados_pedido: {
               nome: dados.cliente!.nome,
               itens: resumo,

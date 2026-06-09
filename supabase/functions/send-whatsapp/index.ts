@@ -30,6 +30,29 @@ interface SendPayload {
 const normalizePhone = (value: string): string =>
   value.replace(/\D/g, "").trim();
 
+/** Normaliza celular BR para 11 dígitos locais (DDD + 9 + número). */
+const normalizeBrazilMobile = (
+  value: string,
+): { local: string; formatted: string } | null => {
+  let digits = normalizePhone(value);
+  if (!digits) return null;
+
+  if (digits.startsWith("55") && digits.length > 11) {
+    digits = digits.slice(2);
+  }
+
+  // DDD (2) + 8 dígitos — celular sem o 9 extra (comum em APIs/WhatsApp)
+  if (digits.length === 10) {
+    digits = digits.slice(0, 2) + "9" + digits.slice(2);
+  }
+
+  if (digits.length !== 11 || digits[2] !== "9") {
+    return null;
+  }
+
+  return { local: digits, formatted: `55${digits}` };
+};
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -217,26 +240,21 @@ Deno.serve(async (req) => {
     return json({ error: "pedido_id, tipo_mensagem e telefone são obrigatórios" }, 400);
   }
 
-  // Validate phone: must be exactly 11 digits after cleaning (DDD + number)
-  // Accept both formats with or without country code 55.
-  const cleanedPhone = normalizePhone(telefone);
-  const localPhone = cleanedPhone.startsWith("55") && cleanedPhone.length === 13
-    ? cleanedPhone.slice(2)
-    : cleanedPhone;
-
-  if (localPhone.length !== 11) {
+  const phone = normalizeBrazilMobile(telefone);
+  if (!phone) {
+    const cleaned = normalizePhone(telefone);
     await supabase.from("whatsapp_logs").insert({
       pedido_id,
-      telefone: cleanedPhone || telefone,
+      telefone: cleaned || telefone,
       tipo_mensagem,
       mensagem_enviada: "",
       status: "erro",
-      erro_detalhe: `Telefone inválido: ${telefone} (${localPhone.length} dígitos após limpeza)`,
+      erro_detalhe: `Telefone inválido: ${telefone} (${cleaned.length} dígitos após limpeza)`,
     });
     return json({ skipped: true, reason: "invalid_phone" });
   }
 
-  const formattedPhone = `55${localPhone}`;
+  const formattedPhone = phone.formatted;
 
   // Pick the right message template
   const templateMap: Record<TipoMensagem, string> = {

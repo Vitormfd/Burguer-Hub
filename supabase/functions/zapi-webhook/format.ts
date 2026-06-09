@@ -7,14 +7,35 @@ export const normalizeText = (value: string): string =>
   value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 
 export const normalizePhone = (value: string): string => {
-  const digits = value.replace(/\D/g, "").trim();
-  if (digits.startsWith("55") && digits.length === 13) return digits.slice(2);
-  return digits;
+  const parsed = normalizeBrazilMobile(value);
+  return parsed?.local ?? value.replace(/\D/g, "").trim();
+};
+
+/** Normaliza celular BR para envio Z-API (55 + 11 dígitos). */
+export const normalizeBrazilMobile = (
+  value: string,
+): { local: string; formatted: string } | null => {
+  let digits = value.replace(/\D/g, "").trim();
+  if (!digits) return null;
+
+  if (digits.startsWith("55") && digits.length > 11) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length === 10) {
+    digits = digits.slice(0, 2) + "9" + digits.slice(2);
+  }
+
+  if (digits.length !== 11 || digits[2] !== "9") {
+    return null;
+  }
+
+  return { local: digits, formatted: `55${digits}` };
 };
 
 export const formatPhoneZapi = (phone: string): string => {
-  const local = normalizePhone(phone);
-  return local.length === 11 ? `55${local}` : phone.replace(/\D/g, "");
+  const parsed = normalizeBrazilMobile(phone);
+  return parsed?.formatted ?? phone.replace(/\D/g, "");
 };
 
 export const itemUnitPrice = (item: CartItemWa): number => {

@@ -42,7 +42,8 @@ export async function cancelarPedidoCompleto(
         cancelado_em: agora,
         motivo_cancelamento: motivo,
       })
-      .eq("pedido_id", pedidoId),
+      .eq("pedido_id", pedidoId)
+      .eq("cancelado", false),
   ]);
 
   if (pedidoError || itensError) {

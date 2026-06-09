@@ -40,11 +40,18 @@ interface RangeKpi {
 
 interface CancelamentoDetalhe {
   hora: string;
-  mesa: string;
+  origem: string;
   item: string;
   motivo: string;
   valor: number;
+  canceladoEm: string;
 }
+
+const isCancelamentoReal = (motivo: string | null) => {
+  const value = (motivo || "").trim();
+  if (!value) return true;
+  return !value.toLowerCase().startsWith("pedido editado");
+};
 
 interface CancelamentosHojeKpi {
   totalItens: number;
@@ -209,6 +216,7 @@ export default function Relatorios() {
       .from("pedido_itens")
       .select("pedido_id, produto_id, quantidade, preco_unitario, cancelado_em, motivo_cancelamento")
       .eq("cancelado", true)
+      .not("cancelado_em", "is", null)
       .gte("cancelado_em", ini)
       .lte("cancelado_em", fim);
 
@@ -217,19 +225,22 @@ export default function Relatorios() {
       return;
     }
 
-    if (!itens?.length) {
+    const itensReais = (itens || []).filter((item) => isCancelamentoReal(item.motivo_cancelamento));
+
+    if (!itensReais.length) {
       setCancelamentosHoje(emptyCancelamentos);
       return;
     }
 
-    const pedidoIds = Array.from(new Set(itens.map((i) => i.pedido_id)));
-    const produtoIds = Array.from(new Set(itens.map((i) => i.produto_id).filter(Boolean))) as string[];
+    const pedidoIds = Array.from(new Set(itensReais.map((i) => i.pedido_id)));
+    const produtoIds = Array.from(new Set(itensReais.map((i) => i.produto_id).filter(Boolean))) as string[];
 
-    const [{ data: pedidos }, { data: produtos }] = await Promise.all([
-      supabase.from("pedidos").select("id, conta_id").in("id", pedidoIds),
+    const [{ data: pedidos }, { data: produtos }, { data: entregas }] = await Promise.all([
+      supabase.from("pedidos").select("id, conta_id, tipo, tipo_entrega").in("id", pedidoIds),
       produtoIds.length
         ? supabase.from("produtos").select("id, nome").in("id", produtoIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
+      supabase.from("entregas").select("pedido_id, cliente_nome").in("pedido_id", pedidoIds),
     ]);
 
     const contaIds = Array.from(new Set((pedidos || []).map((p) => p.conta_id).filter(Boolean))) as string[];
@@ -242,10 +253,29 @@ export default function Relatorios() {
       ? await supabase.from("mesas").select("id, numero").in("id", mesaIds)
       : { data: [] as { id: string; numero: number }[] };
 
+    const pedidoMap = new Map((pedidos || []).map((p) => [p.id, p]));
     const pedidoContaMap = new Map((pedidos || []).map((p) => [p.id, p.conta_id as string | null]));
     const contaMesaMap = new Map((contas || []).map((c) => [c.id, c.mesa_id as string | null]));
     const mesaNumeroMap = new Map((mesas || []).map((m) => [m.id, m.numero]));
     const produtoMap = new Map((produtos || []).map((p) => [p.id, p.nome]));
+    const entregaMap = new Map((entregas || []).map((e) => [e.pedido_id, e.cliente_nome as string]));
+
+    const resolveOrigem = (pedidoId: string) => {
+      const pedido = pedidoMap.get(pedidoId);
+      if (!pedido) return "—";
+
+      if (pedido.tipo === "delivery") {
+        const cliente = entregaMap.get(pedidoId);
+        return pedido.tipo_entrega === "retirada"
+          ? `Retirada${cliente ? ` — ${cliente}` : ""}`
+          : `Delivery${cliente ? ` — ${cliente}` : ""}`;
+      }
+
+      const contaId = pedidoContaMap.get(pedidoId);
+      const mesaId = contaId ? contaMesaMap.get(contaId) : null;
+      const numeroMesa = mesaId ? mesaNumeroMap.get(mesaId) : null;
+      return numeroMesa != null ? `Mesa ${String(numeroMesa).padStart(2, "0")}` : "Mesa";
+    };
 
     const motivoBase = (motivo: string | null) => {
       const value = motivo || "Não informado";
@@ -257,7 +287,7 @@ export default function Relatorios() {
     let totalItens = 0;
     let valorTotal = 0;
 
-    const detalhes: CancelamentoDetalhe[] = itens
+    const detalhes: CancelamentoDetalhe[] = itensReais
       .map((item) => {
         totalItens += item.quantidade;
         const subtotal = Number(item.preco_unitario) * item.quantidade;
@@ -266,19 +296,16 @@ export default function Relatorios() {
         const base = motivoBase(item.motivo_cancelamento);
         freq.set(base, (freq.get(base) || 0) + item.quantidade);
 
-        const contaId = pedidoContaMap.get(item.pedido_id);
-        const mesaId = contaId ? contaMesaMap.get(contaId) : null;
-        const numeroMesa = mesaId ? mesaNumeroMap.get(mesaId) : null;
-
         return {
           hora: item.cancelado_em ? new Date(item.cancelado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—",
-          mesa: numeroMesa != null ? `Mesa ${String(numeroMesa).padStart(2, "0")}` : "—",
+          origem: resolveOrigem(item.pedido_id),
           item: item.produto_id ? (produtoMap.get(item.produto_id) || "Produto removido") : "Produto removido",
           motivo: base,
           valor: subtotal,
+          canceladoEm: item.cancelado_em || "",
         };
       })
-      .sort((a, b) => b.hora.localeCompare(a.hora));
+      .sort((a, b) => b.canceladoEm.localeCompare(a.canceladoEm));
 
     const motivoMaisFrequente = Array.from(freq.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
 
@@ -587,7 +614,7 @@ export default function Relatorios() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-24">Hora</TableHead>
-                <TableHead className="w-28">Mesa</TableHead>
+                <TableHead className="w-40">Origem</TableHead>
                 <TableHead>Item</TableHead>
                 <TableHead>Motivo</TableHead>
                 <TableHead className="text-right w-32">Valor</TableHead>
@@ -597,7 +624,7 @@ export default function Relatorios() {
               {cancelamentosHoje.detalhes.map((linha, idx) => (
                 <TableRow key={`${linha.hora}-${linha.item}-${idx}`}>
                   <TableCell>{linha.hora}</TableCell>
-                  <TableCell>{linha.mesa}</TableCell>
+                  <TableCell>{linha.origem}</TableCell>
                   <TableCell className="font-medium">{linha.item}</TableCell>
                   <TableCell>{linha.motivo}</TableCell>
                   <TableCell className="text-right text-destructive font-semibold">{brl(linha.valor)}</TableCell>

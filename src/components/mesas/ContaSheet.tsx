@@ -638,7 +638,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
             cancelado_em: agora,
             motivo_cancelamento: motivoFinal,
           })
-          .eq("pedido_id", cancelTarget.pedido.id),
+          .eq("pedido_id", cancelTarget.pedido.id)
+          .eq("cancelado", false),
       ]);
 
       if (pedidoError || itensError) {
@@ -694,7 +695,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
             cancelado_em: agora,
             motivo_cancelamento: motivo,
           })
-          .in("pedido_id", pedidoIds),
+          .in("pedido_id", pedidoIds)
+          .eq("cancelado", false),
       ]);
 
       if (ePed || eItem) {

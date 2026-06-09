@@ -12,6 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { brl } from "@/lib/format";
 import { normalizePhone } from "@/lib/fidelidade";
@@ -64,6 +68,10 @@ const emptyRewardForm = {
 const emptyClienteForm = {
   nome: "",
   telefone: "",
+  endereco: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
 };
 
 const normalizeHexColor = (value?: string | null) => {
@@ -93,8 +101,10 @@ export default function FidelidadeAdmin() {
   const [clienteDetalhe, setClienteDetalhe] = useState<ClienteDetalhe | null>(null);
   const [clienteDetalheBusy, setClienteDetalheBusy] = useState(false);
   const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
+  const [clienteEditId, setClienteEditId] = useState<string | null>(null);
   const [clienteForm, setClienteForm] = useState(emptyClienteForm);
   const [clienteBusy, setClienteBusy] = useState(false);
+  const [clienteDeleteTarget, setClienteDeleteTarget] = useState<ClienteRow | null>(null);
   const [configBusy, setConfigBusy] = useState(false);
 
   const produtoMap = useMemo(() => new Map(produtos.map((produto) => [produto.id, produto.nome])), [produtos]);
@@ -202,22 +212,55 @@ export default function FidelidadeAdmin() {
   };
 
   const openNewCliente = () => {
+    setClienteEditId(null);
     setClienteForm(emptyClienteForm);
+    setClienteDialogOpen(true);
+  };
+
+  const openEditCliente = async (clienteId: string) => {
+    setClienteBusy(true);
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("id, nome, telefone, endereco, numero, complemento, bairro")
+      .eq("id", clienteId)
+      .maybeSingle();
+    setClienteBusy(false);
+
+    if (error || !data) {
+      return toast.error(error?.message || "Cliente nao encontrado");
+    }
+
+    setClienteEditId(data.id);
+    setClienteForm({
+      nome: data.nome || "",
+      telefone: data.telefone || "",
+      endereco: data.endereco || "",
+      numero: data.numero || "",
+      complemento: data.complemento || "",
+      bairro: data.bairro || "",
+    });
     setClienteDialogOpen(true);
   };
 
   const saveCliente = async () => {
     const nome = clienteForm.nome.trim();
     const telefone = normalizePhone(clienteForm.telefone);
+    const payload = {
+      nome,
+      telefone,
+      endereco: clienteForm.endereco.trim() || null,
+      numero: clienteForm.numero.trim() || null,
+      complemento: clienteForm.complemento.trim() || null,
+      bairro: clienteForm.bairro.trim() || null,
+    };
 
     if (nome.length < 2) return toast.error("Informe o nome do cliente");
     if (telefone.length < 10) return toast.error("Informe um telefone valido");
 
     setClienteBusy(true);
-    const { error } = await supabase.from("clientes").insert({
-      nome,
-      telefone,
-    });
+    const { error } = clienteEditId
+      ? await supabase.from("clientes").update(payload).eq("id", clienteEditId)
+      : await supabase.from("clientes").insert(payload);
     setClienteBusy(false);
 
     if (error) {
@@ -227,8 +270,27 @@ export default function FidelidadeAdmin() {
       return toast.error(error.message);
     }
 
-    toast.success("Cliente criado");
+    toast.success(clienteEditId ? "Cliente atualizado" : "Cliente criado");
     setClienteDialogOpen(false);
+    setClienteEditId(null);
+    void loadClientes();
+  };
+
+  const deleteCliente = async () => {
+    if (!clienteDeleteTarget) return;
+
+    setClienteBusy(true);
+    const { error } = await supabase.from("clientes").delete().eq("id", clienteDeleteTarget.id);
+    setClienteBusy(false);
+
+    if (error) {
+      return toast.error(error.message);
+    }
+
+    toast.success("Cliente excluido");
+    setClienteDeleteTarget(null);
+    setClienteDialogOpen(false);
+    setClienteEditId(null);
     void loadClientes();
   };
 
@@ -362,7 +424,7 @@ export default function FidelidadeAdmin() {
                   <TableHead>Pedidos</TableHead>
                   <TableHead>Resgates</TableHead>
                   <TableHead>Ultimo pedido</TableHead>
-                  <TableHead className="w-[120px]">Acoes</TableHead>
+                  <TableHead className="w-[200px]">Acoes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -386,9 +448,14 @@ export default function FidelidadeAdmin() {
                       <TableCell>{cliente.resgates_realizados}</TableCell>
                       <TableCell>{cliente.ultimo_pedido ? new Date(cliente.ultimo_pedido).toLocaleString("pt-BR") : "-"}</TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => openClienteDetalhe(cliente.id)}>
-                          Ver historico
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openClienteDetalhe(cliente.id)}>
+                            Historico
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => void openEditCliente(cliente.id)}>
+                            <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -552,14 +619,22 @@ export default function FidelidadeAdmin() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={clienteDialogOpen} onOpenChange={setClienteDialogOpen}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={clienteDialogOpen}
+        onOpenChange={(open) => {
+          setClienteDialogOpen(open);
+          if (!open) setClienteEditId(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display text-3xl">Novo cliente</DialogTitle>
+            <DialogTitle className="font-display text-3xl">
+              {clienteEditId ? "Editar cliente" : "Novo cliente"}
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Nome</Label>
               <Input
                 value={clienteForm.nome}
@@ -569,7 +644,7 @@ export default function FidelidadeAdmin() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Telefone</Label>
               <Input
                 value={clienteForm.telefone}
@@ -578,18 +653,107 @@ export default function FidelidadeAdmin() {
                 maxLength={20}
               />
             </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Endereco</Label>
+              <Input
+                value={clienteForm.endereco}
+                onChange={(event) => setClienteForm({ ...clienteForm, endereco: event.target.value })}
+                placeholder="Rua, avenida..."
+                maxLength={200}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Numero</Label>
+              <Input
+                value={clienteForm.numero}
+                onChange={(event) => setClienteForm({ ...clienteForm, numero: event.target.value })}
+                placeholder="123"
+                maxLength={20}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Complemento</Label>
+              <Input
+                value={clienteForm.complemento}
+                onChange={(event) => setClienteForm({ ...clienteForm, complemento: event.target.value })}
+                placeholder="Apto, bloco..."
+                maxLength={200}
+              />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Bairro</Label>
+              <Input
+                value={clienteForm.bairro}
+                onChange={(event) => setClienteForm({ ...clienteForm, bairro: event.target.value })}
+                placeholder="Bairro"
+                maxLength={80}
+              />
+            </div>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setClienteDialogOpen(false)} disabled={clienteBusy}>
-              Cancelar
-            </Button>
-            <Button onClick={saveCliente} disabled={clienteBusy}>
-              {clienteBusy ? "Salvando..." : "Criar cliente"}
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+            {clienteEditId ? (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const alvo = clientes.find((item) => item.id === clienteEditId);
+                  if (alvo) setClienteDeleteTarget(alvo);
+                }}
+                disabled={clienteBusy}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Excluir cliente
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setClienteDialogOpen(false);
+                  setClienteEditId(null);
+                }}
+                disabled={clienteBusy}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={saveCliente} disabled={clienteBusy}>
+                {clienteBusy ? "Salvando..." : clienteEditId ? "Salvar alteracoes" : "Criar cliente"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!clienteDeleteTarget} onOpenChange={(open) => !open && setClienteDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-2xl">Excluir cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {clienteDeleteTarget
+                ? `Tem certeza que deseja excluir ${clienteDeleteTarget.nome}? O historico de pedidos e resgates vinculados a este cliente sera removido.`
+                : "Esta acao nao pode ser desfeita."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clienteBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteCliente();
+              }}
+              disabled={clienteBusy}
+            >
+              {clienteBusy ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={clienteDetalheOpen} onOpenChange={setClienteDetalheOpen}>
         <DialogContent className="max-w-4xl">

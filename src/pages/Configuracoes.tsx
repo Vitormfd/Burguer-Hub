@@ -55,14 +55,15 @@ const buildCardapioUrl = (cfg: Configuracao): string => {
 
 const MENSAGENS_CONFIG: {
   campo: keyof Configuracao;
+  campoAtivo: keyof Configuracao;
   label: string;
   tipo: TipoMensagemWhatsapp;
 }[] = [
-  { campo: "whatsapp_msg_confirmado", label: "Pedido confirmado", tipo: "confirmado" },
-  { campo: "whatsapp_msg_em_preparo", label: "Em preparo", tipo: "em_preparo" },
-  { campo: "whatsapp_msg_saiu_entrega", label: "Saiu para entrega", tipo: "saiu_entrega" },
-  { campo: "whatsapp_msg_entregue", label: "Pedido entregue", tipo: "entregue" },
-  { campo: "whatsapp_msg_retirada_pronto", label: "Pronto para retirada", tipo: "retirada_pronto" },
+  { campo: "whatsapp_msg_confirmado", campoAtivo: "whatsapp_msg_confirmado_ativo", label: "Pedido confirmado", tipo: "confirmado" },
+  { campo: "whatsapp_msg_em_preparo", campoAtivo: "whatsapp_msg_em_preparo_ativo", label: "Em preparo", tipo: "em_preparo" },
+  { campo: "whatsapp_msg_saiu_entrega", campoAtivo: "whatsapp_msg_saiu_entrega_ativo", label: "Saiu para entrega", tipo: "saiu_entrega" },
+  { campo: "whatsapp_msg_entregue", campoAtivo: "whatsapp_msg_entregue_ativo", label: "Pedido entregue", tipo: "entregue" },
+  { campo: "whatsapp_msg_retirada_pronto", campoAtivo: "whatsapp_msg_retirada_pronto_ativo", label: "Pronto para retirada", tipo: "retirada_pronto" },
 ];
 
 const LOG_TIPO_LABEL: Record<TipoMensagemWhatsapp, string> = {
@@ -188,6 +189,7 @@ function TestMsgModal({
           credentials_missing: "Credenciais Z-API ausentes na configuração.",
           invalid_phone: "Telefone inválido para envio.",
           config_not_found: "Nenhuma configuração ativa com credenciais foi encontrada.",
+          message_inactive: "Esta mensagem está desativada. Ative o envio automático para testar no fluxo real.",
         };
         toast.error(reasonMap[data.reason] || "Envio não realizado");
       } else if (data?.status === "erro") {
@@ -467,6 +469,11 @@ export default function Configuracoes() {
         whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
         whatsapp_msg_entregue: cfg.whatsapp_msg_entregue,
         whatsapp_msg_retirada_pronto: cfg.whatsapp_msg_retirada_pronto,
+        whatsapp_msg_confirmado_ativo: cfg.whatsapp_msg_confirmado_ativo ?? true,
+        whatsapp_msg_em_preparo_ativo: cfg.whatsapp_msg_em_preparo_ativo ?? true,
+        whatsapp_msg_saiu_entrega_ativo: cfg.whatsapp_msg_saiu_entrega_ativo ?? true,
+        whatsapp_msg_entregue_ativo: cfg.whatsapp_msg_entregue_ativo ?? true,
+        whatsapp_msg_retirada_pronto_ativo: cfg.whatsapp_msg_retirada_pronto_ativo ?? true,
       } as any)
       .eq("id", cfg.id);
     setBusyWpp(false);
@@ -1252,22 +1259,36 @@ export default function Configuracoes() {
             </div>
 
             <div className="space-y-6">
-              {MENSAGENS_CONFIG.map(({ campo, label, tipo }) => (
-                <div key={campo} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>{label}</Label>
-                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => setTestMsgTipo(tipo)}>
-                      <Send className="w-3 h-3 mr-1" /> Enviar teste
-                    </Button>
+              {MENSAGENS_CONFIG.map(({ campo, campoAtivo, label, tipo }) => {
+                const ativo = cfg[campoAtivo] !== false;
+                return (
+                  <div key={campo} className="space-y-3 rounded-xl border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={ativo}
+                          onCheckedChange={(checked) => setCfg({ ...cfg, [campoAtivo]: checked })}
+                        />
+                        <div>
+                          <Label className={ativo ? "" : "text-muted-foreground"}>{label}</Label>
+                          <p className="text-xs text-muted-foreground">
+                            {ativo ? "Mensagem automatica ativa" : "Mensagem automatica desativada"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="ghost" className="text-xs" onClick={() => setTestMsgTipo(tipo)}>
+                        <Send className="w-3 h-3 mr-1" /> Enviar teste
+                      </Button>
+                    </div>
+                    <Textarea
+                      rows={3}
+                      value={(cfg[campo] as string) ?? ""}
+                      onChange={(e) => setCfg({ ...cfg, [campo]: e.target.value })}
+                      placeholder={`Mensagem de ${label.toLowerCase()}...`}
+                    />
                   </div>
-                  <Textarea
-                    rows={3}
-                    value={(cfg[campo] as string) ?? ""}
-                    onChange={(e) => setCfg({ ...cfg, [campo]: e.target.value })}
-                    placeholder={`Mensagem de ${label.toLowerCase()}...`}
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
 

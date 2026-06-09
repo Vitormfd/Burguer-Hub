@@ -187,6 +187,11 @@ export interface Configuracao {
   whatsapp_msg_saiu_entrega?: string;
   whatsapp_msg_entregue?: string;
   whatsapp_msg_retirada_pronto?: string;
+  whatsapp_msg_confirmado_ativo?: boolean;
+  whatsapp_msg_em_preparo_ativo?: boolean;
+  whatsapp_msg_saiu_entrega_ativo?: boolean;
+  whatsapp_msg_entregue_ativo?: boolean;
+  whatsapp_msg_retirada_pronto_ativo?: boolean;
   owner_id?: string;
 }
 

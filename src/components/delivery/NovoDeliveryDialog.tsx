@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [numero, setNumero] = useState("");
   const [complemento, setComplemento] = useState("");
   const [cfg, setCfg] = useState<Configuracao | null>(null);
+  const [bairroOpen, setBairroOpen] = useState(false);
+  const bairroWrapRef = useRef<HTMLDivElement>(null);
 
   const normalizeBairro = (value: string) =>
     value
@@ -106,7 +108,16 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   }, [open]);
 
   const reset = () => {
-    setCart([]); setNome(""); setTel(""); setEndereco(""); setNumero(""); setComplemento(""); setBairro(""); setTaxa("0"); setClienteSelecionado("");
+    setCart([]);
+    setNome("");
+    setTel("");
+    setEndereco("");
+    setNumero("");
+    setComplemento("");
+    setBairro("");
+    setTaxa("0");
+    setClienteSelecionado("");
+    setBairroOpen(false);
   };
 
   const handleSelectCliente = (clienteId: string) => {
@@ -128,6 +139,29 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     if (!bairro) return;
     applyTaxaFromBairro(bairro);
   }, [bairro, bairrosTaxas]);
+
+  const bairrosFiltrados = useMemo(() => {
+    const termo = normalizeBairro(bairro);
+    if (!termo) return bairrosTaxas;
+    return bairrosTaxas.filter((item) => normalizeBairro(item.nome).includes(termo));
+  }, [bairro, bairrosTaxas]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bairroWrapRef.current && !bairroWrapRef.current.contains(event.target as Node)) {
+        setBairroOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectBairro = (nomeBairro: string, taxaBairro: number) => {
+    setBairro(nomeBairro);
+    setTaxa(String(Number(taxaBairro || 0)));
+    setBairroOpen(false);
+  };
 
   const taxaNum = Number(taxa.replace(",", ".")) || 0;
   const subtotal = cartSubtotal(cart);
@@ -289,14 +323,44 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
           </div>
           <div className="col-span-1 md:col-span-4 space-y-1">
             <Label htmlFor="d-bairro" className="text-xs">Bairro</Label>
-            <Input
-              id="d-bairro"
-              className="h-9"
-              value={bairro}
-              onChange={(e) => setBairro(e.target.value)}
-              onBlur={() => applyTaxaFromBairro(bairro, true)}
-              maxLength={80}
-            />
+            <div className="relative" ref={bairroWrapRef}>
+              <Input
+                id="d-bairro"
+                className="h-9"
+                value={bairro}
+                onChange={(e) => {
+                  setBairro(e.target.value);
+                  setBairroOpen(true);
+                }}
+                onFocus={() => setBairroOpen(true)}
+                onBlur={() => applyTaxaFromBairro(bairro, true)}
+                maxLength={80}
+                placeholder="Selecione ou digite o bairro"
+                autoComplete="off"
+              />
+              {bairroOpen && bairrosTaxas.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full max-h-44 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+                  {bairrosFiltrados.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      Nenhum bairro encontrado. Continue digitando para usar um bairro personalizado.
+                    </div>
+                  ) : (
+                    bairrosFiltrados.map((item) => (
+                      <button
+                        key={item.nome}
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSelectBairro(item.nome, item.taxa)}
+                      >
+                        <span>{item.nome}</span>
+                        <span className="text-xs text-muted-foreground">{brl(item.taxa)}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="col-span-1 md:col-span-2 space-y-1">
             <Label htmlFor="d-taxa" className="text-xs">Taxa (R$)</Label>

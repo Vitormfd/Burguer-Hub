@@ -113,7 +113,9 @@ Deno.serve(async (req) => {
     .select(
       "id, zapi_instance_id, zapi_token, zapi_client_token, zapi_ativo, " +
       "whatsapp_msg_confirmado, whatsapp_msg_em_preparo, whatsapp_msg_saiu_entrega, " +
-      "whatsapp_msg_entregue, whatsapp_msg_retirada_pronto, tempo_entrega_min"
+      "whatsapp_msg_entregue, whatsapp_msg_retirada_pronto, " +
+      "whatsapp_msg_confirmado_ativo, whatsapp_msg_em_preparo_ativo, whatsapp_msg_saiu_entrega_ativo, " +
+      "whatsapp_msg_entregue_ativo, whatsapp_msg_retirada_pronto_ativo, tempo_entrega_min"
     );
 
   if (configuracao_id) {
@@ -268,6 +270,19 @@ Deno.serve(async (req) => {
   const template = templateMap[tipo_mensagem as TipoMensagem];
   if (!template) {
     return json({ error: "tipo_mensagem inválido" }, 400);
+  }
+
+  const ativoMap: Record<TipoMensagem, boolean> = {
+    confirmado: (cfg as Record<string, boolean>).whatsapp_msg_confirmado_ativo !== false,
+    em_preparo: (cfg as Record<string, boolean>).whatsapp_msg_em_preparo_ativo !== false,
+    saiu_entrega: (cfg as Record<string, boolean>).whatsapp_msg_saiu_entrega_ativo !== false,
+    entregue: (cfg as Record<string, boolean>).whatsapp_msg_entregue_ativo !== false,
+    retirada_pronto: (cfg as Record<string, boolean>).whatsapp_msg_retirada_pronto_ativo !== false,
+  };
+
+  const isTestPedido = pedido_id === "00000000-0000-0000-0000-000000000000";
+  if (!isTestPedido && !ativoMap[tipo_mensagem as TipoMensagem]) {
+    return json({ skipped: true, reason: "message_inactive" });
   }
 
   const shortId = pedido_id.slice(0, 8).toUpperCase();

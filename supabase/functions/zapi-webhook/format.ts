@@ -70,8 +70,27 @@ export const formatCart = (carrinho: CartItemWa[]): string => {
   return lines.join("\n");
 };
 
-export const formatBoasVindas = (cfg: LojaConfig): string =>
-  cfg.whatsapp_msg_boas_vindas.replaceAll("{{loja}}", cfg.nome_loja);
+export const buildCardapioUrl = (cfg: LojaConfig): string => {
+  const base = (cfg.site_url || "").trim().replace(/\/+$/, "");
+  if (!base) return "";
+  const ref = (cfg.referencia || "").trim().replace(/^\/+|\/+$/g, "");
+  return ref ? `${base}/${ref}/cardapio` : `${base}/cardapio`;
+};
+
+export const formatBoasVindas = (cfg: LojaConfig): string => {
+  const cardapioUrl = buildCardapioUrl(cfg);
+  let msg = cfg.whatsapp_msg_boas_vindas.replaceAll("{{loja}}", cfg.nome_loja);
+  msg = msg.replaceAll("{{cardapio}}", cardapioUrl || "(configure a URL do site em Configurações)");
+  return msg;
+};
+
+export const formatCardapioLinkMsg = (cfg: LojaConfig): string => {
+  const url = buildCardapioUrl(cfg);
+  if (!url) {
+    return "🌐 O cardápio online ainda não está configurado. Digite *menu* para pedir por aqui.";
+  }
+  return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo, ou digite *menu* para pedir por aqui._`;
+};
 
 export const encodeKdsObservation = (produtoNome: string, observacao?: string): string => {
   const safeName = produtoNome.replace(/\]/g, "").trim();
@@ -132,7 +151,8 @@ export const formatPagamento = (forma?: string): string => {
 
 export const AJUDA_TEXTO = `ℹ️ *Comandos disponíveis:*
 
-*menu* — Ver cardápio
+*menu* — Ver cardápio pelo WhatsApp
+*link* — Receber link do cardápio online
 *carrinho* — Ver seu pedido
 *cancelar* — Cancelar pedido
 *ajuda* — Ver esta mensagem`;

@@ -92,6 +92,8 @@ export interface LojaConfig {
   id: string;
   owner_id: string;
   nome_loja: string;
+  referencia?: string | null;
+  site_url?: string | null;
   zapi_instance_id: string;
   zapi_token: string;
   zapi_client_token: string;

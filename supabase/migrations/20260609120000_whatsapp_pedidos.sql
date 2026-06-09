@@ -9,8 +9,11 @@ Faça seu pedido pelo WhatsApp — é rápido e fácil! 🍔
 
 Digite *menu* para ver o cardápio
 Digite *carrinho* para ver seu pedido
+Digite *link* para o cardápio online
 Digite *cancelar* para desistir
-Digite *ajuda* para ver os comandos';
+Digite *ajuda* para ver os comandos
+
+🌐 Ou peça pelo site: {{cardapio}}';
 
 -- Sessões conversacionais do chatbot
 CREATE TABLE IF NOT EXISTS public.whatsapp_pedido_sessions (

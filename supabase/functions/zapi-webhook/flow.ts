@@ -19,6 +19,7 @@ import {
   encodeKdsObservation,
   formatPhoneZapi,
   formatBoasVindas,
+  formatCardapioLinkMsg,
   formatCart,
   formatPagamento,
   formatResumoConfirmacao,
@@ -291,6 +292,14 @@ export async function processMessage(
       : [];
     const cat = await showCategorias(supabase, cfg, dados);
     return { ...cat, messages: [...welcome, ...cat.messages] };
+  }
+
+  if (["link", "site", "cardapio online", "cardápio online", "web"].includes(text)) {
+    return {
+      messages: [textMsg(formatCardapioLinkMsg(cfg))],
+      etapa,
+      dados,
+    };
   }
 
   if (["carrinho", "ver carrinho"].includes(text)) {

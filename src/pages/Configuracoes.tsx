@@ -46,6 +46,13 @@ const VAR_CHIPS: { label: string; value: string }[] = [
   { label: "{{tempo_estimado}}", value: "{{tempo_estimado}}" },
 ];
 
+const buildCardapioUrl = (cfg: Configuracao): string => {
+  const base = (cfg.site_url || "").trim().replace(/\/+$/, "");
+  if (!base) return "";
+  const ref = (cfg.referencia || "").trim().replace(/^\/+|\/+$/g, "");
+  return ref ? `${base}/${ref}/cardapio` : `${base}/cardapio`;
+};
+
 const MENSAGENS_CONFIG: {
   campo: keyof Configuracao;
   label: string;
@@ -453,6 +460,7 @@ export default function Configuracoes() {
         zapi_client_token: cfg.zapi_client_token ?? null,
         zapi_ativo: cfg.zapi_ativo ?? false,
         whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
+        site_url: cfg.site_url?.trim() || window.location.origin || null,
         whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
         whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
         whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
@@ -1145,15 +1153,40 @@ export default function Configuracoes() {
             )}
 
             <div className="space-y-2">
+              <Label>URL do site (cardápio online)</Label>
+              <Input
+                value={cfg.site_url ?? ""}
+                onChange={(e) => setCfg({ ...cfg, site_url: e.target.value.trim() || null })}
+                placeholder={typeof window !== "undefined" ? window.location.origin : "https://sualoja.com.br"}
+              />
+              <p className="text-xs text-muted-foreground">
+                URL base do app, sem barra no final. Junto com o slug em Geral, gera o link do cardápio.
+              </p>
+              {buildCardapioUrl({ ...cfg, site_url: cfg.site_url || window.location.origin }) && (
+                <p className="text-xs">
+                  Link do cardápio:{" "}
+                  <a
+                    href={buildCardapioUrl({ ...cfg, site_url: cfg.site_url || window.location.origin })}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline break-all"
+                  >
+                    {buildCardapioUrl({ ...cfg, site_url: cfg.site_url || window.location.origin })}
+                  </a>
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
               <Label>Mensagem de boas-vindas</Label>
               <Textarea
-                rows={6}
+                rows={8}
                 value={cfg.whatsapp_msg_boas_vindas ?? ""}
                 onChange={(e) => setCfg({ ...cfg, whatsapp_msg_boas_vindas: e.target.value })}
                 placeholder="Mensagem enviada quando o cliente inicia uma conversa..."
               />
               <p className="text-xs text-muted-foreground">
-                Variavel disponivel: {"{{loja}}"} (nome da loja)
+                Variaveis: {"{{loja}}"} (nome da loja), {"{{cardapio}}"} (link do cardápio online)
               </p>
             </div>
 
@@ -1198,7 +1231,7 @@ export default function Configuracoes() {
 
             <div className="text-sm text-muted-foreground space-y-1 border-t pt-4">
               <p className="font-medium text-foreground">Comandos do cliente:</p>
-              <p><code>menu</code> — Ver cardapio | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Desistir | <code>ajuda</code> — Ajuda</p>
+              <p><code>menu</code> — Cardapio WhatsApp | <code>link</code> — Cardapio online | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Desistir | <code>ajuda</code> — Ajuda</p>
             </div>
           </Card>
 

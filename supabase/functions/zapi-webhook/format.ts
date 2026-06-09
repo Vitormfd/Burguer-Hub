@@ -149,10 +149,12 @@ export const formatPagamento = (forma?: string): string => {
   return map[forma || ""] || forma || "—";
 };
 
-export const AJUDA_TEXTO = `ℹ️ *Comandos disponíveis:*
+export const AJUDA_TEXTO = `ℹ️ *Comandos do pedido automático:*
 
-*menu* — Ver cardápio pelo WhatsApp
-*link* — Receber link do cardápio online
-*carrinho* — Ver seu pedido
-*cancelar* — Cancelar pedido
-*ajuda* — Ver esta mensagem`;
+*menu* — Iniciar pedido pelo WhatsApp
+*link* — Link do cardápio online
+*carrinho* — Ver pedido em andamento
+*cancelar* — Sair do pedido automático
+*ajuda* — Ver esta mensagem
+
+_For a qualquer outra coisa, é só escrever — um atendente pode responder._`;

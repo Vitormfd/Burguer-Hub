@@ -42,6 +42,45 @@ interface FlowResult {
   etapa: Etapa;
   dados: SessionDados;
   clearSession?: boolean;
+  /** Não envia resposta — deixa a conversa livre para atendimento humano */
+  noReply?: boolean;
+}
+
+const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido"];
+const GREETING_COMMANDS = ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite"];
+const GLOBAL_COMMANDS = [
+  ...BOT_START_COMMANDS,
+  ...GREETING_COMMANDS,
+  "ajuda", "help", "comandos",
+  "cancelar", "sair", "desistir",
+  "link", "site", "cardapio online", "cardápio online", "web",
+  "carrinho", "ver carrinho",
+  "inicio", "início",
+];
+
+function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
+  if (dados.bot_ativo) return true;
+  if (dados.carrinho.length > 0) return true;
+  if (dados.produto_temp) return true;
+  const midFlow: Etapa[] = [
+    "menu_categoria", "menu_produto",
+    "produto_quantidade", "produto_adicional", "produto_observacao",
+    "carrinho", "tipo_entrega", "cliente_nome", "cliente_endereco",
+    "cliente_numero", "cliente_complemento", "cliente_bairro",
+    "forma_pagamento", "troco", "confirmacao",
+  ];
+  return midFlow.includes(etapa);
+}
+
+/** Sai do bot sem mensagem — conversa volta ao atendimento normal */
+function silentExit(dados: SessionDados): FlowResult {
+  return {
+    messages: [],
+    etapa: "inicio",
+    dados: emptyDados(dados.sender_name),
+    clearSession: true,
+    noReply: true,
+  };
 }
 
 function emptyDados(senderName?: string): SessionDados {
@@ -99,7 +138,7 @@ async function showCategorias(
       listMsg("🍔 *Cardápio* — Escolha uma categoria:", "Categorias", "Ver categorias", options),
     ],
     etapa: "menu_categoria",
-    dados,
+    dados: { ...dados, bot_ativo: true },
   };
 }
 
@@ -286,12 +325,17 @@ export async function processMessage(
     };
   }
 
-  if (["menu", "cardapio", "cardápio", "pedido", "oi", "olá", "ola", "inicio", "início"].includes(text)) {
-    const welcome = etapa === "inicio" && !session
-      ? [textMsg(formatBoasVindas(cfg))]
-      : [];
-    const cat = await showCategorias(supabase, cfg, dados);
-    return { ...cat, messages: [...welcome, ...cat.messages] };
+  if (BOT_START_COMMANDS.includes(text)) {
+    const cat = await showCategorias(supabase, cfg, { ...dados, bot_ativo: true });
+    return cat;
+  }
+
+  if (GREETING_COMMANDS.includes(text) || ["inicio", "início"].includes(text)) {
+    return {
+      messages: [textMsg(formatBoasVindas(cfg))],
+      etapa: "inicio",
+      dados,
+    };
   }
 
   if (["link", "site", "cardapio online", "cardápio online", "web"].includes(text)) {
@@ -303,23 +347,40 @@ export async function processMessage(
   }
 
   if (["carrinho", "ver carrinho"].includes(text)) {
+    if (!dados.carrinho.length) {
+      return {
+        messages: [textMsg("Você não tem pedido em andamento. Digite *menu* para começar.")],
+        etapa: "inicio",
+        dados,
+      };
+    }
     return {
       messages: [
         textMsg(
           `${formatCart(dados.carrinho)}\n\n*1* — Adicionar mais\n*2* — Finalizar\n*3* — Limpar`,
         ),
       ],
-      etapa: dados.carrinho.length ? "carrinho" : etapa,
-      dados,
+      etapa: "carrinho",
+      dados: { ...dados, bot_ativo: true },
     };
+  }
+
+  // Mensagem livre fora do fluxo do bot → não responde (atendimento humano)
+  if (!isBotFlowActive(etapa, dados) && !GLOBAL_COMMANDS.includes(text)) {
+    if (!session) {
+      return {
+        messages: [textMsg(formatBoasVindas(cfg))],
+        etapa: "inicio",
+        dados,
+      };
+    }
+    return { messages: [], etapa: "inicio", dados, noReply: true };
   }
 
   // Fluxo por etapa
   switch (etapa) {
     case "inicio": {
-      const welcome = [textMsg(formatBoasVindas(cfg))];
-      const cat = await showCategorias(supabase, cfg, dados);
-      return { ...cat, messages: [...welcome, ...cat.messages] };
+      return { messages: [], etapa: "inicio", dados, noReply: true };
     }
 
     case "menu_categoria": {
@@ -327,11 +388,7 @@ export async function processMessage(
       const cat = categorias.find((c) => c.id === selected) ||
         categorias[parseInt(selected, 10) - 1];
       if (!cat) {
-        return {
-          messages: [textMsg("Categoria inválida. Digite *menu* para ver as opções.")],
-          etapa,
-          dados,
-        };
+        return silentExit(dados);
       }
       return showProdutos(supabase, cfg, dados, cat.id, cat.nome);
     }
@@ -356,6 +413,9 @@ export async function processMessage(
       const produto = produtos.find((p) => p.id === selected) ||
         slice[parseInt(selected, 10) - 1];
       if (!produto) {
+        if (!selectedId && isNaN(parseInt(selected, 10))) {
+          return silentExit(dados);
+        }
         return {
           messages: [textMsg("Produto inválido. Escolha um da lista ou digite *menu*.")],
           etapa,
@@ -915,6 +975,13 @@ export async function handleIncomingMessage(
     selectedId,
     senderName,
   );
+
+  if (result.noReply) {
+    if (result.clearSession) {
+      await deleteSession(supabase, cfg.owner_id, telefone);
+    }
+    return;
+  }
 
   if (result.clearSession) {
     await deleteSession(supabase, cfg.owner_id, telefone);

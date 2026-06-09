@@ -1238,7 +1238,8 @@ export default function Configuracoes() {
 
             <div className="text-sm text-muted-foreground space-y-1 border-t pt-4">
               <p className="font-medium text-foreground">Comandos do cliente:</p>
-              <p><code>menu</code> — Cardapio WhatsApp | <code>link</code> — Cardapio online | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Desistir | <code>ajuda</code> — Ajuda</p>
+              <p><code>menu</code> — Iniciar pedido automatico | <code>link</code> — Cardapio online | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Sair do bot | <code>ajuda</code> — Ajuda</p>
+              <p className="text-xs text-muted-foreground mt-1">Mensagens fora desses comandos nao disparam o bot — a conversa fica livre para atendimento humano.</p>
             </div>
           </Card>
 

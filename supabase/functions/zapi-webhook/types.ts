@@ -66,6 +66,8 @@ export interface ClienteTempWa {
 }
 
 export interface SessionDados {
+  /** true quando o cliente iniciou o fluxo de pedido (menu/pedido) */
+  bot_ativo?: boolean;
   carrinho: CartItemWa[];
   produto_temp?: ProdutoTempWa;
   cliente?: ClienteTempWa;

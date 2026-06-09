@@ -19,6 +19,7 @@ interface Props {
   extraTotal?: number;
   extraRow?: React.ReactNode;
   heightClass?: string;
+  layout?: "grid" | "list";
 }
 
 export type { Cart, CartItem };
@@ -30,6 +31,7 @@ export default function CardapioSelector({
   extraTotal = 0,
   extraRow,
   heightClass = "h-[45vh]",
+  layout = "list",
 }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -98,19 +100,75 @@ export default function CardapioSelector({
   };
 
   const totalItens = cart.reduce((sum, item) => sum + item.quantidade, 0);
-  const fillParent = heightClass === "h-full";
+
+  const renderPreco = (produto: Produto) =>
+    emPromocao(produto) ? (
+      <div className="flex flex-col items-end leading-tight">
+        <span className="text-[11px] line-through text-muted-foreground">{brl(Number(produto.preco))}</span>
+        <span className="text-primary font-semibold text-sm">{brl(precoEfetivo(produto))}</span>
+      </div>
+    ) : (
+      <div className="text-primary font-semibold text-sm whitespace-nowrap">{brl(precoEfetivo(produto))}</div>
+    );
+
+  const renderProdutos = (categoriaId: string) => {
+    const lista = produtos.filter((p) => p.categoria_id === categoriaId);
+
+    if (layout === "grid") {
+      return (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {lista.map((p) => (
+            <Card key={p.id} className="p-3 flex flex-col gap-2 hover:shadow-card transition-shadow">
+              <div className="flex justify-between items-start gap-2">
+                <div>
+                  <div className="font-semibold text-sm leading-tight">{p.nome}</div>
+                  {p.descricao && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.descricao}</p>}
+                </div>
+                {renderPreco(p)}
+              </div>
+              <div className="flex justify-end mt-auto pt-1">
+                <Button size="sm" onClick={() => setProdutoSelecionado(p)}>Adicionar</Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y">
+        {lista.map((p) => (
+          <div
+            key={p.id}
+            className="flex items-center gap-3 py-2.5 first:pt-0 hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm leading-tight">{p.nome}</div>
+              {p.descricao && (
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.descricao}</p>
+              )}
+            </div>
+            <div className="shrink-0">{renderPreco(p)}</div>
+            <Button size="sm" className="shrink-0" onClick={() => setProdutoSelecionado(p)}>
+              Adicionar
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
       <div
         className={cn(
-          "grid grid-cols-1 sm:grid-cols-[1fr_260px] md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_320px] gap-0 border rounded-lg overflow-hidden bg-card min-h-0",
-          fillParent ? "h-full" : heightClass,
+          "flex flex-col sm:flex-row border rounded-lg overflow-hidden bg-card",
+          heightClass,
         )}
       >
-        <div className="min-h-0 flex flex-col overflow-hidden sm:border-r">
-          <Tabs defaultValue={categorias[0]?.id} className="flex flex-1 flex-col min-h-0 overflow-hidden">
-            <div className="shrink-0 px-4">
+        <div className="min-h-0 flex flex-1 flex-col overflow-hidden sm:border-r">
+          <Tabs defaultValue={categorias[0]?.id} className="flex h-full flex-col overflow-hidden">
+            <div className="shrink-0 px-4 border-b bg-card">
               <TabsList className="my-2 flex-wrap h-auto gap-2 bg-transparent">
                 {categorias.map((c) => (
                   <TabsTrigger key={c.id} value={c.id}>{c.nome}</TabsTrigger>
@@ -118,43 +176,21 @@ export default function CardapioSelector({
               </TabsList>
             </div>
 
-            {categorias.map((c) => (
-              <TabsContent
-                key={c.id}
-                value={c.id}
-                className="flex-1 min-h-0 m-0 mt-0 overflow-y-auto overscroll-contain touch-pan-y px-4 pb-4 data-[state=inactive]:hidden"
-              >
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {produtos.filter((p) => p.categoria_id === c.id).map((p) => (
-                    <Card key={p.id} className="p-3 flex flex-col gap-2 hover:shadow-card transition-shadow">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <div className="font-semibold text-sm leading-tight">{p.nome}</div>
-                          {p.descricao && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.descricao}</p>}
-                        </div>
-                        <div className="text-right shrink-0">
-                          {emPromocao(p) ? (
-                            <div className="flex flex-col items-end leading-tight">
-                              <span className="text-[11px] line-through text-muted-foreground">{brl(Number(p.preco))}</span>
-                              <span className="text-primary font-semibold text-sm">{brl(precoEfetivo(p))}</span>
-                            </div>
-                          ) : (
-                            <div className="text-primary font-semibold text-sm whitespace-nowrap">{brl(precoEfetivo(p))}</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex justify-end mt-auto pt-1">
-                        <Button size="sm" onClick={() => setProdutoSelecionado(p)}>Adicionar</Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-            ))}
+            <div className="relative flex-1 min-h-0">
+              {categorias.map((c) => (
+                <TabsContent
+                  key={c.id}
+                  value={c.id}
+                  className="absolute inset-0 m-0 mt-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 data-[state=inactive]:hidden"
+                >
+                  {renderProdutos(c.id)}
+                </TabsContent>
+              ))}
+            </div>
           </Tabs>
         </div>
 
-        <div className="bg-muted/30 flex flex-col min-h-0 min-w-0 overflow-hidden">
+        <div className="flex w-full sm:w-[280px] shrink-0 flex-col min-h-[220px] sm:min-h-0 bg-muted/30 border-t sm:border-t-0 overflow-hidden">
           <div className="shrink-0 p-3 border-b flex items-center justify-center">
             <div className="text-xs text-muted-foreground text-center">{totalItens} item(ns)</div>
           </div>

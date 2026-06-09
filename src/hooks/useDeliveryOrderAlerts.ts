@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
   initOrderAlertAudio,
-  notifyNewDeliveryOrder,
+  showNewOrderDesktopNotification,
+  stopOrderAlertLoop,
+  syncOrderAlertLoop,
 } from "@/lib/sound";
 
 /** Alertas de novo pedido delivery em qualquer página do painel (som + notificação do SO). */
@@ -25,7 +27,7 @@ export function useDeliveryOrderAlerts(enabled: boolean) {
 
     let isActive = true;
 
-    const syncAndAlert = async (playSound = false) => {
+    const syncAndAlert = async (notifyOnIncrease = false) => {
       const { count } = await supabase
         .from("pedidos")
         .select("id", { head: true, count: "exact" })
@@ -37,13 +39,14 @@ export function useDeliveryOrderAlerts(enabled: boolean) {
       const next = count ?? 0;
       const prev = previousPendingRef.current;
 
-      if (playSound && prev !== null && next > prev) {
-        notifyNewDeliveryOrder();
+      if (notifyOnIncrease && prev !== null && next > prev) {
+        showNewOrderDesktopNotification("Novo pedido de delivery");
         if (pathnameRef.current === "/delivery") {
           toast.success("Novo pedido de delivery");
         }
       }
 
+      syncOrderAlertLoop(next);
       previousPendingRef.current = next;
     };
 
@@ -59,7 +62,7 @@ export function useDeliveryOrderAlerts(enabled: boolean) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "pedidos", filter: "tipo=eq.delivery" },
         () => {
-          notifyNewDeliveryOrder();
+          showNewOrderDesktopNotification("Novo pedido de delivery");
           if (pathnameRef.current === "/delivery") {
             toast.success("Novo pedido de delivery");
           }
@@ -67,12 +70,13 @@ export function useDeliveryOrderAlerts(enabled: boolean) {
         }
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "pedidos", filter: "tipo=eq.delivery" }, () => {
-        void syncAndAlert(true);
+        void syncAndAlert(false);
       })
       .subscribe();
 
     return () => {
       isActive = false;
+      stopOrderAlertLoop();
       window.clearInterval(poll);
       supabase.removeChannel(channel);
     };

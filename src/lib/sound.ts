@@ -7,9 +7,12 @@ let keepAliveTimer: number | null = null;
 let pendingAlerts = 0;
 let lastAlertAt = 0;
 let lastDesktopNotificationAt = 0;
+let alertLoopTimer: number | null = null;
+let alertLoopActive = false;
 
 const AUDIO_UNLOCK_KEY = "bh_audio_unlocked";
 const ALERT_DEBOUNCE_MS = 900;
+const ALERT_REPEAT_MS = 4000;
 const DESKTOP_NOTIFICATION_DEBOUNCE_MS = 1200;
 const KEEPALIVE_MS = 20000;
 
@@ -446,6 +449,39 @@ export const initOrderAlertAudio = () => {
   }
 
   void requestDesktopNotificationPermission();
+};
+
+const scheduleNextAlertLoopTick = () => {
+  if (!alertLoopActive) return;
+  alertLoopTimer = window.setTimeout(() => {
+    if (!alertLoopActive) return;
+    void playNewOrderAlert(true);
+    scheduleNextAlertLoopTick();
+  }, ALERT_REPEAT_MS);
+};
+
+export const startOrderAlertLoop = () => {
+  if (alertLoopActive) return;
+  alertLoopActive = true;
+  void playNewOrderAlert(true);
+  scheduleNextAlertLoopTick();
+};
+
+export const stopOrderAlertLoop = () => {
+  alertLoopActive = false;
+  if (alertLoopTimer !== null) {
+    window.clearTimeout(alertLoopTimer);
+    alertLoopTimer = null;
+  }
+};
+
+/** Mantém o som repetindo enquanto houver pedidos pendentes; para ao aceitar todos. */
+export const syncOrderAlertLoop = (pendingCount: number) => {
+  if (pendingCount > 0) {
+    startOrderAlertLoop();
+  } else {
+    stopOrderAlertLoop();
+  }
 };
 
 export const playNewOrderAlert = async (skipDebounce = false) => {

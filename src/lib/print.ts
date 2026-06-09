@@ -95,6 +95,102 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const fontSizeMap: Record<PrintConfig["fonte"], { base: number; small: number; title: number; total: number }> = {
+  pequena: { base: 11, small: 10, title: 14, total: 14 },
+  normal: { base: 13, small: 12, title: 16, total: 16 },
+  grande: { base: 15, small: 13, title: 18, total: 18 },
+};
+
+function buildPrintStyles(fs: (typeof fontSizeMap)[PrintConfig["fonte"]], w: PrintConfig["largura"]): string {
+  return `
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{margin:0}
+    body{
+      font-family:'Courier New',Courier,monospace;
+      font-size:${fs.base}px;
+      font-weight:700;
+      line-height:1.25;
+      width:${w};
+      max-width:${w};
+      padding:0 2mm 2mm;
+      color:#000;
+      background:#fff;
+      overflow-wrap:anywhere;
+      word-break:break-word;
+      -webkit-print-color-adjust:exact;
+      print-color-adjust:exact;
+    }
+    .header{text-align:center;margin:0 0 4px}
+    .header h1{font-size:${fs.title + 1}px;font-weight:900;text-transform:uppercase;margin:0}
+    .header .datetime{font-size:${fs.small}px;font-weight:700;color:#000;margin:2px 0 0}
+    .sep{border-top:2.4px solid #000;margin:4px 0}
+    .sep-dashed{border-top:1.5px solid #000;margin:3px 0}
+    .section-title{font-size:${fs.title}px;font-weight:bold;text-align:center;margin:4px 0;text-transform:uppercase}
+    .pedido-header{font-size:${fs.small}px;font-weight:700;color:#000;margin:2px 0}
+    .item{display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin:2px 0;font-weight:800}
+    .item span:first-child{flex:1;min-width:0}
+    .item span:last-child{flex-shrink:0;white-space:nowrap}
+    .sub{display:flex;justify-content:space-between;align-items:flex-start;gap:4px;padding-left:8px;font-size:${fs.small}px;font-weight:700;color:#000;margin:1px 0}
+    .sub span:first-child{flex:1;min-width:0}
+    .sub span:last-child{flex-shrink:0;white-space:nowrap}
+    .obs{padding-left:8px;font-size:${fs.small}px;font-weight:700;color:#000;margin:1px 0}
+    .info-line{margin:2px 0;font-size:${fs.small}px;font-weight:700;word-break:break-word}
+    .subtotal-line{display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin:2px 0;font-size:${fs.small}px;font-weight:700}
+    .subtotal-line span:first-child{flex:1;min-width:0}
+    .subtotal-line span:last-child{flex-shrink:0;white-space:nowrap}
+    .total-line{margin:4px 0;padding:3px 0;border-top:1.6px solid #000;border-bottom:1.6px solid #000;font-size:${fs.total}px;font-weight:900}
+    .total-line span{display:block}
+    .total-line span:last-child{text-align:right;margin-top:1px}
+    .troco{font-weight:900}
+    .footer{text-align:center;font-size:${fs.small}px;font-weight:700;color:#000;margin-top:8px;padding-top:4px;border-top:1.5px solid #000}
+    @media print{
+      html,body{
+        width:${w};
+        max-width:${w};
+        margin:0!important;
+        padding:0 2mm 2mm!important;
+        -webkit-print-color-adjust:exact;
+        print-color-adjust:exact;
+      }
+      @page{size:${w} auto;margin:0}
+    }
+  `;
+}
+
+function openAndPrint(html: string): void {
+  const win = window.open("", "_blank", "width=440,height=680,scrollbars=yes,resizable=yes");
+  if (win) {
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => {
+      win.print();
+      win.onafterprint = () => win.close();
+    }, 500);
+    return;
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe);
+      } else {
+        setTimeout(() => document.body.removeChild(iframe), 5000);
+      }
+    }, 500);
+  }
+}
+
 function renderItems(itens: PrintItem[]): string {
   return itens
     .map((item) => {
@@ -206,11 +302,6 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     }
   }
 
-  const fontSizeMap: Record<PrintConfig["fonte"], { base: number; small: number; title: number; total: number }> = {
-    pequena: { base: 11, small: 10, title: 14, total: 14 },
-    normal:  { base: 13, small: 12, title: 16, total: 16 },
-    grande:  { base: 15, small: 13, title: 18, total: 18 },
-  };
   const fs = fontSizeMap[config.fonte];
   const w = config.largura;
   const rodapeHtml = config.mostrar_rodape && config.rodape_texto
@@ -222,33 +313,7 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
 <head>
   <meta charset="UTF-8">
   <title>${lojaName}</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Courier New',Courier,monospace;font-size:${fs.base}px;font-weight:700;line-height:1.3;width:${w};padding:5mm 4mm;color:#000;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .header{text-align:center;margin-bottom:6px}
-    .header h1{font-size:${fs.title + 1}px;font-weight:900;text-transform:uppercase}
-    .header .datetime{font-size:${fs.small}px;font-weight:700;color:#000;margin-top:2px}
-    .sep{border-top:2.4px solid #000;margin:5px 0}
-    .sep-dashed{border-top:1.5px solid #000;margin:4px 0}
-    .section-title{font-size:${fs.title}px;font-weight:bold;text-align:center;margin:5px 0;text-transform:uppercase}
-    .pedido-header{font-size:${fs.small}px;font-weight:700;color:#000;margin:3px 0 2px}
-    .item{display:flex;justify-content:space-between;gap:6px;margin:3px 0;font-weight:800}
-    .item span:first-child{flex:1}
-    .sub{display:flex;justify-content:space-between;gap:6px;padding-left:10px;font-size:${fs.small}px;font-weight:700;color:#000;margin:1px 0}
-    .sub span:first-child{flex:1}
-    .obs{padding-left:10px;font-size:${fs.small}px;font-weight:700;color:#000;margin:1px 0}
-    .info-line{margin:2px 0;font-size:${fs.small}px;font-weight:700;word-break:break-word}
-    .subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:${fs.small}px;font-weight:700}
-    .subtotal-line span:first-child{flex:1}
-    .total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;padding:2px 0;border-top:1.6px solid #000;border-bottom:1.6px solid #000;font-size:${fs.total}px;font-weight:900}
-    .total-line span:first-child{flex:1}
-    .troco{font-weight:900}
-    .footer{text-align:center;font-size:${fs.small}px;font-weight:700;color:#000;margin-top:10px;padding-top:6px;border-top:1.5px solid #000}
-    @media print{
-      html,body{width:${w};-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      @page{size:${w} auto;margin:0}
-    }
-  </style>
+  <style>${buildPrintStyles(fs, w)}</style>
 </head>
 <body>
   <div class="header">
@@ -261,42 +326,7 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
 </body>
 </html>`;
 
-  // Tenta abrir popup para impressão
-  const win = window.open("", "_blank", "width=440,height=680,scrollbars=yes,resizable=yes");
-  if (win) {
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    // Aguarda renderização antes de chamar print
-    setTimeout(() => {
-      win.print();
-      // Fecha somente depois que o diálogo de impressão for dispensado
-      // (evita cortar o job antes de enviar para a impressora)
-      win.onafterprint = () => win.close();
-    }, 500);
-    return;
-  }
-
-  // Fallback: iframe oculto (para quando popup estiver bloqueado)
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-  document.body.appendChild(iframe);
-  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
-  if (doc) {
-    doc.open();
-    doc.write(html);
-    doc.close();
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      if (iframe.contentWindow) {
-        iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe);
-      } else {
-        setTimeout(() => document.body.removeChild(iframe), 5000);
-      }
-    }, 500);
-  }
+  openAndPrint(html);
 }
 
 // ─── Impressão: Resumo do caixa ───────────────────────────────────────────────
@@ -328,7 +358,7 @@ export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
   const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const lojaName = esc(summary.loja_nome || "Burguer Hub");
 
-  const fs = { base: 13, small: 12, title: 16, total: 16 }[config.fonte] ?? 13;
+  const fs = fontSizeMap[config.fonte];
   const w = config.largura;
 
   const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -365,8 +395,8 @@ export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
   body += `<div class="subtotal-line"><span>Retiradas</span><span>- ${brl(summary.movimentacoes.retirada)}</span></div>`;
   body += `<div class="subtotal-line"><span>Suprimentos</span><span>+ ${brl(summary.movimentacoes.suprimento)}</span></div>`;
   body += `<div class="sep"></div>`;
-  body += `<div class="total-line"><span>Dinheiro esperado no caixa</span><span>${brl(dinheiroEsperado)}</span></div>`;
-  body += `<div class="total-line"><span>Valor contado (fechamento)</span><span>${brl(summary.caixa.valor_final ?? 0)}</span></div>`;
+  body += `<div class="total-line"><span>Dinheiro esperado</span><span>${brl(dinheiroEsperado)}</span></div>`;
+  body += `<div class="total-line"><span>Valor contado</span><span>${brl(summary.caixa.valor_final ?? 0)}</span></div>`;
   if (summary.diferenca != null) {
     const diffLabel = summary.diferenca === 0 ? "Conferido" : summary.diferenca > 0 ? "Sobra" : "Falta";
     body += `<div class="total-line"><span>Diferença (${diffLabel})</span><span>${brl(summary.diferenca)}</span></div>`;
@@ -374,17 +404,23 @@ export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
 
   const rodapeHtml = config.mostrar_rodape && config.rodape_texto ? `<div class="footer">${esc(config.rodape_texto)}</div>` : "";
 
-  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${lojaName} - Resumo</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:700;line-height:1.3;width:${w};padding:5mm 4mm;color:#000;background:#fff} .header{text-align:center;margin-bottom:6px}.header h1{font-size:16px;font-weight:900;text-transform:uppercase}.header .datetime{font-size:12px;font-weight:700;margin-top:2px}.sep{border-top:2.4px solid #000;margin:5px 0}.sep-dashed{border-top:1.5px solid #000;margin:4px 0}.section-title{font-size:16px;font-weight:bold;text-align:center;margin:5px 0;text-transform:uppercase}.info-line{margin:2px 0;font-size:12px;font-weight:700}.subtotal-line{display:flex;justify-content:space-between;gap:6px;margin:2px 0;font-size:12px;font-weight:700}.total-line{display:flex;justify-content:space-between;gap:6px;margin:5px 0;padding:2px 0;border-top:1.6px solid #000;border-bottom:1.6px solid #000;font-size:16px;font-weight:900}.footer{text-align:center;font-size:12px;font-weight:700;margin-top:10px;padding-top:6px;border-top:1.5px solid #000}</style></head><body><div class="header"><h1>${lojaName}</h1><div class="datetime">${dateStr} &agrave;s ${timeStr}</div></div><div class="sep"></div>${body}${rodapeHtml}</body></html>`;
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>${lojaName} - Resumo</title>
+  <style>${buildPrintStyles(fs, w)}</style>
+</head>
+<body>
+  <div class="header">
+    <h1>${lojaName}</h1>
+    <div class="datetime">${dateStr} &agrave;s ${timeStr}</div>
+  </div>
+  <div class="sep"></div>
+  ${body}
+  ${rodapeHtml}
+</body>
+</html>`;
 
-  // Reuse existing print mechanism: open window and print
-  const win = window.open("", "_blank", "width=440,height=680,scrollbars=yes,resizable=yes");
-  if (win) {
-    win.document.open(); win.document.write(html); win.document.close(); win.focus();
-    setTimeout(() => { win.print(); win.onafterprint = () => win.close(); }, 500);
-    return;
-  }
-
-  const iframe = document.createElement("iframe"); iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden"; document.body.appendChild(iframe);
-  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
-  if (doc) { doc.open(); doc.write(html); doc.close(); setTimeout(() => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); if (iframe.contentWindow) { iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe); } else { setTimeout(() => document.body.removeChild(iframe), 5000); } }, 500); }
+  openAndPrint(html);
 }

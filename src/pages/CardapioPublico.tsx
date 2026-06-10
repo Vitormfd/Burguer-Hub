@@ -35,7 +35,7 @@ import { z } from "zod";
 import { cn } from "@/lib/utils";
 import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, HorarioFuncionamentoDia, Produto, Recompensa, TipoEntrega } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
-import type { CartItem } from "@/components/cardapio/cartTypes";
+import { cartTemPromocao, type CartItem } from "@/components/cardapio/cartTypes";
 import {
   calculateRewardBenefit,
   type FidelidadeLookupResult,
@@ -55,6 +55,7 @@ type CouponValidationPayload = {
   subtotal: number;
   taxa_entrega: number;
   tipo_entrega: TipoEntrega;
+  produto_ids: string[];
   commit: boolean;
   pedido_id?: string;
   cliente_id?: string | null;
@@ -341,6 +342,7 @@ export default function CardapioPublico() {
 
   const subtotal = cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
   const totalItens = cart.reduce((s, i) => s + i.quantidade, 0);
+  const temPromocaoNoCarrinho = useMemo(() => cartTemPromocao(cart), [cart]);
   const taxa = bairros.find((b) => b.id === bairroId)?.taxa ?? 0;
   // Exibe retirada quando: a coluna não existe ainda no banco (undefined) OU está explicitamente ativa
   const retiradaAtiva = cfg?.retirada_ativa !== false;
@@ -535,6 +537,7 @@ export default function CardapioPublico() {
       p_commit: payload.commit,
       p_pedido_id: payload.pedido_id ?? null,
       p_cliente_id: payload.cliente_id ?? null,
+      p_produto_ids: payload.produto_ids,
     });
     if (rpcError) {
       const rpcBackendMessage = rpcError.message || "";
@@ -555,6 +558,10 @@ export default function CardapioPublico() {
       return toast.error("Informe o código do cupom");
     }
 
+    if (temPromocaoNoCarrinho) {
+      return toast.error("Não é possível usar cupom com produtos em promoção");
+    }
+
     setCupomBusy(true);
     let payload: Awaited<ReturnType<typeof validarCupom>>;
 
@@ -565,6 +572,7 @@ export default function CardapioPublico() {
         subtotal,
         taxa_entrega: taxaBase,
         tipo_entrega: tipoEntrega,
+        produto_ids: cart.map((item) => item.produto.id),
         commit: false,
       });
     } catch (error) {
@@ -907,6 +915,10 @@ export default function CardapioPublico() {
     });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     if (!cart.length) return toast.error("Carrinho vazio");
+
+    if (cupomAplicado && temPromocaoNoCarrinho) {
+      return toast.error("Não é possível usar cupom com produtos em promoção");
+    }
 
     if (tipoEntrega === "retirada" && cfg?.retirada_ativa === false) {
       return toast.error("A retirada no balcão está desativada no momento");
@@ -1606,7 +1618,11 @@ export default function CardapioPublico() {
                 <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}><span>Desconto fidelidade</span><span>-{brl(rewardBenefit.desconto)}</span></div>
               )}
               <div className="space-y-2 rounded-xl border bg-zinc-50 p-3">
-                {!cupomAplicado ? (
+                {temPromocaoNoCarrinho ? (
+                  <p className="text-xs text-zinc-500">
+                    Cupons não podem ser usados com produtos em promoção.
+                  </p>
+                ) : !cupomAplicado ? (
                   <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                     <div className="space-y-1">
                       <Label className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Tem um cupom?</Label>

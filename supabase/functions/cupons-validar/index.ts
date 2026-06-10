@@ -14,6 +14,7 @@ interface ValidatePayload {
   subtotal?: number;
   taxa_entrega?: number;
   tipo_entrega?: TipoEntrega;
+  produto_ids?: string[];
   commit?: boolean;
   pedido_id?: string;
   cliente_id?: string | null;
@@ -107,6 +108,27 @@ Deno.serve(async (req) => {
     if (subtotal < Number(cupom.valor_minimo_pedido || 0)) {
       const minimo = Number(cupom.valor_minimo_pedido || 0).toFixed(2).replace(".", ",");
       return json({ error: `Pedido mínimo de R$${minimo} para usar esse cupom` }, 400);
+    }
+
+    const produtoIds = Array.from(
+      new Set((payload?.produto_ids || []).map((id) => String(id || "").trim()).filter(Boolean)),
+    );
+
+    if (produtoIds.length > 0) {
+      const { data: produtosPromocao, error: promoError } = await supabase
+        .from("produtos")
+        .select("id")
+        .in("id", produtoIds)
+        .eq("promocao", true)
+        .not("preco_promocional", "is", null);
+
+      if (promoError) {
+        return json({ error: promoError.message }, 500);
+      }
+
+      if ((produtosPromocao || []).length > 0) {
+        return json({ error: "Não é possível usar cupom com produtos em promoção" }, 400);
+      }
     }
 
     const valorBase = Math.max(subtotal, 0);

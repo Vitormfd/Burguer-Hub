@@ -1,3 +1,4 @@
+import { emPromocao } from "@/lib/produtos";
 import type { Produto } from "@/types/db";
 
 export interface CartAdicionalSelecionado {
@@ -24,3 +25,6 @@ export type Cart = CartItem[];
 
 export const cartSubtotal = (cart: Cart) =>
   cart.reduce((sum, item) => sum + item.precoUnit * item.quantidade, 0);
+
+export const cartTemPromocao = (cart: Cart) =>
+  cart.some((item) => emPromocao(item.produto));

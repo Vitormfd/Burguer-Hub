@@ -812,16 +812,19 @@ async function buildConfirmacao(
 ): Promise<FlowResult> {
   const subtotal = cartSubtotal(dados.carrinho);
   let taxaBairro = 0;
+  let bairroFrete: { frete_gratis_ativo?: boolean; frete_gratis_minimo?: number | null } | null = null;
   if (dados.tipo_entrega === "delivery" && dados.cliente?.bairro_id) {
     const bairros = await loadBairros(supabase, cfg.owner_id);
     const bairro = bairros.find((b) => b.id === dados.cliente!.bairro_id);
     taxaBairro = bairro ? Number(bairro.taxa) : 0;
+    bairroFrete = bairro;
   }
   const taxa = calcularTaxaEntregaWhatsapp({
     tipoEntrega: dados.tipo_entrega || "delivery",
     taxaBairro,
     subtotal,
     cfg,
+    bairro: bairroFrete,
   });
   const total = subtotal + taxa;
 
@@ -844,16 +847,19 @@ async function finalizeOrder(
 ): Promise<FlowResult> {
   const subtotal = cartSubtotal(dados.carrinho);
   let taxaBairro = 0;
+  let bairroFrete: { frete_gratis_ativo?: boolean; frete_gratis_minimo?: number | null } | null = null;
   if (dados.tipo_entrega === "delivery" && dados.cliente?.bairro_id) {
     const bairros = await loadBairros(supabase, cfg.owner_id);
     const bairro = bairros.find((b) => b.id === dados.cliente!.bairro_id);
     taxaBairro = bairro ? Number(bairro.taxa) : 0;
+    bairroFrete = bairro;
   }
   const taxa = calcularTaxaEntregaWhatsapp({
     tipoEntrega: dados.tipo_entrega || "delivery",
     taxaBairro,
     subtotal,
     cfg,
+    bairro: bairroFrete,
   });
   const total = subtotal + taxa;
 

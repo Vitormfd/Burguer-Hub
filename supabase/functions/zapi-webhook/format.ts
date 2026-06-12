@@ -114,20 +114,30 @@ export interface LojaConfig {
   frete_gratis_minimo?: number | null;
 }
 
+export interface BairroFreteConfig {
+  frete_gratis_ativo?: boolean;
+  frete_gratis_minimo?: number | null;
+}
+
 export function calcularTaxaEntregaWhatsapp(params: {
   tipoEntrega: "delivery" | "retirada";
   taxaBairro: number;
   subtotal: number;
   cfg: Pick<LojaConfig, "frete_gratis_ativo" | "frete_gratis_minimo">;
+  bairro?: BairroFreteConfig | null;
 }): number {
   const taxaBairro = Math.max(Number(params.taxaBairro || 0), 0);
   const subtotal = Math.max(Number(params.subtotal || 0), 0);
 
   if (params.tipoEntrega === "retirada") return 0;
   if (params.cfg.frete_gratis_ativo) return 0;
+  if (params.bairro?.frete_gratis_ativo) return 0;
 
-  const minimo = Number(params.cfg.frete_gratis_minimo || 0);
-  if (minimo > 0 && subtotal >= minimo) return 0;
+  const minimoGlobal = Number(params.cfg.frete_gratis_minimo || 0);
+  if (minimoGlobal > 0 && subtotal >= minimoGlobal) return 0;
+
+  const minimoBairro = Number(params.bairro?.frete_gratis_minimo || 0);
+  if (minimoBairro > 0 && subtotal >= minimoBairro) return 0;
 
   return taxaBairro;
 }

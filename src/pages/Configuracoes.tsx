@@ -596,6 +596,18 @@ export default function Configuracoes() {
     if (error) toast.error(error.message); else load();
   };
 
+  const updateBairroFrete = async (
+    id: string,
+    patch: Partial<Pick<BairroTaxa, "frete_gratis_ativo" | "frete_gratis_minimo">>,
+  ) => {
+    const { error } = await supabase.from("bairros_taxas").update(patch).eq("id", id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setBairros((current) => current.map((bairro) => (bairro.id === id ? { ...bairro, ...patch } : bairro)));
+  };
+
   // reenviar log
 
   const reenviarLog = async (log: WhatsappLog) => {
@@ -859,9 +871,9 @@ export default function Configuracoes() {
 
             <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
               <div>
-                <h3 className="font-semibold">Frete grátis</h3>
+                <h3 className="font-semibold">Frete grátis (todos os bairros)</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Regras independentes de cupom e fidelidade. Cupons de frete grátis continuam funcionando normalmente.
+                  Regra geral para a loja inteira. Você também pode configurar frete grátis por bairro na lista abaixo.
                 </p>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
@@ -912,20 +924,79 @@ export default function Configuracoes() {
               </div>
               <Button onClick={addBairro}><Plus className="w-4 h-4 mr-1" /> Adicionar</Button>
             </div>
-            <div className="divide-y border rounded-lg">
+            <div className="divide-y border rounded-lg overflow-hidden">
               {bairros.length === 0 ? (
                 <div className="p-4 text-sm text-muted-foreground text-center">Nenhum bairro cadastrado</div>
-              ) : bairros.map((b) => (
-                <div key={b.id} className="flex items-center justify-between px-4 py-2">
-                  <span className="font-medium">{b.nome}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-primary font-semibold">{brl(Number(b.taxa))}</span>
-                    <Button variant="ghost" size="icon" onClick={() => removeBairro(b.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+              ) : (
+                <>
+                  <div className="hidden md:grid md:grid-cols-[1fr_90px_120px_120px_40px] gap-3 px-4 py-2 bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                    <span>Bairro</span>
+                    <span>Taxa</span>
+                    <span>Frete grátis</span>
+                    <span>Mínimo (R$)</span>
+                    <span />
                   </div>
-                </div>
-              ))}
+                  {bairros.map((b) => (
+                    <div
+                      key={b.id}
+                      className="px-4 py-3 grid gap-3 md:grid-cols-[1fr_90px_120px_120px_40px] md:items-center"
+                    >
+                      <div>
+                        <div className="font-medium">{b.nome}</div>
+                        <div className="md:hidden text-sm text-primary font-semibold mt-0.5">{brl(Number(b.taxa))}</div>
+                      </div>
+                      <div className="hidden md:block text-primary font-semibold">{brl(Number(b.taxa))}</div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={!!b.frete_gratis_ativo}
+                          disabled={!!cfg.frete_gratis_ativo}
+                          onCheckedChange={(value) => void updateBairroFrete(b.id, { frete_gratis_ativo: value })}
+                        />
+                        <span className="text-xs text-muted-foreground md:hidden">
+                          {b.frete_gratis_ativo ? "Sempre grátis" : "Pago"}
+                        </span>
+                      </div>
+                      <div>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          disabled={!!cfg.frete_gratis_ativo || !!b.frete_gratis_ativo}
+                          className="h-9"
+                          value={b.frete_gratis_minimo != null && b.frete_gratis_minimo > 0 ? b.frete_gratis_minimo : ""}
+                          onChange={(event) => {
+                            const raw = event.target.value.trim();
+                            setBairros((current) =>
+                              current.map((bairro) =>
+                                bairro.id === b.id
+                                  ? {
+                                      ...bairro,
+                                      frete_gratis_minimo: raw
+                                        ? Math.max(Number(raw.replace(",", ".")), 0)
+                                        : null,
+                                    }
+                                  : bairro,
+                              ),
+                            );
+                          }}
+                          onBlur={(event) => {
+                            const raw = event.target.value.trim();
+                            void updateBairroFrete(b.id, {
+                              frete_gratis_minimo: raw ? Math.max(Number(raw.replace(",", ".")), 0) : null,
+                            });
+                          }}
+                          placeholder="Ex: 50"
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <Button variant="ghost" size="icon" onClick={() => removeBairro(b.id)}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </Card>
 

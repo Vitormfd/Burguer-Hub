@@ -163,7 +163,7 @@ export async function loadBairros(
 ) {
   const { data } = await supabase
     .from("bairros_taxas")
-    .select("id, nome, taxa")
+    .select("id, nome, taxa, frete_gratis_ativo, frete_gratis_minimo")
     .eq("owner_id", ownerId)
     .eq("ativo", true)
     .order("nome", { ascending: true });

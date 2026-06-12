@@ -29,7 +29,12 @@ import {
   Trophy,
   Sparkles,
 } from "lucide-react";
-import { calcularTaxaEntrega, freteGratisFaltam, freteGratisResumo } from "@/lib/freteGratis";
+import {
+  calcularTaxaEntrega,
+  freteGratisBairroResumo,
+  freteGratisFaltamEfetivo,
+  freteGratisResumo,
+} from "@/lib/freteGratis";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -344,7 +349,8 @@ export default function CardapioPublico() {
   const subtotal = cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
   const totalItens = cart.reduce((s, i) => s + i.quantidade, 0);
   const temPromocaoNoCarrinho = useMemo(() => cartTemPromocao(cart), [cart]);
-  const taxa = bairros.find((b) => b.id === bairroId)?.taxa ?? 0;
+  const bairroSelecionado = bairros.find((b) => b.id === bairroId) ?? null;
+  const taxa = bairroSelecionado?.taxa ?? 0;
   // Exibe retirada quando: a coluna não existe ainda no banco (undefined) OU está explicitamente ativa
   const retiradaAtiva = cfg?.retirada_ativa !== false;
   const tempoEstimadoRetirada = Math.max(Number(cfg?.tempo_estimado_retirada ?? 25), 1);
@@ -398,13 +404,14 @@ export default function CardapioPublico() {
       taxaBairro: taxaBase,
       subtotal,
       config: cfg,
+      bairro: bairroSelecionado,
       cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
     }),
-    [tipoEntrega, taxaBase, subtotal, cfg, cupomAplicado?.taxa_entrega_zerada],
+    [tipoEntrega, taxaBase, subtotal, cfg, bairroSelecionado, cupomAplicado?.taxa_entrega_zerada],
   );
   const taxaEfetiva = taxaCalculada.taxaEfetiva;
-  const freteGratisFalta = freteGratisFaltam(subtotal, cfg?.frete_gratis_minimo);
-  const freteGratisTexto = freteGratisResumo(cfg);
+  const freteGratisFalta = freteGratisFaltamEfetivo(subtotal, cfg, bairroSelecionado);
+  const freteGratisTexto = freteGratisResumo(cfg, bairroSelecionado);
   const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
@@ -964,6 +971,7 @@ export default function CardapioPublico() {
       taxaBairro: Number(bairro?.taxa || 0),
       subtotal,
       config: cfg,
+      bairro: bairro ?? null,
       cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
     }).taxaEfetiva;
     const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
@@ -1115,7 +1123,9 @@ export default function CardapioPublico() {
     ? "Grátis"
     : cfg?.frete_gratis_minimo && Number(cfg.frete_gratis_minimo) > 0
       ? `Grátis acima de ${brl(Number(cfg.frete_gratis_minimo))}`
-      : `A partir de ${brl(taxaMin)}`;
+      : bairros.some((b) => b.frete_gratis_ativo)
+        ? `A partir de ${brl(taxaMin)} · frete grátis em bairros selecionados`
+        : `A partir de ${brl(taxaMin)}`;
 
   return (
     <div className="min-h-screen pb-32 font-cardapio bg-[#f3f3f3] text-zinc-900" style={corStyle as React.CSSProperties}>
@@ -1603,9 +1613,19 @@ export default function CardapioPublico() {
                   <Select value={bairroId} onValueChange={setBairroId}>
                     <SelectTrigger><SelectValue placeholder="Selecione o bairro" /></SelectTrigger>
                     <SelectContent>
-                      {bairros.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>{b.nome} - {brl(Number(b.taxa))}</SelectItem>
-                      ))}
+                      {bairros.map((b) => {
+                        const freteBairro = freteGratisBairroResumo(b);
+                        const taxaLabel = b.frete_gratis_ativo
+                          ? "Frete grátis"
+                          : freteBairro
+                            ? `${brl(Number(b.taxa))} · ${freteBairro}`
+                            : brl(Number(b.taxa));
+                        return (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.nome} - {taxaLabel}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>

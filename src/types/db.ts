@@ -286,5 +286,7 @@ export interface BairroTaxa {
   nome: string;
   taxa: number;
   ativo: boolean;
+  frete_gratis_ativo?: boolean;
+  frete_gratis_minimo?: number | null;
   owner_id?: string;
 }

@@ -34,6 +34,8 @@ interface Props {
 interface BairroTaxaOption {
   nome: string;
   taxa: number;
+  frete_gratis_ativo?: boolean;
+  frete_gratis_minimo?: number | null;
 }
 
 export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) {
@@ -93,7 +95,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     (async () => {
       const [{ data: clientesData, error: clientesError }, { data: bairrosData, error: bairrosError }, { data: cfgData }] = await Promise.all([
         supabase.from("clientes").select("*").order("nome"),
-        supabase.from("bairros_taxas").select("nome, taxa").eq("ativo", true).order("nome"),
+        supabase.from("bairros_taxas").select("nome, taxa, frete_gratis_ativo, frete_gratis_minimo").eq("ativo", true).order("nome"),
         supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
       ]);
 
@@ -199,14 +201,21 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
 
   const taxaBairro = Number(taxa.replace(",", ".")) || 0;
   const subtotal = cartSubtotal(cart);
+  const bairroSelecionado = useMemo(() => {
+    const normalized = normalizeBairro(bairro);
+    if (!normalized) return null;
+    return bairrosTaxas.find((item) => normalizeBairro(item.nome) === normalized) ?? null;
+  }, [bairro, bairrosTaxas]);
+
   const taxaCalculada = useMemo(
     () => calcularTaxaEntrega({
       tipoEntrega: "delivery",
       taxaBairro,
       subtotal,
       config: cfg,
+      bairro: bairroSelecionado,
     }),
-    [taxaBairro, subtotal, cfg],
+    [taxaBairro, subtotal, cfg, bairroSelecionado],
   );
   const taxaNum = taxaCalculada.taxaEfetiva;
 

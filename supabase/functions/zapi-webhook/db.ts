@@ -6,7 +6,7 @@ import type {
   LojaConfig,
   SessionDados,
   WhatsappSession,
-} from "./types.ts";
+} from "./format.ts";
 import { normalizePhone } from "./format.ts";
 
 export function createServiceClient(): SupabaseClient {
@@ -25,7 +25,7 @@ export async function findLojaByInstance(
   const { data, error } = await supabase
     .from("configuracoes")
     .select(
-      "id, owner_id, nome_loja, referencia, site_url, zapi_instance_id, zapi_token, zapi_client_token, " +
+      "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
       "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
       "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento",
     )
@@ -334,35 +334,75 @@ interface HorarioDia {
   fechamento: string;
 }
 
-export function isLojaAberta(cfg: LojaConfig, date = new Date()): boolean {
-  const dia = date.getDay();
-  const cur = date.getHours() * 60 + date.getMinutes();
+const BR_TZ = "America/Sao_Paulo";
 
-  const toMinutes = (t: string) => {
-    const [h, m] = (t || "00:00").split(":").map(Number);
-    return h * 60 + m;
+const normalizeTimeHHMM = (value?: string | null): string => {
+  if (!value) return "00:00";
+  return String(value).slice(0, 5);
+};
+
+const toMinutes = (hhmm: string): number => {
+  const [h, m] = normalizeTimeHHMM(hhmm).split(":").map(Number);
+  return h * 60 + m;
+};
+
+/** Horário atual no fuso do Brasil (mesma base do cardápio público). */
+const getBrazilNow = (date = new Date()): { dia: number; cur: number } => {
+  const weekdayFmt = new Intl.DateTimeFormat("en-US", { timeZone: BR_TZ, weekday: "short" });
+  const timeFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: BR_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const dayMap: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
   };
+  const weekday = weekdayFmt.format(date);
+  const timeParts = timeFmt.formatToParts(date);
+  const hour = Number(timeParts.find((p) => p.type === "hour")?.value ?? 0);
+  const minute = Number(timeParts.find((p) => p.type === "minute")?.value ?? 0);
+  return {
+    dia: dayMap[weekday] ?? date.getDay(),
+    cur: hour * 60 + minute,
+  };
+};
 
-  const fallbackAbertura = cfg.hora_abertura || "18:00";
-  const fallbackFechamento = cfg.hora_fechamento || "23:00";
+const getTodaySchedule = (cfg: LojaConfig): HorarioDia => {
+  const fallbackAbertura = normalizeTimeHHMM(cfg.hora_abertura) || "18:00";
+  const fallbackFechamento = normalizeTimeHHMM(cfg.hora_fechamento) || "23:00";
+  const { dia } = getBrazilNow();
+  const byDay = new Map<number, HorarioDia>();
 
-  let today: HorarioDia | null = null;
   if (Array.isArray(cfg.horario_funcionamento)) {
     for (const raw of cfg.horario_funcionamento) {
       if (!raw || typeof raw !== "object") continue;
       const d = Number((raw as HorarioDia).dia);
-      if (d === dia) {
-        today = raw as HorarioDia;
-        break;
-      }
+      if (!Number.isInteger(d) || d < 0 || d > 6) continue;
+      byDay.set(d, {
+        dia: d,
+        ativo: Boolean((raw as HorarioDia).ativo),
+        abertura: normalizeTimeHHMM((raw as HorarioDia).abertura) || fallbackAbertura,
+        fechamento: normalizeTimeHHMM((raw as HorarioDia).fechamento) || fallbackFechamento,
+      });
     }
   }
 
-  if (!today) {
-    today = { dia, ativo: true, abertura: fallbackAbertura, fechamento: fallbackFechamento };
-  }
+  return byDay.get(dia) ?? {
+    dia,
+    ativo: true,
+    abertura: fallbackAbertura,
+    fechamento: fallbackFechamento,
+  };
+};
+
+export function isLojaAberta(cfg: LojaConfig): boolean {
+  if (cfg.ativo === false) return false;
+
+  const today = getTodaySchedule(cfg);
   if (!today.ativo) return false;
 
+  const { cur } = getBrazilNow();
   const ini = toMinutes(today.abertura);
   const fim = toMinutes(today.fechamento);
   return fim > ini ? cur >= ini && cur <= fim : cur >= ini || cur <= fim;

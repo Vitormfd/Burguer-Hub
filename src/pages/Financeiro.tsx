@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { brl } from "@/lib/format";
 import { buildCaixaResumo } from "@/lib/caixaResumo";
+import { fetchFaturamentoPeriodo, totalPedidoDelivery } from "@/lib/faturamento";
 import { printCashSummary, type CashSummary } from "@/lib/print";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -511,19 +512,8 @@ export default function Financeiro() {
     const iniIso = new Date(ini.setHours(0, 0, 0, 0)).toISOString();
     const fimIso = new Date(fim.setHours(23, 59, 59, 999)).toISOString();
 
-    const [contasRes, deliveryRes, custosRes, contasFixasRes, caixasRes] = await Promise.all([
-      sb
-        .from("contas")
-        .select("total")
-        .eq("status", "fechada")
-        .gte("fechada_em", iniIso)
-        .lte("fechada_em", fimIso),
-      sb
-        .from("pedidos")
-        .select("id")
-        .eq("tipo", "delivery")
-        .gte("criado_em", iniIso)
-        .lte("criado_em", fimIso),
+    const [faturamentoRes, custosRes, contasFixasRes, caixasRes] = await Promise.all([
+      fetchFaturamentoPeriodo(iniIso, fimIso, sb),
       sb
         .from("compras")
         .select("id, fornecedor_id, valor_total, data_compra, fornecedores(nome), categorias_compra(tipo)")
@@ -544,44 +534,17 @@ export default function Financeiro() {
         .lte("aberto_em", fimIso),
     ]);
 
-    if (contasRes.error || deliveryRes.error || custosRes.error || contasFixasRes.error || caixasRes.error) {
+    if (custosRes.error || contasFixasRes.error || caixasRes.error) {
       setReportLoading(false);
       return toast.error(
-        contasRes.error?.message ||
-          deliveryRes.error?.message ||
-          custosRes.error?.message ||
+        custosRes.error?.message ||
           contasFixasRes.error?.message ||
           caixasRes.error?.message ||
           "Erro ao gerar relatório",
       );
     }
 
-    const deliveryIds = ((deliveryRes.data || []) as Array<{ id: string }>).map((pedido) => pedido.id);
-
-    let faturamentoDelivery = 0;
-    if (deliveryIds.length > 0) {
-      const [itensRes, entregasRes] = await Promise.all([
-        sb.from("pedido_itens").select("pedido_id, quantidade, preco_unitario").in("pedido_id", deliveryIds),
-        sb.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", deliveryIds),
-      ]);
-
-      if (itensRes.error || entregasRes.error) {
-        setReportLoading(false);
-        return toast.error(itensRes.error?.message || entregasRes.error?.message || "Erro ao somar faturamento delivery");
-      }
-
-      faturamentoDelivery += (itensRes.data || []).reduce(
-        (sum: number, item: any) => sum + Number(item.preco_unitario || 0) * Number(item.quantidade || 0),
-        0,
-      );
-      faturamentoDelivery += (entregasRes.data || []).reduce(
-        (sum: number, entrega: any) => sum + Number(entrega.taxa_entrega || 0),
-        0,
-      );
-    }
-
-    const faturamentoMesas = (contasRes.data || []).reduce((sum: number, conta: any) => sum + Number(conta.total || 0), 0);
-    const faturamento = faturamentoMesas + faturamentoDelivery;
+    const faturamento = faturamentoRes.total;
 
     const custosRows = (custosRes.data || []) as Array<{
       id: string;
@@ -676,8 +639,9 @@ export default function Financeiro() {
         .lte("fechada_em", fimIso),
       sb
         .from("pedidos")
-        .select("id, criado_em")
+        .select("id, criado_em, tipo_entrega, total, subtotal, desconto, valor_desconto")
         .eq("tipo", "delivery")
+        .neq("status", "cancelado")
         .gte("criado_em", iniIso)
         .lte("criado_em", fimIso),
     ]);
@@ -693,32 +657,33 @@ export default function Financeiro() {
       weekRevenue.set(week, (weekRevenue.get(week) || 0) + Number(conta.total || 0));
     });
 
-    const deliveryWeekIds = (pedidosSemanaRes.data || []).map((pedido: any) => pedido.id);
+    const pedidosSemana = pedidosSemanaRes.data || [];
+    const deliveryWeekIds = pedidosSemana.map((pedido: any) => pedido.id);
 
     if (deliveryWeekIds.length > 0) {
       const [itensRes, entregasRes] = await Promise.all([
-        sb.from("pedido_itens").select("pedido_id, quantidade, preco_unitario").in("pedido_id", deliveryWeekIds),
+        sb.from("pedido_itens").select("pedido_id, quantidade, preco_unitario, cancelado").in("pedido_id", deliveryWeekIds),
         sb.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", deliveryWeekIds),
       ]);
 
       if (!itensRes.error && !entregasRes.error) {
-        const pedidoDateMap = new Map((pedidosSemanaRes.data || []).map((pedido: any) => [pedido.id, pedido.criado_em]));
-
+        const itemTotals = new Map<string, number>();
         (itensRes.data || []).forEach((item: any) => {
-          const created = pedidoDateMap.get(item.pedido_id);
-          if (!created) return;
-          const date = new Date(created);
-          const week = `Sem ${Math.ceil(date.getDate() / 7)}`;
-          const value = Number(item.preco_unitario || 0) * Number(item.quantidade || 0);
-          weekRevenue.set(week, (weekRevenue.get(week) || 0) + value);
+          if (item.cancelado) return;
+          itemTotals.set(
+            item.pedido_id,
+            (itemTotals.get(item.pedido_id) || 0) + Number(item.preco_unitario || 0) * Number(item.quantidade || 0),
+          );
         });
 
-        (entregasRes.data || []).forEach((entrega: any) => {
-          const created = pedidoDateMap.get(entrega.pedido_id);
-          if (!created) return;
-          const date = new Date(created);
+        const taxaMap = new Map((entregasRes.data || []).map((entrega: any) => [entrega.pedido_id, Number(entrega.taxa_entrega || 0)]));
+
+        pedidosSemana.forEach((pedido: any) => {
+          const date = new Date(pedido.criado_em);
           const week = `Sem ${Math.ceil(date.getDate() / 7)}`;
-          weekRevenue.set(week, (weekRevenue.get(week) || 0) + Number(entrega.taxa_entrega || 0));
+          const taxa = pedido.tipo_entrega === "retirada" ? 0 : (taxaMap.get(pedido.id) || 0);
+          const value = totalPedidoDelivery(pedido, itemTotals.get(pedido.id) || 0, taxa);
+          weekRevenue.set(week, (weekRevenue.get(week) || 0) + value);
         });
       }
     }

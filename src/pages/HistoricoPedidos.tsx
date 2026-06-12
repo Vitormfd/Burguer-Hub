@@ -12,6 +12,7 @@ import {
   Utensils,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { brl } from "@/lib/format";
 import { printReceipt } from "@/lib/print";
 import { toast } from "sonner";
@@ -102,6 +103,15 @@ const periodoFim = (periodo: PeriodoFiltro) => {
   return fim;
 };
 
+const periodoToIsoRange = (periodo: PeriodoFiltro) => {
+  const ini = periodoInicio(periodo);
+  const fim = periodoFim(periodo) ?? new Date();
+  if (!periodoFim(periodo)) {
+    fim.setHours(23, 59, 59, 999);
+  }
+  return { ini: ini.toISOString(), fim: fim.toISOString() };
+};
+
 const pedidoCodigo = (id: string) => id.slice(0, 8).toUpperCase();
 
 const origemLabel = (row: PedidoHistoricoRow) => {
@@ -125,6 +135,7 @@ export default function HistoricoPedidos() {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [itensCache, setItensCache] = useState<Record<string, ItemDetalhe[]>>({});
   const [itensLoading, setItensLoading] = useState<string | null>(null);
+  const [resumoPeriodo, setResumoPeriodo] = useState({ vendas: 0, faturamento: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -229,6 +240,25 @@ export default function HistoricoPedidos() {
     });
 
     setRows(montados);
+
+    try {
+      const { ini, fim } = periodoToIsoRange(periodo);
+      const fat = await fetchFaturamentoPeriodo(ini, fim);
+      if (tipoFiltro === "mesa") {
+        setResumoPeriodo({ vendas: fat.mesas.quantidade, faturamento: fat.mesas.total });
+      } else if (tipoFiltro === "delivery") {
+        setResumoPeriodo({ vendas: fat.delivery.quantidade, faturamento: fat.delivery.total });
+      } else if (tipoFiltro === "retirada") {
+        setResumoPeriodo({ vendas: fat.retirada.quantidade, faturamento: fat.retirada.total });
+      } else {
+        setResumoPeriodo({ vendas: fat.pedidos, faturamento: fat.total });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao calcular faturamento";
+      toast.error(message);
+      setResumoPeriodo({ vendas: 0, faturamento: 0 });
+    }
+
     setLoading(false);
   }, [periodo, tipoFiltro]);
 
@@ -384,12 +414,15 @@ export default function HistoricoPedidos() {
   };
 
   const resumoDia = useMemo(() => {
-    const concluidos = rowsFiltrados.filter((r) => r.status !== "cancelado");
-    return {
-      vendas: concluidos.length,
-      faturamento: concluidos.reduce((s, r) => s + r.total, 0),
-    };
-  }, [rowsFiltrados]);
+    if (busca.trim()) {
+      const concluidos = rowsFiltrados.filter((r) => r.status !== "cancelado");
+      return {
+        vendas: concluidos.length,
+        faturamento: concluidos.reduce((s, r) => s + r.total, 0),
+      };
+    }
+    return resumoPeriodo;
+  }, [busca, rowsFiltrados, resumoPeriodo]);
 
   return (
     <div className="space-y-6">

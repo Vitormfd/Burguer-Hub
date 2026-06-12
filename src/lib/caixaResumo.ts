@@ -1,3 +1,4 @@
+import { fetchFaturamentoPeriodo, totalPedidoDelivery } from "@/lib/faturamento";
 import { supabase } from "@/integrations/supabase/client";
 import type { CashSummary } from "@/lib/print";
 
@@ -56,11 +57,8 @@ export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | n
     conta_pagamentos?: Array<{ forma_pagamento: string; valor: number }> | null;
   }>;
 
-  let vendasMesas = 0;
   contasList.forEach((conta) => {
     const totalConta = Number(conta.total || 0);
-    vendasMesas += totalConta;
-
     const pagos = conta.conta_pagamentos || [];
     if (pagos.length) {
       pagos.forEach((p) => addPagamento(pagamentosMap, p.forma_pagamento, Number(p.valor || 0)));
@@ -71,17 +69,23 @@ export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | n
 
   const { data: pedidos } = await supabase
     .from("pedidos")
-    .select("id")
+    .select("id, tipo_entrega, total, subtotal, desconto, valor_desconto")
     .eq("tipo", "delivery")
     .neq("status", "cancelado")
     .gte("criado_em", abertoEm)
     .lte("criado_em", fechadoEm);
 
-  const pedidoIds = ((pedidos || []) as Array<{ id: string }>).map((p) => p.id);
-  let vendasDelivery = 0;
-  let deliveryCount = 0;
+  const pedidosList = (pedidos || []) as Array<{
+    id: string;
+    tipo_entrega: string | null;
+    total: number | null;
+    subtotal: number | null;
+    desconto: number | null;
+    valor_desconto: number | null;
+  }>;
 
-  if (pedidoIds.length) {
+  if (pedidosList.length) {
+    const pedidoIds = pedidosList.map((p) => p.id);
     const [{ data: itens }, { data: entregas }] = await Promise.all([
       supabase
         .from("pedido_itens")
@@ -110,18 +114,19 @@ export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | n
       ]),
     );
 
-    pedidoIds.forEach((pid) => {
-      const itensTotal = totalPorPedido.get(pid) || 0;
-      const entrega = entregaPorPedido.get(pid);
-      const taxa = entrega?.taxa || 0;
-      const totalPedido = itensTotal + taxa;
-      if (totalPedido <= 0) return;
-
-      deliveryCount += 1;
-      vendasDelivery += totalPedido;
-      addPagamento(pagamentosMap, entrega?.forma ?? null, totalPedido);
+    pedidosList.forEach((pedido) => {
+      const entrega = entregaPorPedido.get(pedido.id);
+      const taxa = pedido.tipo_entrega === "retirada" ? 0 : (entrega?.taxa || 0);
+      const totalPedidoValor = totalPedidoDelivery(pedido, totalPorPedido.get(pedido.id) || 0, taxa);
+      if (totalPedidoValor <= 0) return;
+      addPagamento(pagamentosMap, entrega?.forma ?? null, totalPedidoValor);
     });
   }
+
+  const faturamento = await fetchFaturamentoPeriodo(abertoEm, fechadoEm);
+  const vendasMesas = faturamento.mesas.total;
+  const deliveryCount = faturamento.delivery.quantidade + faturamento.retirada.quantidade;
+  const vendasDelivery = faturamento.delivery.total + faturamento.retirada.total;
 
   const { data: movs } = await supabase
     .from("caixa_movimentacoes")

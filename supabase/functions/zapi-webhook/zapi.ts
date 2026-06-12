@@ -1,4 +1,4 @@
-import type { LojaConfig, OutboundMessage } from "./types.ts";
+import type { LojaConfig, OutboundMessage } from "./format.ts";
 import { formatPhoneZapi } from "./format.ts";
 
 const zapiBase = (cfg: LojaConfig) =>

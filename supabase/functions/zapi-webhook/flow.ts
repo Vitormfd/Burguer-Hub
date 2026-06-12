@@ -33,7 +33,7 @@ import type {
   OutboundMessage,
   SessionDados,
   WhatsappSession,
-} from "./types.ts";
+} from "./format.ts";
 
 const PRODUTOS_POR_PAGINA = 8;
 

@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { brl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -75,56 +76,48 @@ const emptyCancelamentos: CancelamentosHojeKpi = {
 };
 
 async function fetchRangeData(ini: string, fim: string) {
-  const [contasR, pedOnlineR, pedMesaR] = await Promise.all([
-    supabase.from("contas").select("id, total")
-      .eq("status", "fechada").gte("fechada_em", ini).lte("fechada_em", fim),
-    supabase.from("pedidos").select("id, tipo_entrega")
-      .eq("tipo", "delivery").gte("criado_em", ini).lte("criado_em", fim),
-    supabase.from("pedidos").select("id")
-      .eq("tipo", "mesa").gte("criado_em", ini).lte("criado_em", fim),
+  const [faturamento, pedOnlineR] = await Promise.all([
+    fetchFaturamentoPeriodo(ini, fim),
+    supabase
+      .from("pedidos")
+      .select("id, tipo_entrega")
+      .eq("tipo", "delivery")
+      .neq("status", "cancelado")
+      .gte("criado_em", ini)
+      .lte("criado_em", fim),
   ]);
-  const contas = contasR.data || [];
+
   const pedOnline = pedOnlineR.data || [];
-  const pedMesa = pedMesaR.data || [];
-
-  const pedDel = pedOnline.filter((p: any) => p.tipo_entrega !== "retirada");
-  const pedRetirada = pedOnline.filter((p: any) => p.tipo_entrega === "retirada");
-
-  const allIds = [...pedOnline, ...pedMesa].map((p: any) => p.id);
-  let receitaDelItens = 0;
-  let taxas = 0;
+  const allIds = pedOnline.map((p) => p.id);
   const acc = new Map<string, { quantidade: number; receita: number }>();
 
   if (allIds.length) {
-    const [{ data: itens }, entR] = await Promise.all([
-      supabase.from("pedido_itens").select("pedido_id, produto_id, quantidade, preco_unitario").in("pedido_id", allIds).eq("cancelado", false),
-      pedDel.length
-        ? supabase.from("entregas").select("taxa_entrega").in("pedido_id", pedDel.map((p) => p.id))
-        : Promise.resolve({ data: [] as any[] }),
-    ]);
-    const onlineIds = new Set(pedOnline.map((p: any) => p.id));
+    const { data: itens } = await supabase
+      .from("pedido_itens")
+      .select("pedido_id, produto_id, quantidade, preco_unitario")
+      .in("pedido_id", allIds)
+      .eq("cancelado", false);
+
     (itens || []).forEach((i) => {
       const sub = Number(i.preco_unitario) * i.quantidade;
-      if (onlineIds.has(i.pedido_id)) receitaDelItens += sub;
       const key = i.produto_id ?? "—";
       const cur = acc.get(key) ?? { quantidade: 0, receita: 0 };
       cur.quantidade += i.quantidade;
       cur.receita += sub;
       acc.set(key, cur);
     });
-    taxas = (entR.data || []).reduce((s: number, e: any) => s + Number(e.taxa_entrega || 0), 0);
   }
 
-  const totalContas = contas.reduce((s, c) => s + Number(c.total || 0), 0);
-  const faturamento = totalContas + receitaDelItens + taxas;
-  const pedidos = pedOnline.length + pedMesa.length;
-  const ticket = pedidos > 0 ? faturamento / pedidos : 0;
+  const pedidos = faturamento.pedidos;
+  const ticket = pedidos > 0 ? faturamento.total / pedidos : 0;
 
   return {
-    faturamento, pedidos, ticket,
-    delivery: pedDel.length,
-    retirada: pedRetirada.length,
-    mesa: pedMesa.length,
+    faturamento: faturamento.total,
+    pedidos,
+    ticket,
+    delivery: faturamento.delivery.quantidade,
+    retirada: faturamento.retirada.quantidade,
+    mesa: faturamento.mesas.quantidade,
     acc,
   };
 }
@@ -169,32 +162,17 @@ export default function Relatorios() {
     const ini = startOfDay(new Date()).toISOString();
     const fim = endOfDay(new Date()).toISOString();
 
-    const [contasR, statusR] = await Promise.all([
-      supabase.from("contas").select("total")
-        .eq("status", "fechada").gte("fechada_em", ini).lte("fechada_em", fim),
+    const [faturamentoHoje, statusR] = await Promise.all([
+      fetchFaturamentoPeriodo(ini, fim),
       supabase.from("pedidos").select("status, criado_em")
         .gte("criado_em", ini).lte("criado_em", fim),
     ]);
-    if (contasR.error || statusR.error) {
-      toast.error((contasR.error || statusR.error)!.message);
+    if (statusR.error) {
+      toast.error(statusR.error.message);
       return;
     }
 
-    // somar receita delivery do dia
-    const { data: pedDel } = await supabase.from("pedidos").select("id")
-      .eq("tipo", "delivery").gte("criado_em", ini).lte("criado_em", fim);
-    let extra = 0;
-    if (pedDel?.length) {
-      const ids = pedDel.map((p) => p.id);
-      const [{ data: itens }, { data: ents }] = await Promise.all([
-        supabase.from("pedido_itens").select("quantidade, preco_unitario").in("pedido_id", ids),
-        supabase.from("entregas").select("taxa_entrega").in("pedido_id", ids),
-      ]);
-      extra += (itens || []).reduce((s, i) => s + Number(i.preco_unitario) * i.quantidade, 0);
-      extra += (ents || []).reduce((s, e) => s + Number(e.taxa_entrega || 0), 0);
-    }
-
-    const faturamento = (contasR.data || []).reduce((s, c) => s + Number(c.total || 0), 0) + extra;
+    const faturamento = faturamentoHoje.total;
     const emAnalise = (statusR.data || []).filter((p) => p.status === "pendente").length;
     const emProducao = (statusR.data || []).filter((p) => p.status === "em_preparo").length;
     const pronto = (statusR.data || []).filter((p) => p.status === "pronto").length;

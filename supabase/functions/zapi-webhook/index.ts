@@ -1,6 +1,6 @@
 import { createServiceClient, findLojaByInstance } from "./db.ts";
 import { handleIncomingMessage } from "./flow.ts";
-import type { ZapiIncomingMessage } from "./types.ts";
+import type { ZapiIncomingMessage } from "./format.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

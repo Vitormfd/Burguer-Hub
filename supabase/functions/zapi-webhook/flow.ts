@@ -22,6 +22,7 @@ import {
   formatCardapioLinkMsg,
   formatCart,
   formatPagamento,
+  calcularTaxaEntregaWhatsapp,
   formatResumoConfirmacao,
   normalizeText,
 } from "./format.ts";
@@ -810,12 +811,18 @@ async function buildConfirmacao(
   dados: SessionDados,
 ): Promise<FlowResult> {
   const subtotal = cartSubtotal(dados.carrinho);
-  let taxa = 0;
+  let taxaBairro = 0;
   if (dados.tipo_entrega === "delivery" && dados.cliente?.bairro_id) {
     const bairros = await loadBairros(supabase, cfg.owner_id);
     const bairro = bairros.find((b) => b.id === dados.cliente!.bairro_id);
-    taxa = bairro ? Number(bairro.taxa) : 0;
+    taxaBairro = bairro ? Number(bairro.taxa) : 0;
   }
+  const taxa = calcularTaxaEntregaWhatsapp({
+    tipoEntrega: dados.tipo_entrega || "delivery",
+    taxaBairro,
+    subtotal,
+    cfg,
+  });
   const total = subtotal + taxa;
 
   return {
@@ -836,12 +843,18 @@ async function finalizeOrder(
   telefone: string,
 ): Promise<FlowResult> {
   const subtotal = cartSubtotal(dados.carrinho);
-  let taxa = 0;
+  let taxaBairro = 0;
   if (dados.tipo_entrega === "delivery" && dados.cliente?.bairro_id) {
     const bairros = await loadBairros(supabase, cfg.owner_id);
     const bairro = bairros.find((b) => b.id === dados.cliente!.bairro_id);
-    taxa = bairro ? Number(bairro.taxa) : 0;
+    taxaBairro = bairro ? Number(bairro.taxa) : 0;
   }
+  const taxa = calcularTaxaEntregaWhatsapp({
+    tipoEntrega: dados.tipo_entrega || "delivery",
+    taxaBairro,
+    subtotal,
+    cfg,
+  });
   const total = subtotal + taxa;
 
   const items = dados.carrinho.map((item) => ({

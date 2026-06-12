@@ -110,6 +110,26 @@ export interface LojaConfig {
   hora_fechamento?: string;
   horario_funcionamento?: unknown;
   endereco_estabelecimento?: string | null;
+  frete_gratis_ativo?: boolean;
+  frete_gratis_minimo?: number | null;
+}
+
+export function calcularTaxaEntregaWhatsapp(params: {
+  tipoEntrega: "delivery" | "retirada";
+  taxaBairro: number;
+  subtotal: number;
+  cfg: Pick<LojaConfig, "frete_gratis_ativo" | "frete_gratis_minimo">;
+}): number {
+  const taxaBairro = Math.max(Number(params.taxaBairro || 0), 0);
+  const subtotal = Math.max(Number(params.subtotal || 0), 0);
+
+  if (params.tipoEntrega === "retirada") return 0;
+  if (params.cfg.frete_gratis_ativo) return 0;
+
+  const minimo = Number(params.cfg.frete_gratis_minimo || 0);
+  if (minimo > 0 && subtotal >= minimo) return 0;
+
+  return taxaBairro;
 }
 
 export interface ZapiIncomingMessage {

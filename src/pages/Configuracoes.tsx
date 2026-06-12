@@ -439,6 +439,10 @@ export default function Configuracoes() {
         tempo_entrega_min: cfg.tempo_entrega_min ?? "30-45 min",
         retirada_ativa: cfg.retirada_ativa ?? false,
         tempo_estimado_retirada: Number(cfg.tempo_estimado_retirada ?? 25),
+        frete_gratis_ativo: cfg.frete_gratis_ativo ?? false,
+        frete_gratis_minimo: cfg.frete_gratis_minimo != null && cfg.frete_gratis_minimo > 0
+          ? Number(cfg.frete_gratis_minimo)
+          : null,
         endereco_estabelecimento: cfg.endereco_estabelecimento ?? null,
         carrossel_imagens: cfg.carrossel_imagens || [],
         horario_funcionamento: normalizeWeeklySchedule(cfg) as any,
@@ -852,6 +856,51 @@ export default function Configuracoes() {
 
           <Card className="p-6 space-y-4">
             <h2 className="font-display text-2xl">Bairros e taxas de entrega</h2>
+
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+              <div>
+                <h3 className="font-semibold">Frete grátis</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Regras independentes de cupom e fidelidade. Cupons de frete grátis continuam funcionando normalmente.
+                </p>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Frete grátis em todos os deliveries</Label>
+                  <div className="flex items-center gap-2 h-10">
+                    <Switch
+                      checked={!!cfg.frete_gratis_ativo}
+                      onCheckedChange={(value) => setCfg({ ...cfg, frete_gratis_ativo: value })}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {cfg.frete_gratis_ativo ? "Ativo para todos os bairros" : "Desativado"}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Frete grátis a partir de (R$)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    disabled={!!cfg.frete_gratis_ativo}
+                    value={cfg.frete_gratis_minimo != null && cfg.frete_gratis_minimo > 0 ? cfg.frete_gratis_minimo : ""}
+                    onChange={(event) => {
+                      const raw = event.target.value.trim();
+                      setCfg({
+                        ...cfg,
+                        frete_gratis_minimo: raw ? Math.max(Number(raw.replace(",", ".")), 0) : null,
+                      });
+                    }}
+                    placeholder="Ex: 50,00"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Deixe vazio para desativar. Vale para o subtotal dos itens, sem taxa.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-2 items-end">
               <div className="flex-1 space-y-2">
                 <Label>Bairro</Label>

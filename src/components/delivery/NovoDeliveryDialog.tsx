@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
+import { calcularTaxaEntrega } from "@/lib/freteGratis";
 import { brl } from "@/lib/format";
 import { printReceipt } from "@/lib/print";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
@@ -196,8 +197,18 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     setBairroOpen(false);
   };
 
-  const taxaNum = Number(taxa.replace(",", ".")) || 0;
+  const taxaBairro = Number(taxa.replace(",", ".")) || 0;
   const subtotal = cartSubtotal(cart);
+  const taxaCalculada = useMemo(
+    () => calcularTaxaEntrega({
+      tipoEntrega: "delivery",
+      taxaBairro,
+      subtotal,
+      config: cfg,
+    }),
+    [taxaBairro, subtotal, cfg],
+  );
+  const taxaNum = taxaCalculada.taxaEfetiva;
 
   const handleConfirm = async () => {
     const items = cart;
@@ -445,8 +456,9 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
           onCartChange={setCart}
           extraTotal={taxaNum}
           extraRow={
-            <div className="flex justify-between text-xs">
-              <span>Taxa de entrega</span><span>{brl(taxaNum)}</span>
+            <div className={`flex justify-between text-xs ${taxaCalculada.freteGratis ? "text-emerald-700" : ""}`}>
+              <span>Taxa de entrega</span>
+              <span>{taxaCalculada.freteGratis ? "Grátis" : brl(taxaNum)}</span>
             </div>
           }
           heightClass="h-[min(46vh,420px)] min-h-[300px]"

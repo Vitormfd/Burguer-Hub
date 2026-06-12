@@ -29,6 +29,7 @@ import {
   Trophy,
   Sparkles,
 } from "lucide-react";
+import { calcularTaxaEntrega, freteGratisFaltam, freteGratisResumo } from "@/lib/freteGratis";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -391,7 +392,19 @@ export default function CardapioPublico() {
   );
   const descontoCupom = cupomAplicado?.valor_desconto_aplicado ?? 0;
   const taxaBase = tipoEntrega === "retirada" ? 0 : Number(taxa);
-  const taxaEfetiva = tipoEntrega === "retirada" ? 0 : (cupomAplicado?.taxa_entrega_zerada ? 0 : Number(taxa));
+  const taxaCalculada = useMemo(
+    () => calcularTaxaEntrega({
+      tipoEntrega,
+      taxaBairro: taxaBase,
+      subtotal,
+      config: cfg,
+      cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
+    }),
+    [tipoEntrega, taxaBase, subtotal, cfg, cupomAplicado?.taxa_entrega_zerada],
+  );
+  const taxaEfetiva = taxaCalculada.taxaEfetiva;
+  const freteGratisFalta = freteGratisFaltam(subtotal, cfg?.frete_gratis_minimo);
+  const freteGratisTexto = freteGratisResumo(cfg);
   const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
@@ -946,7 +959,13 @@ export default function CardapioPublico() {
     const descontoFidelidade = rewardBenefit.desconto;
     const itemGratis = rewardBenefit.itemGratis;
     const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
-    const taxaEntregaFinal = tipoEntrega === "retirada" ? 0 : (cupomAplicado?.taxa_entrega_zerada ? 0 : Number(bairro?.taxa || 0));
+    const taxaEntregaFinal = calcularTaxaEntrega({
+      tipoEntrega,
+      taxaBairro: Number(bairro?.taxa || 0),
+      subtotal,
+      config: cfg,
+      cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
+    }).taxaEfetiva;
     const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
     const ownerId = (cfg as Configuracao & { owner_id?: string | null }).owner_id;
@@ -1092,6 +1111,11 @@ export default function CardapioPublico() {
   const diaHojeNome = DIAS_SEMANA_LABEL[new Date().getDay()];
   const horarioHojeTexto = formatScheduleRange(horarioHoje, cfg);
   const taxaMin = bairros.length ? Math.min(...bairros.map((b) => Number(b.taxa))) : 0;
+  const taxaEntregaBanner = cfg?.frete_gratis_ativo
+    ? "Grátis"
+    : cfg?.frete_gratis_minimo && Number(cfg.frete_gratis_minimo) > 0
+      ? `Grátis acima de ${brl(Number(cfg.frete_gratis_minimo))}`
+      : `A partir de ${brl(taxaMin)}`;
 
   return (
     <div className="min-h-screen pb-32 font-cardapio bg-[#f3f3f3] text-zinc-900" style={corStyle as React.CSSProperties}>
@@ -1181,7 +1205,7 @@ export default function CardapioPublico() {
                     <div className="rounded-md border bg-white p-1 text-[11px]">
                       <p className="text-zinc-500">Taxa de entrega</p>
                       <p className="font-bold flex items-center gap-1">
-                        <Bike className="w-3 h-3" /> A partir de {brl(taxaMin)}
+                        <Bike className="w-3 h-3" /> {taxaEntregaBanner}
                       </p>
                     </div>
                   </div>
@@ -1666,8 +1690,16 @@ export default function CardapioPublico() {
                   <span>{tipoEntrega === "delivery" ? "Grátis 🎉" : "Aplicado"}</span>
                 </div>
               )}
-              {cupomAplicado?.tipo !== "frete_gratis" && (
-                <div className="flex justify-between"><span>{tipoEntrega === "delivery" ? "Taxa de entrega" : "Taxa"}</span><span>{brl(taxaEfetiva)}</span></div>
+              {tipoEntrega === "delivery" && freteGratisTexto && !taxaCalculada.freteGratis && freteGratisFalta != null && (
+                <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">
+                  Faltam {brl(freteGratisFalta)} para frete grátis
+                </p>
+              )}
+              {cupomAplicado?.tipo !== "frete_gratis" && tipoEntrega === "delivery" && (
+                <div className={`flex justify-between ${taxaCalculada.freteGratis ? "text-emerald-700" : ""}`}>
+                  <span>Taxa de entrega</span>
+                  <span>{taxaCalculada.freteGratis ? "Grátis 🎉" : brl(taxaEfetiva)}</span>
+                </div>
               )}
               {cupomAplicado?.tipo === "frete_gratis" && tipoEntrega === "retirada" && (
                 <div className="flex justify-between"><span>Taxa</span><span>{brl(0)}</span></div>

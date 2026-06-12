@@ -174,6 +174,8 @@ export interface Configuracao {
   fidelidade_texto?: string;
   fidelidade_cor?: string;
   fidelidade_pedido_minimo?: number;
+  frete_gratis_ativo?: boolean;
+  frete_gratis_minimo?: number | null;
   // Z-API / WhatsApp
   zapi_instance_id?: string | null;
   zapi_token?: string | null;

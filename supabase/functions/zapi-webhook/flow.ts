@@ -18,7 +18,6 @@ import {
   cartSubtotal,
   encodeKdsObservation,
   formatPhoneZapi,
-  formatBoasVindas,
   formatCardapioLinkMsg,
   formatCart,
   formatPagamento,
@@ -47,17 +46,7 @@ interface FlowResult {
   noReply?: boolean;
 }
 
-const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido"];
-const GREETING_COMMANDS = ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite"];
-const GLOBAL_COMMANDS = [
-  ...BOT_START_COMMANDS,
-  ...GREETING_COMMANDS,
-  "ajuda", "help", "comandos",
-  "cancelar", "sair", "desistir",
-  "link", "site", "cardapio online", "cardápio online", "web",
-  "carrinho", "ver carrinho",
-  "inicio", "início",
-];
+const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
 
 function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
   if (dados.bot_ativo) return true;
@@ -331,14 +320,6 @@ export async function processMessage(
     return cat;
   }
 
-  if (GREETING_COMMANDS.includes(text) || ["inicio", "início"].includes(text)) {
-    return {
-      messages: [textMsg(formatBoasVindas(cfg))],
-      etapa: "inicio",
-      dados,
-    };
-  }
-
   if (["link", "site", "cardapio online", "cardápio online", "web"].includes(text)) {
     return {
       messages: [textMsg(formatCardapioLinkMsg(cfg))],
@@ -367,14 +348,7 @@ export async function processMessage(
   }
 
   // Mensagem livre fora do fluxo do bot → não responde (atendimento humano)
-  if (!isBotFlowActive(etapa, dados) && !GLOBAL_COMMANDS.includes(text)) {
-    if (!session) {
-      return {
-        messages: [textMsg(formatBoasVindas(cfg))],
-        etapa: "inicio",
-        dados,
-      };
-    }
+  if (!isBotFlowActive(etapa, dados)) {
     return { messages: [], etapa: "inicio", dados, noReply: true };
   }
 

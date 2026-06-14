@@ -19,6 +19,7 @@ import {
   cartSubtotal,
   encodeKdsObservation,
   formatPhoneZapi,
+  formatBoasVindas,
   formatCardapioLinkMsg,
   formatCart,
   formatPagamento,
@@ -345,6 +346,15 @@ export async function processMessage(
       ],
       etapa: "carrinho",
       dados: { ...dados, bot_ativo: true },
+    };
+  }
+
+  // Primeira mensagem do cliente → boas-vindas (qualquer texto)
+  if (!session && !isBotFlowActive(etapa, dados)) {
+    return {
+      messages: [textMsg(formatBoasVindas(cfg))],
+      etapa: "inicio",
+      dados,
     };
   }
 

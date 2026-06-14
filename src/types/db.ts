@@ -22,6 +22,7 @@ export interface Categoria {
   icone?: string | null;
   destaque?: boolean;
   emoji?: string | null;
+  exclui_frete_gratis?: boolean;
   owner_id?: string;
   ordem?: number;
 }

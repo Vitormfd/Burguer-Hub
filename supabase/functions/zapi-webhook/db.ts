@@ -157,6 +157,29 @@ export async function loadProdutos(
   return data || [];
 }
 
+export async function carrinhoBloqueiaFreteGratis(
+  supabase: SupabaseClient,
+  ownerId: string,
+  produtoIds: string[],
+): Promise<boolean> {
+  if (!produtoIds.length) return false;
+
+  const { data, error } = await supabase
+    .from("produtos")
+    .select("id, categorias!inner(exclui_frete_gratis)")
+    .eq("owner_id", ownerId)
+    .in("id", produtoIds)
+    .eq("categorias.exclui_frete_gratis", true)
+    .limit(1);
+
+  if (error) {
+    console.error("carrinhoBloqueiaFreteGratis:", error.message);
+    return false;
+  }
+
+  return (data || []).length > 0;
+}
+
 export async function loadBairros(
   supabase: SupabaseClient,
   ownerId: string,

@@ -17,6 +17,7 @@ const schema = z.object({
   icone: z.string().trim().max(4).optional().or(z.literal("")),
   destaque: z.boolean(),
   emoji: z.string().trim().max(4).optional().or(z.literal("")),
+  exclui_frete_gratis: z.boolean(),
   ordem: z.number().int().min(0).max(9999),
 });
 
@@ -32,6 +33,7 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
   const [icone, setIcone] = useState("");
   const [emoji, setEmoji] = useState("");
   const [destaque, setDestaque] = useState(false);
+  const [excluiFreteGratis, setExcluiFreteGratis] = useState(false);
   const [ativo, setAtivo] = useState(true);
   const [ordem, setOrdem] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -43,12 +45,13 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
       setIcone(categoria?.icone ?? "");
       setEmoji(categoria?.emoji ?? "");
       setDestaque(categoria?.destaque ?? false);
+      setExcluiFreteGratis(categoria?.exclui_frete_gratis ?? false);
       setOrdem(categoria?.ordem ?? 0);
     }
   }, [open, categoria]);
 
   const save = async () => {
-    const parsed = schema.safeParse({ nome, ativo, icone, destaque, emoji, ordem });
+    const parsed = schema.safeParse({ nome, ativo, icone, destaque, emoji, exclui_frete_gratis: excluiFreteGratis, ordem });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
 
     const data = {
@@ -57,6 +60,7 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
       icone: parsed.data.icone || null,
       destaque: parsed.data.destaque,
       emoji: parsed.data.emoji || null,
+      exclui_frete_gratis: parsed.data.exclui_frete_gratis,
       ordem: parsed.data.ordem,
     };
     setBusy(true);
@@ -110,6 +114,15 @@ export default function CategoriaDialog({ open, categoria, onClose, onSaved }: P
               <p className="text-xs text-muted-foreground">Categorias inativas não aparecem ao montar pedidos</p>
             </div>
             <Switch id="cat-ativo" checked={ativo} onCheckedChange={setAtivo} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <Label htmlFor="cat-exclui-frete" className="cursor-pointer">Sem frete grátis automático</Label>
+              <p className="text-xs text-muted-foreground">
+                Pedidos com produtos desta categoria não ganham frete grátis (global, bairro ou valor mínimo). Cupom de frete continua valendo.
+              </p>
+            </div>
+            <Switch id="cat-exclui-frete" checked={excluiFreteGratis} onCheckedChange={setExcluiFreteGratis} />
           </div>
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>

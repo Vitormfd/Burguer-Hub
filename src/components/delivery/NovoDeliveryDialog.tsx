@@ -9,11 +9,11 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
-import { calcularTaxaEntrega } from "@/lib/freteGratis";
+import { calcularTaxaEntrega, carrinhoBloqueiaFreteGratis } from "@/lib/freteGratis";
 import { brl } from "@/lib/format";
 import { printReceipt } from "@/lib/print";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
-import type { Cliente, Configuracao } from "@/types/db";
+import type { Cliente, Configuracao, Categoria } from "@/types/db";
 
 const deliverySchema = z.object({
   cliente_nome: z.string().trim().min(2, "Nome muito curto").max(100),
@@ -53,6 +53,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [numero, setNumero] = useState("");
   const [complemento, setComplemento] = useState("");
   const [cfg, setCfg] = useState<Configuracao | null>(null);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [bairroOpen, setBairroOpen] = useState(false);
   const [clienteBusca, setClienteBusca] = useState("");
   const [clienteOpen, setClienteOpen] = useState(false);
@@ -93,10 +94,11 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     if (!open) return;
     
     (async () => {
-      const [{ data: clientesData, error: clientesError }, { data: bairrosData, error: bairrosError }, { data: cfgData }] = await Promise.all([
+      const [{ data: clientesData, error: clientesError }, { data: bairrosData, error: bairrosError }, { data: cfgData }, { data: categoriasData }] = await Promise.all([
         supabase.from("clientes").select("*").order("nome"),
         supabase.from("bairros_taxas").select("nome, taxa, frete_gratis_ativo, frete_gratis_minimo").eq("ativo", true).order("nome"),
         supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
+        supabase.from("categorias").select("id, nome, exclui_frete_gratis"),
       ]);
 
       if (clientesError) {
@@ -114,6 +116,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
       if (cfgData) {
         setCfg(cfgData as unknown as Configuracao);
       }
+      setCategorias((categoriasData || []) as Categoria[]);
     })();
   }, [open]);
 
@@ -207,6 +210,11 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     return bairrosTaxas.find((item) => normalizeBairro(item.nome) === normalized) ?? null;
   }, [bairro, bairrosTaxas]);
 
+  const bloqueiaFreteGratis = useMemo(
+    () => carrinhoBloqueiaFreteGratis(cart, categorias),
+    [cart, categorias],
+  );
+
   const taxaCalculada = useMemo(
     () => calcularTaxaEntrega({
       tipoEntrega: "delivery",
@@ -214,8 +222,9 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
       subtotal,
       config: cfg,
       bairro: bairroSelecionado,
+      bloqueiaFreteGratis,
     }),
-    [taxaBairro, subtotal, cfg, bairroSelecionado],
+    [taxaBairro, subtotal, cfg, bairroSelecionado, bloqueiaFreteGratis],
   );
   const taxaNum = taxaCalculada.taxaEfetiva;
 

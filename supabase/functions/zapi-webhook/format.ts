@@ -125,11 +125,13 @@ export function calcularTaxaEntregaWhatsapp(params: {
   subtotal: number;
   cfg: Pick<LojaConfig, "frete_gratis_ativo" | "frete_gratis_minimo">;
   bairro?: BairroFreteConfig | null;
+  bloqueiaFreteGratis?: boolean;
 }): number {
   const taxaBairro = Math.max(Number(params.taxaBairro || 0), 0);
   const subtotal = Math.max(Number(params.subtotal || 0), 0);
 
   if (params.tipoEntrega === "retirada") return 0;
+  if (params.bloqueiaFreteGratis) return taxaBairro;
   if (params.cfg.frete_gratis_ativo) return 0;
   if (params.bairro?.frete_gratis_ativo) return 0;
 

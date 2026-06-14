@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import {
   calcularTaxaEntrega,
+  carrinhoBloqueiaFreteGratis,
+  categoriasBloqueandoFreteGratis,
   freteGratisBairroResumo,
   freteGratisFaltamEfetivo,
   freteGratisResumo,
@@ -398,6 +400,14 @@ export default function CardapioPublico() {
   );
   const descontoCupom = cupomAplicado?.valor_desconto_aplicado ?? 0;
   const taxaBase = tipoEntrega === "retirada" ? 0 : Number(taxa);
+  const bloqueiaFreteGratis = useMemo(
+    () => carrinhoBloqueiaFreteGratis(cart, categorias),
+    [cart, categorias],
+  );
+  const categoriasSemFrete = useMemo(
+    () => categoriasBloqueandoFreteGratis(cart, categorias),
+    [cart, categorias],
+  );
   const taxaCalculada = useMemo(
     () => calcularTaxaEntrega({
       tipoEntrega,
@@ -406,12 +416,13 @@ export default function CardapioPublico() {
       config: cfg,
       bairro: bairroSelecionado,
       cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
+      bloqueiaFreteGratis,
     }),
-    [tipoEntrega, taxaBase, subtotal, cfg, bairroSelecionado, cupomAplicado?.taxa_entrega_zerada],
+    [tipoEntrega, taxaBase, subtotal, cfg, bairroSelecionado, cupomAplicado?.taxa_entrega_zerada, bloqueiaFreteGratis],
   );
   const taxaEfetiva = taxaCalculada.taxaEfetiva;
-  const freteGratisFalta = freteGratisFaltamEfetivo(subtotal, cfg, bairroSelecionado);
-  const freteGratisTexto = freteGratisResumo(cfg, bairroSelecionado);
+  const freteGratisFalta = freteGratisFaltamEfetivo(subtotal, cfg, bairroSelecionado, bloqueiaFreteGratis);
+  const freteGratisTexto = freteGratisResumo(cfg, bairroSelecionado, bloqueiaFreteGratis);
   const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
@@ -973,6 +984,7 @@ export default function CardapioPublico() {
       config: cfg,
       bairro: bairro ?? null,
       cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
+      bloqueiaFreteGratis: carrinhoBloqueiaFreteGratis(cart, categorias),
     }).taxaEfetiva;
     const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
@@ -1709,6 +1721,11 @@ export default function CardapioPublico() {
                   <span>{tipoEntrega === "delivery" ? "Frete" : "Cupom"}</span>
                   <span>{tipoEntrega === "delivery" ? "Grátis 🎉" : "Aplicado"}</span>
                 </div>
+              )}
+              {tipoEntrega === "delivery" && bloqueiaFreteGratis && categoriasSemFrete.length > 0 && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                  Frete grátis automático não vale para: {categoriasSemFrete.join(", ")}
+                </p>
               )}
               {tipoEntrega === "delivery" && freteGratisTexto && !taxaCalculada.freteGratis && freteGratisFalta != null && (
                 <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">

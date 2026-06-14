@@ -4,6 +4,7 @@ import {
   deleteSession,
   isLojaAberta,
   loadBairros,
+  carrinhoBloqueiaFreteGratis,
   loadCategorias,
   loadClienteByPhone,
   loadGruposProduto,
@@ -793,12 +794,18 @@ async function buildConfirmacao(
     taxaBairro = bairro ? Number(bairro.taxa) : 0;
     bairroFrete = bairro;
   }
+  const bloqueiaFreteGratis = await carrinhoBloqueiaFreteGratis(
+    supabase,
+    cfg.owner_id,
+    dados.carrinho.map((item) => item.produto_id),
+  );
   const taxa = calcularTaxaEntregaWhatsapp({
     tipoEntrega: dados.tipo_entrega || "delivery",
     taxaBairro,
     subtotal,
     cfg,
     bairro: bairroFrete,
+    bloqueiaFreteGratis,
   });
   const total = subtotal + taxa;
 
@@ -828,12 +835,18 @@ async function finalizeOrder(
     taxaBairro = bairro ? Number(bairro.taxa) : 0;
     bairroFrete = bairro;
   }
+  const bloqueiaFreteGratis = await carrinhoBloqueiaFreteGratis(
+    supabase,
+    cfg.owner_id,
+    dados.carrinho.map((item) => item.produto_id),
+  );
   const taxa = calcularTaxaEntregaWhatsapp({
     tipoEntrega: dados.tipo_entrega || "delivery",
     taxaBairro,
     subtotal,
     cfg,
     bairro: bairroFrete,
+    bloqueiaFreteGratis,
   });
   const total = subtotal + taxa;
 

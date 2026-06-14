@@ -155,6 +155,9 @@ export default function Cardapio() {
                       >
                         <span className={cn("min-w-0 flex-1 truncate", !c.ativo && "italic opacity-60")}>
                           {c.nome}
+                          {c.exclui_frete_gratis && (
+                            <span className="ml-1 text-[10px] font-normal opacity-70">· sem frete grátis</span>
+                          )}
                         </span>
                         <span className="ml-2 shrink-0 text-xs opacity-70">{countByCat(c.id)}</span>
                       </button>

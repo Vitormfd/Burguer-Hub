@@ -25,6 +25,48 @@ export interface BairroFreteGratisConfig {
   frete_gratis_minimo?: number | null;
 }
 
+export interface CategoriaFreteGratisConfig {
+  id: string;
+  nome: string;
+  exclui_frete_gratis?: boolean;
+}
+
+export interface ItemFreteGratisCheck {
+  produto: { categoria_id: string | null };
+}
+
+export function carrinhoBloqueiaFreteGratis(
+  itens: ItemFreteGratisCheck[],
+  categorias: CategoriaFreteGratisConfig[],
+): boolean {
+  const excluidas = new Set(
+    categorias.filter((categoria) => categoria.exclui_frete_gratis).map((categoria) => categoria.id),
+  );
+  if (!excluidas.size) return false;
+  return itens.some((item) => item.produto.categoria_id && excluidas.has(item.produto.categoria_id));
+}
+
+export function categoriasBloqueandoFreteGratis(
+  itens: ItemFreteGratisCheck[],
+  categorias: CategoriaFreteGratisConfig[],
+): string[] {
+  const excluidas = new Map(
+    categorias
+      .filter((categoria) => categoria.exclui_frete_gratis)
+      .map((categoria) => [categoria.id, categoria.nome]),
+  );
+  if (!excluidas.size) return [];
+
+  const nomes = new Set<string>();
+  itens.forEach((item) => {
+    const catId = item.produto.categoria_id;
+    if (catId && excluidas.has(catId)) {
+      nomes.add(excluidas.get(catId)!);
+    }
+  });
+  return Array.from(nomes);
+}
+
 export function calcularTaxaEntrega(params: {
   tipoEntrega: TipoEntrega;
   taxaBairro: number;
@@ -32,6 +74,7 @@ export function calcularTaxaEntrega(params: {
   config?: FreteGratisConfig | null;
   bairro?: BairroFreteGratisConfig | null;
   cupomZeraFrete?: boolean;
+  bloqueiaFreteGratis?: boolean;
 }): TaxaEntregaCalculada {
   const taxaBairro = Math.max(Number(params.taxaBairro || 0), 0);
   const subtotal = Math.max(Number(params.subtotal || 0), 0);
@@ -44,6 +87,10 @@ export function calcularTaxaEntrega(params: {
 
   if (params.cupomZeraFrete) {
     return { taxaBairro, taxaEfetiva: 0, freteGratis: true, motivo: "cupom" };
+  }
+
+  if (params.bloqueiaFreteGratis) {
+    return { taxaBairro, taxaEfetiva: taxaBairro, freteGratis: false, motivo: null };
   }
 
   if (config?.frete_gratis_ativo) {
@@ -77,8 +124,9 @@ export function freteGratisFaltam(subtotal: number, minimo?: number | null): num
 export function minimosFreteGratisAtivos(
   config?: FreteGratisConfig | null,
   bairro?: BairroFreteGratisConfig | null,
+  bloqueiaFreteGratis = false,
 ): number[] {
-  if (config?.frete_gratis_ativo || bairro?.frete_gratis_ativo) return [];
+  if (bloqueiaFreteGratis || config?.frete_gratis_ativo || bairro?.frete_gratis_ativo) return [];
 
   const minimos: number[] = [];
   const minimoGlobal = Number(config?.frete_gratis_minimo || 0);
@@ -92,8 +140,9 @@ export function proximoMinimoFreteGratis(
   subtotal: number,
   config?: FreteGratisConfig | null,
   bairro?: BairroFreteGratisConfig | null,
+  bloqueiaFreteGratis = false,
 ): number | null {
-  const minimos = minimosFreteGratisAtivos(config, bairro);
+  const minimos = minimosFreteGratisAtivos(config, bairro, bloqueiaFreteGratis);
   if (!minimos.length) return null;
   return Math.min(...minimos);
 }
@@ -102,8 +151,9 @@ export function freteGratisFaltamEfetivo(
   subtotal: number,
   config?: FreteGratisConfig | null,
   bairro?: BairroFreteGratisConfig | null,
+  bloqueiaFreteGratis = false,
 ): number | null {
-  const alvo = proximoMinimoFreteGratis(subtotal, config, bairro);
+  const alvo = proximoMinimoFreteGratis(subtotal, config, bairro, bloqueiaFreteGratis);
   if (alvo == null) return null;
   return freteGratisFaltam(subtotal, alvo);
 }
@@ -111,10 +161,12 @@ export function freteGratisFaltamEfetivo(
 export function freteGratisResumo(
   config?: FreteGratisConfig | null,
   bairro?: BairroFreteGratisConfig | null,
+  bloqueiaFreteGratis = false,
 ): string | null {
+  if (bloqueiaFreteGratis) return null;
   if (config?.frete_gratis_ativo) return "Frete grátis em todos os pedidos delivery";
   if (bairro?.frete_gratis_ativo) return "Frete grátis neste bairro";
-  const minimos = minimosFreteGratisAtivos(config, bairro);
+  const minimos = minimosFreteGratisAtivos(config, bairro, bloqueiaFreteGratis);
   if (!minimos.length) return null;
   const alvo = Math.min(...minimos);
   return `Frete grátis em pedidos a partir de R$ ${alvo.toFixed(2).replace(".", ",")}`;

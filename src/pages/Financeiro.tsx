@@ -1054,8 +1054,14 @@ export default function Financeiro() {
   const saveCategoria = async () => {
     if (!categoriaForm.nome.trim()) return toast.error("Informe o nome da categoria");
 
+    const nome = categoriaForm.nome.trim();
+    const nomeJaExiste = categorias.some((c) => c.nome.toLowerCase() === nome.toLowerCase());
+    if (nomeJaExiste) {
+      return toast.error("Já existe uma categoria com este nome");
+    }
+
     const payload = {
-      nome: categoriaForm.nome.trim(),
+      nome,
       tipo: categoriaForm.tipo,
       cor: categoriaForm.cor,
       icone: categoriaForm.icone.trim() || null,
@@ -1065,7 +1071,12 @@ export default function Financeiro() {
     const { data, error } = await sb.from("categorias_compra").insert(payload).select("id").single();
     setCategoriaBusy(false);
 
-    if (error) return toast.error(error.message);
+    if (error) {
+      if (error.code === "23505") {
+        return toast.error("Já existe uma categoria com este nome");
+      }
+      return toast.error(error.message);
+    }
 
     toast.success("Categoria criada");
     setCategoriaDialogOpen(false);

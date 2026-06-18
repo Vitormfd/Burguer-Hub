@@ -32,6 +32,7 @@ import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
 import { pedidoEditavel } from "@/lib/pedidoEdit";
 import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle, Pencil } from "lucide-react";
 import { printReceipt } from "@/lib/print";
+import { itemPedidoSubtotal, refreshContaTotalInDb } from "@/lib/contaTotal";
 
 type ItemAdicional = { nome: string; quantidade: number; preco_unitario: number };
 type ItemDetalhado = PedidoItem & { produto: Produto | null; adicionais: ItemAdicional[] };
@@ -195,6 +196,12 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       .order("criado_em");
 
     setPagamentos((pagamentosData || []) as ContaPagamento[]);
+
+    try {
+      await refreshContaTotalInDb(contaData.id);
+    } catch (error) {
+      console.warn("ContaSheet: falha ao sincronizar total da conta.", error);
+    }
   }, [mesa]);
 
   useEffect(() => { 
@@ -220,11 +227,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   }, [conta, load]);
 
   const total = pedidos.reduce(
-    (s, p) => s + p.itens.reduce((si, i) => {
-      if (i.cancelado) return si;
-      return si + Number(i.preco_unitario) * i.quantidade;
-    }, 0),
-    0
+    (s, p) => s + p.itens.reduce((si, i) => si + itemPedidoSubtotal(i), 0),
+    0,
   );
 
   const pagamentosTotal = pagamentos.reduce((s, pagamento) => s + Number(pagamento.valor), 0);
@@ -349,29 +353,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
   };
 
   const refreshContaTotal = async (contaId: string) => {
-    const { data: peds } = await supabase
-      .from("pedidos")
-      .select("id, status, cancelado_em")
-      .eq("conta_id", contaId);
-
-    const pedidosAtivos = (peds || []).filter((p) => p.status !== "cancelado" && !p.cancelado_em);
-    if (!pedidosAtivos.length) {
-      await supabase.from("contas").update({ total: 0 }).eq("id", contaId);
-      return;
-    }
-
-    const ids = pedidosAtivos.map((p) => p.id);
-    const { data: itens } = await supabase
-      .from("pedido_itens")
-      .select("quantidade, preco_unitario, cancelado")
-      .in("pedido_id", ids);
-
-    const novoTotal = (itens || []).reduce((acc, i) => {
-      if (i.cancelado) return acc;
-      return acc + Number(i.preco_unitario) * i.quantidade;
-    }, 0);
-
-    await supabase.from("contas").update({ total: novoTotal }).eq("id", contaId);
+    await refreshContaTotalInDb(contaId);
   };
 
   const maybeOfferFecharContaZero = async () => {
@@ -756,10 +738,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               )}
 
               {pedidos.map((p, idx) => {
-                const subtotal = p.itens.reduce((s, i) => {
-                  if (i.cancelado) return s;
-                  return s + Number(i.preco_unitario) * i.quantidade;
-                }, 0);
+                const subtotal = p.itens.reduce((s, i) => s + itemPedidoSubtotal(i), 0);
                 const hasItensNaoCancelados = p.itens.some((i) => !i.cancelado);
 
                 return (
@@ -857,7 +836,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                             )}
                           </div>
                           <span className={i.cancelado ? "text-muted-foreground whitespace-nowrap line-through" : "text-muted-foreground whitespace-nowrap"}>
-                            {brl(Number(i.preco_unitario) * i.quantidade)}
+                            {brl(itemPedidoSubtotal(i))}
                           </span>
                         </li>
                       ))}
@@ -1029,7 +1008,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           contaId={conta.id}
           mesaNumero={mesa?.numero}
           onClose={() => setNovoOpen(false)}
-          onCreated={() => { setNovoOpen(false); load(); }}
+          onCreated={() => { setNovoOpen(false); void load(); }}
         />
       )}
 

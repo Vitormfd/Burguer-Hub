@@ -75,36 +75,109 @@ const emptyCancelamentos: CancelamentosHojeKpi = {
   detalhes: [],
 };
 
+type VendasAcc = Map<string, { quantidade: number; receita: number }>;
+
+const ADICIONAL_PREFIX = "adicional:";
+const EXTRA_TAXA_ENTREGA = "__taxa_entrega__";
+const EXTRA_DESCONTO = "__desconto__";
+
+function addVenda(acc: VendasAcc, key: string, quantidade: number, receita: number) {
+  const cur = acc.get(key) ?? { quantidade: 0, receita: 0 };
+  cur.quantidade += quantidade;
+  cur.receita += receita;
+  acc.set(key, cur);
+}
+
 async function fetchRangeData(ini: string, fim: string) {
-  const [faturamento, pedOnlineR] = await Promise.all([
+  const [faturamento, pedOnlineR, contasR] = await Promise.all([
     fetchFaturamentoPeriodo(ini, fim),
     supabase
       .from("pedidos")
-      .select("id, tipo_entrega")
+      .select("id, tipo_entrega, desconto, valor_desconto")
       .eq("tipo", "delivery")
       .neq("status", "cancelado")
       .gte("criado_em", ini)
       .lte("criado_em", fim),
+    supabase
+      .from("contas")
+      .select("id")
+      .eq("status", "fechada")
+      .gte("fechada_em", ini)
+      .lte("fechada_em", fim),
   ]);
 
-  const pedOnline = pedOnlineR.data || [];
-  const allIds = pedOnline.map((p) => p.id);
-  const acc = new Map<string, { quantidade: number; receita: number }>();
+  if (pedOnlineR.error) throw pedOnlineR.error;
+  if (contasR.error) throw contasR.error;
 
-  if (allIds.length) {
-    const { data: itens } = await supabase
+  const pedOnline = pedOnlineR.data || [];
+  const onlineIds = pedOnline.map((p) => p.id);
+
+  let mesaIds: string[] = [];
+  const contaIds = (contasR.data || []).map((conta) => conta.id);
+  if (contaIds.length) {
+    const pedMesaR = await supabase
+      .from("pedidos")
+      .select("id")
+      .eq("tipo", "mesa")
+      .neq("status", "cancelado")
+      .in("conta_id", contaIds);
+
+    if (pedMesaR.error) throw pedMesaR.error;
+    mesaIds = (pedMesaR.data || []).map((pedido) => pedido.id);
+  }
+
+  const allPedidoIds = [...new Set([...onlineIds, ...mesaIds])];
+  const acc: VendasAcc = new Map();
+
+  if (allPedidoIds.length) {
+    const itensR = await supabase
       .from("pedido_itens")
-      .select("pedido_id, produto_id, quantidade, preco_unitario")
-      .in("pedido_id", allIds)
+      .select("id, produto_id, quantidade, preco_unitario")
+      .in("pedido_id", allPedidoIds)
       .eq("cancelado", false);
 
-    (itens || []).forEach((i) => {
-      const sub = Number(i.preco_unitario) * i.quantidade;
-      const key = i.produto_id ?? "—";
-      const cur = acc.get(key) ?? { quantidade: 0, receita: 0 };
-      cur.quantidade += i.quantidade;
-      cur.receita += sub;
-      acc.set(key, cur);
+    if (itensR.error) throw itensR.error;
+
+    const itemIds: string[] = [];
+    (itensR.data || []).forEach((item) => {
+      itemIds.push(item.id);
+      addVenda(acc, item.produto_id ?? "—", item.quantidade, Number(item.preco_unitario) * item.quantidade);
+    });
+
+    if (itemIds.length) {
+      const adicionaisR = await supabase
+        .from("pedido_item_adicionais")
+        .select("adicional_id, quantidade, preco_unitario")
+        .in("pedido_item_id", itemIds);
+
+      if (adicionaisR.error) throw adicionaisR.error;
+
+      (adicionaisR.data || []).forEach((adicional) => {
+        addVenda(
+          acc,
+          `${ADICIONAL_PREFIX}${adicional.adicional_id}`,
+          adicional.quantidade,
+          Number(adicional.preco_unitario) * adicional.quantidade,
+        );
+      });
+    }
+  }
+
+  if (onlineIds.length) {
+    const entregasR = await supabase.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", onlineIds);
+    if (entregasR.error) throw entregasR.error;
+
+    const pedidoMap = new Map(pedOnline.map((pedido) => [pedido.id, pedido]));
+    (entregasR.data || []).forEach((entrega) => {
+      const pedido = pedidoMap.get(entrega.pedido_id);
+      if (!pedido || pedido.tipo_entrega === "retirada") return;
+      const taxa = Number(entrega.taxa_entrega || 0);
+      if (taxa > 0) addVenda(acc, EXTRA_TAXA_ENTREGA, 1, taxa);
+    });
+
+    pedOnline.forEach((pedido) => {
+      const desconto = Number(pedido.desconto || 0) + Number(pedido.valor_desconto || 0);
+      if (desconto > 0) addVenda(acc, EXTRA_DESCONTO, 1, -desconto);
     });
   }
 
@@ -122,9 +195,19 @@ async function fetchRangeData(ini: string, fim: string) {
   };
 }
 
-async function buildVendasPorProduto(acc: Map<string, { quantidade: number; receita: number }>) {
+async function buildVendasPorProduto(acc: VendasAcc) {
   const { data: produtos } = await supabase.from("produtos").select("id, nome").order("nome");
   const catalogIds = new Set((produtos || []).map((p) => p.id));
+
+  const adicionalIds = [...acc.keys()]
+    .filter((key) => key.startsWith(ADICIONAL_PREFIX))
+    .map((key) => key.slice(ADICIONAL_PREFIX.length));
+
+  const { data: adicionaisCatalogo } = adicionalIds.length
+    ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
+    : { data: [] as { id: string; nome: string }[] };
+
+  const adicionalNomeMap = new Map((adicionaisCatalogo || []).map((adicional) => [adicional.id, adicional.nome]));
 
   const lista: { nome: string; quantidade: number; receita: number }[] = (produtos || []).map((p) => {
     const v = acc.get(p.id);
@@ -136,7 +219,16 @@ async function buildVendasPorProduto(acc: Map<string, { quantidade: number; rece
   });
 
   for (const [pid, v] of acc) {
-    if (pid === "—" || catalogIds.has(pid)) continue;
+    if (pid.startsWith(ADICIONAL_PREFIX)) {
+      const adicionalId = pid.slice(ADICIONAL_PREFIX.length);
+      lista.push({
+        nome: adicionalNomeMap.get(adicionalId) ? `+ ${adicionalNomeMap.get(adicionalId)}` : "Adicional removido",
+        quantidade: v.quantidade,
+        receita: v.receita,
+      });
+      continue;
+    }
+    if (pid === EXTRA_TAXA_ENTREGA || pid === EXTRA_DESCONTO || pid === "—" || catalogIds.has(pid)) continue;
     lista.push({ nome: "Produto removido", quantidade: v.quantidade, receita: v.receita });
   }
 
@@ -145,7 +237,17 @@ async function buildVendasPorProduto(acc: Map<string, { quantidade: number; rece
     lista.push({ nome: "Produto removido (sem ID)", quantidade: v.quantidade, receita: v.receita });
   }
 
-  return lista.sort((a, b) => b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"));
+  if (acc.has(EXTRA_TAXA_ENTREGA)) {
+    const v = acc.get(EXTRA_TAXA_ENTREGA)!;
+    lista.push({ nome: "Taxa de entrega", quantidade: v.quantidade, receita: v.receita });
+  }
+
+  if (acc.has(EXTRA_DESCONTO)) {
+    const v = acc.get(EXTRA_DESCONTO)!;
+    lista.push({ nome: "Descontos aplicados", quantidade: v.quantidade, receita: v.receita });
+  }
+
+  return lista.sort((a, b) => b.receita - a.receita || b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
 export default function Relatorios() {
@@ -188,20 +290,25 @@ export default function Relatorios() {
     const iniPrev = startOfDay(subDays(now, r * 2 - 1)).toISOString();
     const fimPrev = endOfDay(subDays(now, r)).toISOString();
 
-    const [cur, prev] = await Promise.all([
-      fetchRangeData(ini, fim),
-      fetchRangeData(iniPrev, fimPrev),
-    ]);
+    try {
+      const [cur, prev] = await Promise.all([
+        fetchRangeData(ini, fim),
+        fetchRangeData(iniPrev, fimPrev),
+      ]);
 
-    const vendasPorProduto = await buildVendasPorProduto(cur.acc);
+      const vendasPorProduto = await buildVendasPorProduto(cur.acc);
 
-    setData({
-      faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
-      faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
-      delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-      vendasPorProduto,
-    });
-    setLoading(false);
+      setData({
+        faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
+        faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
+        delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
+        vendasPorProduto,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar relatório");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const loadCancelamentosHoje = useCallback(async () => {
@@ -323,20 +430,25 @@ export default function Relatorios() {
     const iniPrev = startOfDay(new Date(dateStart.getTime() - duration)).toISOString();
     const fimPrev = endOfDay(new Date(dateStart.getTime() - 86400000)).toISOString();
 
-    const [cur, prev] = await Promise.all([
-      fetchRangeData(ini, fim),
-      fetchRangeData(iniPrev, fimPrev),
-    ]);
+    try {
+      const [cur, prev] = await Promise.all([
+        fetchRangeData(ini, fim),
+        fetchRangeData(iniPrev, fimPrev),
+      ]);
 
-    const vendasPorProduto = await buildVendasPorProduto(cur.acc);
+      const vendasPorProduto = await buildVendasPorProduto(cur.acc);
 
-    setData({
-      faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
-      faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
-      delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-      vendasPorProduto,
-    });
-    setLoading(false);
+      setData({
+        faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
+        faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
+        delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
+        vendasPorProduto,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar relatório");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadToday(); }, [loadToday]);
@@ -363,9 +475,11 @@ export default function Relatorios() {
   };
 
   const totalModalidade = data.delivery + data.retirada + data.mesa || 1;
-  const maxQtd = Math.max(...data.vendasPorProduto.map((p) => p.quantidade), 1);
-  const totalItensVendidos = data.vendasPorProduto.reduce((s, p) => s + p.quantidade, 0);
-  const totalReceitaProdutos = data.vendasPorProduto.reduce((s, p) => s + p.receita, 0);
+  const vendasComMovimento = data.vendasPorProduto.filter((p) => p.quantidade > 0 || p.receita !== 0);
+  const maxQtd = Math.max(...vendasComMovimento.map((p) => p.quantidade), 1);
+  const totalItensVendidos = data.vendasPorProduto.reduce((s, p) => s + (p.receita >= 0 ? p.quantidade : 0), 0);
+  const totalReceitaItens = data.vendasPorProduto.reduce((s, p) => s + p.receita, 0);
+  const diferencaFaturamento = data.faturamento - totalReceitaItens;
 
   return (
     <div className="space-y-6">
@@ -559,7 +673,9 @@ export default function Relatorios() {
             <BarChart3 className="w-5 h-5 text-primary" />
             <div>
               <h2 className="font-display text-2xl">Vendas por produto</h2>
-              <p className="text-sm text-muted-foreground">Panorama completo de itens vendidos no período</p>
+              <p className="text-sm text-muted-foreground">
+                Mesa, delivery e retirada — inclui produtos, adicionais, taxas e descontos do período.
+              </p>
             </div>
           </div>
           {!loading && (
@@ -569,40 +685,53 @@ export default function Relatorios() {
                 <div className="font-display text-2xl">{totalItensVendidos}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">Receita dos produtos</div>
-                <div className="font-display text-2xl text-primary">{brl(totalReceitaProdutos)}</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Receita de itens</div>
+                <div className="font-display text-2xl text-primary">{brl(totalReceitaItens)}</div>
               </div>
+              {Math.abs(diferencaFaturamento) >= 0.01 && (
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">Diferença p/ faturamento</div>
+                  <div className="font-display text-2xl text-muted-foreground">{brl(diferencaFaturamento)}</div>
+                </div>
+              )}
             </div>
           )}
         </div>
+        {!loading && Math.abs(diferencaFaturamento) >= 0.01 && (
+          <p className="px-5 pb-4 text-xs text-muted-foreground border-b">
+            O faturamento usa o total fechado de cada venda. A receita de itens detalha produto a produto — pequenas diferenças podem ocorrer por arredondamentos ou ajustes manuais na conta.
+          </p>
+        )}
         {loading ? (
           <div className="p-8 text-center text-muted-foreground">Calculando...</div>
-        ) : data.vendasPorProduto.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">Nenhum produto cadastrado no cardápio.</div>
+        ) : vendasComMovimento.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground">Nenhuma venda registrada no período.</div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Produto</TableHead>
+                <TableHead>Item</TableHead>
                 <TableHead className="w-[35%]">Participação</TableHead>
                 <TableHead className="text-right w-24">Qtd. vendida</TableHead>
                 <TableHead className="text-right w-32">Receita</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.vendasPorProduto.map((p) => (
-                <TableRow key={p.nome} className={p.quantidade === 0 ? "opacity-60" : undefined}>
+              {vendasComMovimento.map((p) => (
+                <TableRow key={p.nome}>
                   <TableCell className="font-medium">{p.nome}</TableCell>
                   <TableCell>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div
                         className="h-full bg-gradient-primary"
-                        style={{ width: `${(p.quantidade / maxQtd) * 100}%` }}
+                        style={{ width: `${(Math.max(p.quantidade, 0) / maxQtd) * 100}%` }}
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-semibold">{p.quantidade}</TableCell>
-                  <TableCell className="text-right text-primary font-semibold">{brl(p.receita)}</TableCell>
+                  <TableCell className="text-right font-semibold">{p.receita < 0 ? "—" : p.quantidade}</TableCell>
+                  <TableCell className={cn("text-right font-semibold", p.receita < 0 ? "text-destructive" : "text-primary")}>
+                    {brl(p.receita)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

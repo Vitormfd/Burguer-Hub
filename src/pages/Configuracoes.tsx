@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { type PrintConfig, readPrintConfig, savePrintConfig, printCashSummary } from "@/lib/print";
 import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
-import { brl } from "@/lib/format";
 import { configureWhatsappWebhook } from "@/lib/whatsapp";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -596,9 +595,9 @@ export default function Configuracoes() {
     if (error) toast.error(error.message); else load();
   };
 
-  const updateBairroFrete = async (
+  const updateBairro = async (
     id: string,
-    patch: Partial<Pick<BairroTaxa, "frete_gratis_ativo" | "frete_gratis_minimo">>,
+    patch: Partial<Pick<BairroTaxa, "nome" | "taxa" | "frete_gratis_ativo" | "frete_gratis_minimo">>,
   ) => {
     const { error } = await supabase.from("bairros_taxas").update(patch).eq("id", id);
     if (error) {
@@ -942,15 +941,55 @@ export default function Configuracoes() {
                       className="px-4 py-3 grid gap-3 md:grid-cols-[1fr_90px_120px_120px_40px] md:items-center"
                     >
                       <div>
-                        <div className="font-medium">{b.nome}</div>
-                        <div className="md:hidden text-sm text-primary font-semibold mt-0.5">{brl(Number(b.taxa))}</div>
+                        <Input
+                          value={b.nome}
+                          className="h-9"
+                          onChange={(event) => {
+                            setBairros((current) =>
+                              current.map((bairro) =>
+                                bairro.id === b.id ? { ...bairro, nome: event.target.value } : bairro,
+                              ),
+                            );
+                          }}
+                          onBlur={(event) => {
+                            const nome = event.target.value.trim();
+                            if (!nome) {
+                              toast.error("Nome do bairro é obrigatório");
+                              load();
+                              return;
+                            }
+                            void updateBairro(b.id, { nome });
+                          }}
+                        />
                       </div>
-                      <div className="hidden md:block text-primary font-semibold">{brl(Number(b.taxa))}</div>
+                      <div>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.50"
+                          className="h-9"
+                          value={b.taxa}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            setBairros((current) =>
+                              current.map((bairro) =>
+                                bairro.id === b.id
+                                  ? { ...bairro, taxa: Math.max(Number(raw.replace(",", ".")) || 0, 0) }
+                                  : bairro,
+                              ),
+                            );
+                          }}
+                          onBlur={(event) => {
+                            const taxa = Math.max(Number(event.target.value.replace(",", ".")) || 0, 0);
+                            void updateBairro(b.id, { taxa });
+                          }}
+                        />
+                      </div>
                       <div className="flex items-center gap-2">
                         <Switch
                           checked={!!b.frete_gratis_ativo}
                           disabled={!!cfg.frete_gratis_ativo}
-                          onCheckedChange={(value) => void updateBairroFrete(b.id, { frete_gratis_ativo: value })}
+                          onCheckedChange={(value) => void updateBairro(b.id, { frete_gratis_ativo: value })}
                         />
                         <span className="text-xs text-muted-foreground md:hidden">
                           {b.frete_gratis_ativo ? "Sempre grátis" : "Pago"}
@@ -981,7 +1020,7 @@ export default function Configuracoes() {
                           }}
                           onBlur={(event) => {
                             const raw = event.target.value.trim();
-                            void updateBairroFrete(b.id, {
+                            void updateBairro(b.id, {
                               frete_gratis_minimo: raw ? Math.max(Number(raw.replace(",", ".")), 0) : null,
                             });
                           }}

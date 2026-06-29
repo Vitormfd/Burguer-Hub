@@ -11,12 +11,8 @@ type ItemLike = {
 
 export function itemPedidoSubtotal(item: ItemLike): number {
   if (item.cancelado) return 0;
-  const base = Number(item.preco_unitario) * item.quantidade;
-  const adicionais = (item.adicionais || []).reduce(
-    (sum, adicional) => sum + Number(adicional.preco_unitario) * adicional.quantidade,
-    0,
-  );
-  return base + adicionais;
+  // preco_unitario já inclui os adicionais; a lista de adicionais é só para exibição.
+  return Number(item.preco_unitario) * item.quantidade;
 }
 
 export async function refreshContaTotalInDb(
@@ -46,28 +42,11 @@ export async function refreshContaTotalInDb(
   if (itensError) throw itensError;
 
   const itensAtivos = (itens || []).filter((item) => !item.cancelado);
-  const itemIds = itensAtivos.map((item) => item.id);
-
-  let adicionaisTotal = 0;
-  if (itemIds.length) {
-    const { data: adicionais, error: adicionaisError } = await client
-      .from("pedido_item_adicionais")
-      .select("preco_unitario, quantidade")
-      .in("pedido_item_id", itemIds);
-
-    if (adicionaisError) throw adicionaisError;
-
-    adicionaisTotal = (adicionais || []).reduce(
-      (sum, adicional) => sum + Number(adicional.preco_unitario) * adicional.quantidade,
-      0,
-    );
-  }
-
-  const itensTotal = itensAtivos.reduce(
-    (sum, item) => sum + Number(item.preco_unitario) * item.quantidade,
-    0,
+  const novoTotal = Number(
+    itensAtivos
+      .reduce((sum, item) => sum + Number(item.preco_unitario) * item.quantidade, 0)
+      .toFixed(2),
   );
-  const novoTotal = Number((itensTotal + adicionaisTotal).toFixed(2));
 
   const { error: updateError } = await client.from("contas").update({ total: novoTotal }).eq("id", contaId);
   if (updateError) throw updateError;

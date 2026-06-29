@@ -588,7 +588,7 @@ export default function HistoricoPedidos() {
                                     ))}
                                   </div>
                                   <div className="font-medium shrink-0">
-                                    {brl(item.preco_unitario * item.quantidade + item.adicionais.reduce((s, a) => s + a.preco_unitario * a.quantidade, 0))}
+                                    {brl(item.preco_unitario * item.quantidade)}
                                   </div>
                                 </div>
                               ))

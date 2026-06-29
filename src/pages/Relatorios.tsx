@@ -147,18 +147,30 @@ async function fetchRangeData(ini: string, fim: string) {
     if (itemIds.length) {
       const adicionaisR = await supabase
         .from("pedido_item_adicionais")
-        .select("adicional_id, quantidade, preco_unitario")
+        .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
         .in("pedido_item_id", itemIds);
 
       if (adicionaisR.error) throw adicionaisR.error;
 
+      const adicionaisPorItem = new Map<string, number>();
       (adicionaisR.data || []).forEach((adicional) => {
+        const valor = Number(adicional.preco_unitario) * adicional.quantidade;
+        adicionaisPorItem.set(
+          adicional.pedido_item_id,
+          (adicionaisPorItem.get(adicional.pedido_item_id) ?? 0) + valor,
+        );
         addVenda(
           acc,
           `${ADICIONAL_PREFIX}${adicional.adicional_id}`,
           adicional.quantidade,
-          Number(adicional.preco_unitario) * adicional.quantidade,
+          valor,
         );
+      });
+
+      (itensR.data || []).forEach((item) => {
+        const adicionaisValor = adicionaisPorItem.get(item.id) ?? 0;
+        if (adicionaisValor <= 0) return;
+        addVenda(acc, item.produto_id ?? "—", 0, -adicionaisValor);
       });
     }
   }

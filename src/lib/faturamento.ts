@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchInBatches } from "@/lib/supabaseBatch";
 
 export interface FaturamentoPeriodo {
   total: number;
@@ -68,16 +69,20 @@ export async function fetchFaturamentoPeriodo(
 
   if (pedidos.length) {
     const pedidoIds = pedidos.map((pedido) => pedido.id);
-    const [{ data: itens }, { data: entregas }] = await Promise.all([
-      client
-        .from("pedido_itens")
-        .select("pedido_id, quantidade, preco_unitario, cancelado")
-        .in("pedido_id", pedidoIds),
-      client.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", pedidoIds),
+    const [itens, entregas] = await Promise.all([
+      fetchInBatches(pedidoIds, (batch) =>
+        client
+          .from("pedido_itens")
+          .select("pedido_id, quantidade, preco_unitario, cancelado")
+          .in("pedido_id", batch),
+      ),
+      fetchInBatches(pedidoIds, (batch) =>
+        client.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", batch),
+      ),
     ]);
 
     const itemTotals = new Map<string, number>();
-    (itens || []).forEach((item) => {
+    itens.forEach((item) => {
       if (item.cancelado) return;
       itemTotals.set(
         item.pedido_id,
@@ -85,7 +90,7 @@ export async function fetchFaturamentoPeriodo(
       );
     });
 
-    const taxaMap = new Map((entregas || []).map((entrega) => [entrega.pedido_id, Number(entrega.taxa_entrega || 0)]));
+    const taxaMap = new Map(entregas.map((entrega) => [entrega.pedido_id, Number(entrega.taxa_entrega || 0)]));
 
     pedidos.forEach((pedido) => {
       const taxa = pedido.tipo_entrega === "retirada" ? 0 : (taxaMap.get(pedido.id) || 0);

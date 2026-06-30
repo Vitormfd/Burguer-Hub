@@ -14,6 +14,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
+import { fetchInBatches } from "@/lib/supabaseBatch";
 import { brl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -115,45 +116,45 @@ async function fetchRangeData(ini: string, fim: string) {
   let mesaIds: string[] = [];
   const contaIds = (contasR.data || []).map((conta) => conta.id);
   if (contaIds.length) {
-    const pedMesaR = await supabase
-      .from("pedidos")
-      .select("id")
-      .eq("tipo", "mesa")
-      .neq("status", "cancelado")
-      .in("conta_id", contaIds);
-
-    if (pedMesaR.error) throw pedMesaR.error;
-    mesaIds = (pedMesaR.data || []).map((pedido) => pedido.id);
+    const pedidosMesa = await fetchInBatches(contaIds, (batch) =>
+      supabase
+        .from("pedidos")
+        .select("id")
+        .eq("tipo", "mesa")
+        .neq("status", "cancelado")
+        .in("conta_id", batch),
+    );
+    mesaIds = pedidosMesa.map((pedido) => pedido.id);
   }
 
   const allPedidoIds = [...new Set([...onlineIds, ...mesaIds])];
   const acc: VendasAcc = new Map();
 
   if (allPedidoIds.length) {
-    const itensR = await supabase
-      .from("pedido_itens")
-      .select("id, produto_id, quantidade, preco_unitario")
-      .in("pedido_id", allPedidoIds)
-      .eq("cancelado", false);
-
-    if (itensR.error) throw itensR.error;
+    const itens = await fetchInBatches(allPedidoIds, (batch) =>
+      supabase
+        .from("pedido_itens")
+        .select("id, produto_id, quantidade, preco_unitario")
+        .in("pedido_id", batch)
+        .eq("cancelado", false),
+    );
 
     const itemIds: string[] = [];
-    (itensR.data || []).forEach((item) => {
+    itens.forEach((item) => {
       itemIds.push(item.id);
       addVenda(acc, item.produto_id ?? "—", item.quantidade, Number(item.preco_unitario) * item.quantidade);
     });
 
     if (itemIds.length) {
-      const adicionaisR = await supabase
-        .from("pedido_item_adicionais")
-        .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
-        .in("pedido_item_id", itemIds);
-
-      if (adicionaisR.error) throw adicionaisR.error;
+      const adicionais = await fetchInBatches(itemIds, (batch) =>
+        supabase
+          .from("pedido_item_adicionais")
+          .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
+          .in("pedido_item_id", batch),
+      );
 
       const adicionaisPorItem = new Map<string, number>();
-      (adicionaisR.data || []).forEach((adicional) => {
+      adicionais.forEach((adicional) => {
         const valor = Number(adicional.preco_unitario) * adicional.quantidade;
         adicionaisPorItem.set(
           adicional.pedido_item_id,
@@ -167,7 +168,7 @@ async function fetchRangeData(ini: string, fim: string) {
         );
       });
 
-      (itensR.data || []).forEach((item) => {
+      itens.forEach((item) => {
         const adicionaisValor = adicionaisPorItem.get(item.id) ?? 0;
         if (adicionaisValor <= 0) return;
         addVenda(acc, item.produto_id ?? "—", 0, -adicionaisValor);
@@ -176,11 +177,12 @@ async function fetchRangeData(ini: string, fim: string) {
   }
 
   if (onlineIds.length) {
-    const entregasR = await supabase.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", onlineIds);
-    if (entregasR.error) throw entregasR.error;
+    const entregas = await fetchInBatches(onlineIds, (batch) =>
+      supabase.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", batch),
+    );
 
     const pedidoMap = new Map(pedOnline.map((pedido) => [pedido.id, pedido]));
-    (entregasR.data || []).forEach((entrega) => {
+    entregas.forEach((entrega) => {
       const pedido = pedidoMap.get(entrega.pedido_id);
       if (!pedido || pedido.tipo_entrega === "retirada") return;
       const taxa = Number(entrega.taxa_entrega || 0);

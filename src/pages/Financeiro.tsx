@@ -29,7 +29,7 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
-import { brl } from "@/lib/format";
+import { brl, toLocalDateKey, toLocalMonthKey } from "@/lib/format";
 import { buildCaixaResumo } from "@/lib/caixaResumo";
 import { fetchFaturamentoPeriodo, totalPedidoDelivery } from "@/lib/faturamento";
 import { printCashSummary, type CashSummary } from "@/lib/print";
@@ -255,7 +255,7 @@ const emptyCompraForm = (): CompraFormState => ({
   fornecedor_id: "none",
   categoria_compra_id: "none",
   descricao: "",
-  data_compra: new Date().toISOString().slice(0, 10),
+  data_compra: toLocalDateKey(),
   status_pagamento: "pago",
   data_vencimento: "",
   forma_pagamento: "pix",
@@ -294,7 +294,7 @@ const emptyContaFixaForm = (): ContaFixaFormState => ({
   fornecedor_id: "none",
   descricao: "",
   valor: "",
-  data_vencimento: todayDate(),
+  data_vencimento: toLocalDateKey(),
   recorrente_mensal: false,
   dia_vencimento: String(new Date().getDate()),
   observacoes: "",
@@ -331,8 +331,6 @@ const maskPhone = (value: string) => {
     .replace(/(\d{5})(\d{1,4})$/, "$1-$2");
 };
 
-const todayDate = () => new Date().toISOString().slice(0, 10);
-
 const statusBadgeClass = (status: CompraStatus | ContaStatus | CaixaStatus) => {
   if (status === "aberto") return "bg-sky-500/15 text-sky-700 border-sky-500/30";
   if (status === "pago") return "bg-emerald-500/15 text-emerald-700 border-emerald-500/30";
@@ -342,7 +340,7 @@ const statusBadgeClass = (status: CompraStatus | ContaStatus | CaixaStatus) => {
 
 const daysUntil = (dateString: string | null) => {
   if (!dateString) return null;
-  const now = new Date(todayDate() + "T00:00:00");
+  const now = new Date(toLocalDateKey() + "T00:00:00");
   const due = new Date(dateString + "T00:00:00");
   return Math.floor((due.getTime() - now.getTime()) / 86400000);
 };
@@ -419,7 +417,7 @@ export default function Financeiro() {
   const [contaFixaBusy, setContaFixaBusy] = useState(false);
   const [contaFixaForm, setContaFixaForm] = useState<ContaFixaFormState>(emptyContaFixaForm());
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = toLocalMonthKey();
   const [reportMode, setReportMode] = useState<"month" | "custom">("month");
   const [reportMonth, setReportMonth] = useState(currentMonth);
   const [reportStart, setReportStart] = useState("");
@@ -511,6 +509,8 @@ export default function Financeiro() {
 
     const iniIso = new Date(ini.setHours(0, 0, 0, 0)).toISOString();
     const fimIso = new Date(fim.setHours(23, 59, 59, 999)).toISOString();
+    const iniDate = toLocalDateKey(ini);
+    const fimDate = toLocalDateKey(fim);
 
     const [faturamentoRes, custosRes, contasFixasRes, caixasRes] = await Promise.all([
       fetchFaturamentoPeriodo(iniIso, fimIso, sb),
@@ -518,15 +518,15 @@ export default function Financeiro() {
         .from("compras")
         .select("id, fornecedor_id, valor_total, data_compra, fornecedores(nome), categorias_compra(tipo)")
         .eq("status_pagamento", "pago")
-        .gte("data_compra", iniIso.slice(0, 10))
-        .lte("data_compra", fimIso.slice(0, 10)),
+        .gte("data_compra", iniDate)
+        .lte("data_compra", fimDate),
       sb
         .from("contas_pagar")
         .select("id, valor, data_pagamento")
         .is("compra_id", null)
         .eq("status", "pago")
-        .gte("data_pagamento", iniIso.slice(0, 10))
-        .lte("data_pagamento", fimIso.slice(0, 10)),
+        .gte("data_pagamento", iniDate)
+        .lte("data_pagamento", fimDate),
       sb
         .from("caixas")
         .select("id, status, valor_inicial, valor_final, aberto_em, fechado_em")
@@ -833,7 +833,7 @@ export default function Financeiro() {
 
   const fornecedorTotais = useMemo(() => {
     const totalGeral = fornecedorCompras.reduce((sum, compra) => sum + Number(compra.valor_total || 0), 0);
-    const month = new Date().toISOString().slice(0, 7);
+    const month = toLocalMonthKey();
     const totalMes = fornecedorCompras
       .filter((compra) => compra.data_compra.startsWith(month))
       .reduce((sum, compra) => sum + Number(compra.valor_total || 0), 0);
@@ -1221,7 +1221,7 @@ export default function Financeiro() {
   const markContaAsPaga = async (conta: ContaPagar) => {
     const { error } = await sb
       .from("contas_pagar")
-      .update({ status: "pago", data_pagamento: todayDate() })
+      .update({ status: "pago", data_pagamento: toLocalDateKey() })
       .eq("id", conta.id);
     if (error) return toast.error(error.message);
     toast.success("Conta marcada como paga");

@@ -103,6 +103,7 @@ export interface LojaConfig {
   zapi_client_token: string;
   zapi_ativo: boolean;
   whatsapp_pedido_ativo: boolean;
+  whatsapp_bot_modo?: "completo" | "apenas_link";
   whatsapp_msg_boas_vindas: string;
   tempo_entrega_min?: string;
   retirada_ativa?: boolean;
@@ -256,10 +257,15 @@ export const formatBoasVindas = (cfg: LojaConfig): string => {
   return msg;
 };
 
-export const formatCardapioLinkMsg = (cfg: LojaConfig): string => {
+export const formatCardapioLinkMsg = (cfg: LojaConfig, apenasLink = false): string => {
   const url = buildCardapioUrl(cfg);
   if (!url) {
-    return "🌐 O cardápio online ainda não está configurado. Digite *menu* para pedir por aqui.";
+    return apenasLink
+      ? "🌐 O cardápio online ainda não está configurado. Entre em contato conosco."
+      : "🌐 O cardápio online ainda não está configurado. Digite *menu* para pedir por aqui.";
+  }
+  if (apenasLink) {
+    return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo. Para outras dúvidas, aguarde o atendimento._`;
   }
   return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo, ou digite *menu* para pedir por aqui._`;
 };
@@ -329,4 +335,11 @@ export const AJUDA_TEXTO = `ℹ️ *Comandos do pedido automático:*
 *cancelar* — Sair do pedido automático
 *ajuda* — Ver esta mensagem
 
-_For a qualquer outra coisa, é só escrever — um atendente pode responder._`;
+_Para qualquer outra coisa, é só escrever — um atendente pode responder._`;
+
+export const AJUDA_LINK_TEXTO = `ℹ️ *Comandos disponíveis:*
+
+*link* — Link do cardápio online
+*ajuda* — Ver esta mensagem
+
+_Para qualquer outra coisa, é só escrever — um atendente pode responder._`;

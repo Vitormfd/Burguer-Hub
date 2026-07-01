@@ -15,6 +15,7 @@ import {
 } from "./db.ts";
 import {
   AJUDA_TEXTO,
+  AJUDA_LINK_TEXTO,
   brl,
   cartSubtotal,
   encodeKdsObservation,
@@ -49,6 +50,52 @@ interface FlowResult {
 }
 
 const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
+
+const LINK_ONLY_TRIGGERS = [
+  ...BOT_START_COMMANDS,
+  "link",
+  "site",
+  "cardapio online",
+  "cardápio online",
+  "web",
+];
+
+function isLinkOnlyMode(cfg: LojaConfig): boolean {
+  return cfg.whatsapp_bot_modo === "apenas_link";
+}
+
+function processLinkOnlyMessage(
+  cfg: LojaConfig,
+  session: WhatsappSession | null,
+  etapa: Etapa,
+  dados: SessionDados,
+  text: string,
+  senderName?: string,
+): FlowResult {
+  if (["ajuda", "help", "comandos"].includes(text)) {
+    return { messages: [textMsg(AJUDA_LINK_TEXTO)], etapa, dados };
+  }
+
+  if (["cancelar", "sair", "desistir"].includes(text)) {
+    return {
+      messages: [],
+      etapa: "inicio",
+      dados: emptyDados(senderName),
+      clearSession: true,
+      noReply: true,
+    };
+  }
+
+  if (LINK_ONLY_TRIGGERS.includes(text) || (!session && !isBotFlowActive(etapa, dados))) {
+    return {
+      messages: [textMsg(formatCardapioLinkMsg(cfg, true))],
+      etapa: "inicio",
+      dados,
+    };
+  }
+
+  return { messages: [], etapa: "inicio", dados, noReply: true };
+}
 
 function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
   if (dados.bot_ativo) return true;
@@ -302,6 +349,10 @@ export async function processMessage(
   let etapa: Etapa = session?.etapa || "inicio";
   let dados: SessionDados = session?.dados || emptyDados(senderName);
   if (senderName && !dados.sender_name) dados.sender_name = senderName;
+
+  if (isLinkOnlyMode(cfg)) {
+    return processLinkOnlyMessage(cfg, session, etapa, dados, text, senderName);
+  }
 
   // Comandos globais
   if (["ajuda", "help", "comandos"].includes(text)) {

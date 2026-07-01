@@ -26,7 +26,7 @@ export async function findLojaByInstance(
     .from("configuracoes")
     .select(
       "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
-      "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
+      "zapi_ativo, whatsapp_pedido_ativo, whatsapp_bot_modo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
       "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
       "frete_gratis_ativo, frete_gratis_minimo",
     )

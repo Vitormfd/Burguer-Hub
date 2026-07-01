@@ -51,6 +51,8 @@ interface FlowResult {
 
 const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
 
+const GREETING_COMMANDS = ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "eai", "e ai"];
+
 const LINK_ONLY_TRIGGERS = [
   ...BOT_START_COMMANDS,
   "link",
@@ -86,11 +88,15 @@ function processLinkOnlyMessage(
     };
   }
 
-  if (LINK_ONLY_TRIGGERS.includes(text) || (!session && !isBotFlowActive(etapa, dados))) {
+  const shouldSendLinkIntro = LINK_ONLY_TRIGGERS.includes(text) ||
+    GREETING_COMMANDS.includes(text) ||
+    (!isBotFlowActive(etapa, dados) && (!session || !dados.welcome_enviado));
+
+  if (shouldSendLinkIntro) {
     return {
       messages: [textMsg(formatCardapioLinkMsg(cfg, true))],
       etapa: "inicio",
-      dados,
+      dados: { ...dados, welcome_enviado: true },
     };
   }
 
@@ -400,17 +406,21 @@ export async function processMessage(
     };
   }
 
-  // Primeira mensagem do cliente → boas-vindas (qualquer texto)
-  if (!session && !isBotFlowActive(etapa, dados)) {
-    return {
-      messages: [textMsg(formatBoasVindas(cfg))],
-      etapa: "inicio",
-      dados,
-    };
-  }
-
-  // Mensagem livre fora do fluxo do bot → não responde (atendimento humano)
+  // Fora do fluxo do bot: boas-vindas na 1ª mensagem, saudações, ou sessão legada sem flag
   if (!isBotFlowActive(etapa, dados)) {
+    const shouldWelcome = !session ||
+      !dados.welcome_enviado ||
+      GREETING_COMMANDS.includes(text);
+
+    if (shouldWelcome) {
+      return {
+        messages: [textMsg(formatBoasVindas(cfg))],
+        etapa: "inicio",
+        dados: { ...dados, welcome_enviado: true },
+      };
+    }
+
+    // Mensagem livre após boas-vindas → atendimento humano
     return { messages: [], etapa: "inicio", dados, noReply: true };
   }
 

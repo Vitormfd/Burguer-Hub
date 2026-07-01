@@ -69,6 +69,8 @@ export interface ClienteTempWa {
 
 export interface SessionDados {
   bot_ativo?: boolean;
+  /** Boas-vindas (ou link inicial) já enviadas nesta sessão */
+  welcome_enviado?: boolean;
   carrinho: CartItemWa[];
   produto_temp?: ProdutoTempWa;
   cliente?: ClienteTempWa;
@@ -252,7 +254,9 @@ export const buildCardapioUrl = (cfg: LojaConfig): string => {
 
 export const formatBoasVindas = (cfg: LojaConfig): string => {
   const cardapioUrl = buildCardapioUrl(cfg);
-  let msg = cfg.whatsapp_msg_boas_vindas.replaceAll("{{loja}}", cfg.nome_loja);
+  const template = cfg.whatsapp_msg_boas_vindas?.trim() ||
+    "Olá! 👋 Bem-vindo(a) à *{{loja}}*!\n\nDigite *menu* para ver o cardápio.";
+  let msg = template.replaceAll("{{loja}}", cfg.nome_loja);
   msg = msg.replaceAll("{{cardapio}}", cardapioUrl || "(configure a URL do site em Configurações)");
   return msg;
 };

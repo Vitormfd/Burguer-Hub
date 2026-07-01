@@ -13,6 +13,8 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const WEBHOOK_VERSION = "2026-06-30b";
+
 function extractMessage(payload: ZapiIncomingMessage): {
   text: string;
   selectedId: string | null;
@@ -49,7 +51,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method === "GET") {
-    return json({ ok: true, service: "zapi-webhook", hint: "POST only from Z-API" });
+    return json({ ok: true, service: "zapi-webhook", version: WEBHOOK_VERSION, hint: "POST only from Z-API" });
   }
 
   if (req.method !== "POST") {
@@ -70,6 +72,12 @@ Deno.serve(async (req) => {
     isGroup: payload.isGroup,
     type: (payload as Record<string, unknown>).type,
   });
+
+  const callbackType = (payload as Record<string, unknown>).type as string | undefined;
+  if (callbackType && callbackType !== "ReceivedCallback") {
+    console.log("zapi-webhook: ignorando callback", callbackType);
+    return json({ ok: true, skipped: "not_received_callback", type: callbackType });
+  }
 
   // Ignora mensagens enviadas por nós, grupos e callbacks sem conteúdo
   if (payload.fromMe || payload.isGroup) {

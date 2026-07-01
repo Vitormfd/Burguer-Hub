@@ -461,14 +461,17 @@ export default function Configuracoes() {
     setTogglingBot(true);
     const { error } = await supabase
       .from("configuracoes")
-      .update({ whatsapp_pedido_ativo: ativo } as any)
+      .update({
+        whatsapp_pedido_ativo: ativo,
+        ...(ativo ? { zapi_ativo: true } : {}),
+      } as any)
       .eq("id", cfg.id);
     setTogglingBot(false);
     if (error) {
       toast.error(error.message);
       return;
     }
-    setCfg({ ...cfg, whatsapp_pedido_ativo: ativo });
+    setCfg({ ...cfg, whatsapp_pedido_ativo: ativo, ...(ativo ? { zapi_ativo: true } : {}) });
     toast.success(ativo ? "Chatbot ativado" : "Chatbot desativado");
   };
 

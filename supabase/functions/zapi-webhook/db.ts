@@ -22,54 +22,96 @@ const LOJA_SELECT_BASE =
   "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
   "frete_gratis_ativo, frete_gratis_minimo";
 
+function normalizeInstanceId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+async function loadWhatsappBotModo(
+  supabase: SupabaseClient,
+  configId: string,
+): Promise<LojaConfig["whatsapp_bot_modo"]> {
+  const { data, error } = await supabase
+    .from("configuracoes")
+    .select("whatsapp_bot_modo")
+    .eq("id", configId)
+    .maybeSingle();
+
+  if (!error && data?.whatsapp_bot_modo) {
+    return data.whatsapp_bot_modo as LojaConfig["whatsapp_bot_modo"];
+  }
+  if (error) {
+    console.warn("whatsapp_bot_modo indisponivel, usando completo:", error.message);
+  }
+  return "completo";
+}
+
+function isChatbotEligible(cfg: Record<string, unknown>): boolean {
+  return !!cfg.whatsapp_pedido_ativo &&
+    !!cfg.zapi_token &&
+    !!cfg.zapi_client_token &&
+    !!cfg.zapi_instance_id;
+}
+
 export async function findLojaByInstance(
   supabase: SupabaseClient,
   instanceId: string,
 ): Promise<LojaConfig | null> {
-  const normalizedId = instanceId.trim();
+  const normalizedId = normalizeInstanceId(instanceId);
 
-  // Nunca incluir whatsapp_bot_modo aqui — a coluna pode não existir se a migration não rodou
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("configuracoes")
     .select(LOJA_SELECT_BASE)
-    .ilike("zapi_instance_id", normalizedId)
-    .limit(1)
-    .maybeSingle();
+    .not("zapi_instance_id", "is", null)
+    .not("zapi_token", "is", null)
+    .not("zapi_client_token", "is", null);
 
   if (error) {
     console.error("findLojaByInstance DB error:", error.message);
     return null;
   }
 
-  if (!data) {
-    console.warn("Nenhuma configuracao para instanceId:", normalizedId);
+  const all = (rows || []) as Record<string, unknown>[];
+  const eligible = all.filter(isChatbotEligible);
+
+  let cfg = eligible.find(
+    (row) => normalizeInstanceId(String(row.zapi_instance_id || "")) === normalizedId,
+  );
+
+  if (!cfg && eligible.length === 1) {
+    console.warn("findLojaByInstance: instanceId diferente, usando unica loja ativa", {
+      received: instanceId,
+      stored: eligible[0].zapi_instance_id,
+    });
+    cfg = eligible[0];
+  }
+
+  if (!cfg) {
+    const partial = all.find(
+      (row) => normalizeInstanceId(String(row.zapi_instance_id || "")) === normalizedId,
+    );
+    if (partial) {
+      console.warn("findLojaByInstance: loja encontrada mas chatbot inativo ou incompleto", {
+        instanceId: normalizedId,
+        whatsapp_pedido_ativo: partial.whatsapp_pedido_ativo,
+        zapi_ativo: partial.zapi_ativo,
+        has_token: !!partial.zapi_token,
+        has_client_token: !!partial.zapi_client_token,
+      });
+    } else if (eligible.length > 1) {
+      console.warn("findLojaByInstance: varias lojas ativas, instanceId nao encontrado", {
+        instanceId: normalizedId,
+        known_instances: eligible.map((row) => row.zapi_instance_id),
+      });
+    } else {
+      console.warn("findLojaByInstance: nenhuma loja elegivel", {
+        instanceId: normalizedId,
+        total_configs: all.length,
+      });
+    }
     return null;
   }
 
-  const cfg = data as Record<string, unknown>;
-
-  if (!cfg.whatsapp_pedido_ativo) {
-    console.warn("Loja encontrada mas chatbot desativado (whatsapp_pedido_ativo=false):", normalizedId);
-    return null;
-  }
-
-  if (!cfg.zapi_token || !cfg.zapi_client_token) {
-    console.warn("Loja encontrada mas credenciais Z-API ausentes:", normalizedId);
-    return null;
-  }
-
-  let whatsapp_bot_modo: LojaConfig["whatsapp_bot_modo"] = "completo";
-  const { data: modoRow, error: modoErr } = await supabase
-    .from("configuracoes")
-    .select("whatsapp_bot_modo")
-    .eq("id", cfg.id as string)
-    .maybeSingle();
-
-  if (!modoErr && modoRow?.whatsapp_bot_modo) {
-    whatsapp_bot_modo = modoRow.whatsapp_bot_modo as LojaConfig["whatsapp_bot_modo"];
-  } else if (modoErr) {
-    console.warn("whatsapp_bot_modo indisponivel, usando completo:", modoErr.message);
-  }
+  const whatsapp_bot_modo = await loadWhatsappBotModo(supabase, cfg.id as string);
 
   console.log("findLojaByInstance ok:", {
     instanceId: normalizedId,

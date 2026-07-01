@@ -124,14 +124,11 @@ function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
   return midFlow.includes(etapa);
 }
 
-/** Sai do bot sem mensagem — conversa volta ao atendimento normal */
-function silentExit(dados: SessionDados): FlowResult {
+/** Sai do fluxo do bot — envia intro em vez de ficar mudo */
+function silentExit(cfg: LojaConfig, dados: SessionDados): FlowResult {
   return {
-    messages: [],
-    etapa: "inicio",
-    dados: emptyDados(dados.sender_name),
+    ...respondIntro(cfg, emptyDados(dados.sender_name)),
     clearSession: true,
-    noReply: true,
   };
 }
 
@@ -429,7 +426,7 @@ export async function processMessage(
       const cat = categorias.find((c) => c.id === selected) ||
         categorias[parseInt(selected, 10) - 1];
       if (!cat) {
-        return silentExit(dados);
+        return silentExit(cfg, dados);
       }
       return showProdutos(supabase, cfg, dados, cat.id, cat.nome);
     }
@@ -455,7 +452,7 @@ export async function processMessage(
         slice[parseInt(selected, 10) - 1];
       if (!produto) {
         if (!selectedId && isNaN(parseInt(selected, 10))) {
-          return silentExit(dados);
+          return silentExit(cfg, dados);
         }
         return {
           messages: [textMsg("Produto inválido. Escolha um da lista ou digite *menu*.")],
@@ -1057,9 +1054,18 @@ export async function handleIncomingMessage(
   }
 
   // Envia ANTES de gravar sessão — evita bloqueio por messageId se o Z-API falhar
-  for (const msg of result.messages) {
-    await sendZapiMessage(cfg, telefone, msg);
-    await new Promise((r) => setTimeout(r, 800));
+  try {
+    for (const msg of result.messages) {
+      await sendZapiMessage(cfg, telefone, msg);
+      await new Promise((r) => setTimeout(r, 800));
+    }
+  } catch (err) {
+    console.error("zapi-webhook: falha ao enviar Z-API", {
+      phone: telefone,
+      owner_id: cfg.owner_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
   }
 
   if (result.clearSession) {

@@ -13,8 +13,6 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const WEBHOOK_VERSION = "2026-06-30b";
-
 function extractMessage(payload: ZapiIncomingMessage): {
   text: string;
   selectedId: string | null;
@@ -33,16 +31,12 @@ function extractMessage(payload: ZapiIncomingMessage): {
     };
   }
 
-  const raw = payload as Record<string, unknown>;
   const textObj = payload.text as { message?: string } | string | undefined;
-  const fromTextField = typeof textObj === "string"
+  const text = typeof textObj === "string"
     ? textObj
     : textObj?.message || "";
 
-  const fromMessageField = typeof raw.message === "string" ? raw.message : "";
-  const fromBody = typeof raw.body === "string" ? raw.body : "";
-
-  return { text: fromTextField || fromMessageField || fromBody, selectedId: null };
+  return { text, selectedId: null };
 }
 
 Deno.serve(async (req) => {
@@ -51,7 +45,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method === "GET") {
-    return json({ ok: true, service: "zapi-webhook", version: WEBHOOK_VERSION, hint: "POST only from Z-API" });
+    return json({ ok: true, service: "zapi-webhook", hint: "POST only from Z-API" });
   }
 
   if (req.method !== "POST") {
@@ -72,12 +66,6 @@ Deno.serve(async (req) => {
     isGroup: payload.isGroup,
     type: (payload as Record<string, unknown>).type,
   });
-
-  const callbackType = (payload as Record<string, unknown>).type as string | undefined;
-  if (callbackType && callbackType !== "ReceivedCallback") {
-    console.log("zapi-webhook: ignorando callback", callbackType);
-    return json({ ok: true, skipped: "not_received_callback", type: callbackType });
-  }
 
   // Ignora mensagens enviadas por nós, grupos e callbacks sem conteúdo
   if (payload.fromMe || payload.isGroup) {
@@ -103,13 +91,6 @@ Deno.serve(async (req) => {
     console.warn("zapi-webhook: loja nao encontrada para", instanceId);
     return json({ ok: true, skipped: "loja_not_found_or_inactive" });
   }
-
-  console.log("zapi-webhook: loja ok", {
-    instanceId,
-    modo: loja.whatsapp_bot_modo ?? "completo",
-    phone,
-    text: text.slice(0, 80),
-  });
 
   try {
     await handleIncomingMessage(

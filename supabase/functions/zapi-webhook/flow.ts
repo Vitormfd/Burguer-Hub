@@ -15,7 +15,6 @@ import {
 } from "./db.ts";
 import {
   AJUDA_TEXTO,
-  AJUDA_LINK_TEXTO,
   brl,
   cartSubtotal,
   encodeKdsObservation,
@@ -51,65 +50,6 @@ interface FlowResult {
 
 const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
 
-const GREETING_COMMANDS = ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "eai", "e ai"];
-
-const LINK_ONLY_TRIGGERS = [
-  ...BOT_START_COMMANDS,
-  "link",
-  "site",
-  "cardapio online",
-  "cardápio online",
-  "web",
-];
-
-function isLinkOnlyMode(cfg: LojaConfig): boolean {
-  return cfg.whatsapp_bot_modo === "apenas_link";
-}
-
-function respondIntro(cfg: LojaConfig, dados: SessionDados): FlowResult {
-  if (isLinkOnlyMode(cfg)) {
-    return {
-      messages: [textMsg(formatCardapioLinkMsg(cfg, true))],
-      etapa: "inicio",
-      dados,
-    };
-  }
-  return {
-    messages: [textMsg(formatBoasVindas(cfg))],
-    etapa: "inicio",
-    dados,
-  };
-}
-
-function processLinkOnlyMessage(
-  cfg: LojaConfig,
-  session: WhatsappSession | null,
-  etapa: Etapa,
-  dados: SessionDados,
-  text: string,
-  senderName?: string,
-): FlowResult {
-  if (["ajuda", "help", "comandos"].includes(text)) {
-    return { messages: [textMsg(AJUDA_LINK_TEXTO)], etapa, dados };
-  }
-
-  if (["cancelar", "sair", "desistir"].includes(text)) {
-    return {
-      messages: [],
-      etapa: "inicio",
-      dados: emptyDados(senderName),
-      clearSession: true,
-      noReply: true,
-    };
-  }
-
-  if (LINK_ONLY_TRIGGERS.includes(text) || GREETING_COMMANDS.includes(text) || !isBotFlowActive(etapa, dados)) {
-    return respondIntro(cfg, dados);
-  }
-
-  return { messages: [], etapa: "inicio", dados, noReply: true };
-}
-
 function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
   if (dados.bot_ativo) return true;
   if (dados.carrinho.length > 0) return true;
@@ -124,11 +64,14 @@ function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
   return midFlow.includes(etapa);
 }
 
-/** Sai do fluxo do bot — envia intro em vez de ficar mudo */
-function silentExit(cfg: LojaConfig, dados: SessionDados): FlowResult {
+/** Sai do bot sem mensagem — conversa volta ao atendimento normal */
+function silentExit(dados: SessionDados): FlowResult {
   return {
-    ...respondIntro(cfg, emptyDados(dados.sender_name)),
+    messages: [],
+    etapa: "inicio",
+    dados: emptyDados(dados.sender_name),
     clearSession: true,
+    noReply: true,
   };
 }
 
@@ -360,10 +303,6 @@ export async function processMessage(
   let dados: SessionDados = session?.dados || emptyDados(senderName);
   if (senderName && !dados.sender_name) dados.sender_name = senderName;
 
-  if (isLinkOnlyMode(cfg)) {
-    return processLinkOnlyMessage(cfg, session, etapa, dados, text, senderName);
-  }
-
   // Comandos globais
   if (["ajuda", "help", "comandos"].includes(text)) {
     return { messages: [textMsg(AJUDA_TEXTO)], etapa, dados };
@@ -410,15 +349,24 @@ export async function processMessage(
     };
   }
 
-  // Fora do fluxo do pedido → boas-vindas ou link (sempre responde)
+  // Primeira mensagem do cliente → boas-vindas (qualquer texto)
+  if (!session && !isBotFlowActive(etapa, dados)) {
+    return {
+      messages: [textMsg(formatBoasVindas(cfg))],
+      etapa: "inicio",
+      dados,
+    };
+  }
+
+  // Mensagem livre fora do fluxo do bot → não responde (atendimento humano)
   if (!isBotFlowActive(etapa, dados)) {
-    return respondIntro(cfg, dados);
+    return { messages: [], etapa: "inicio", dados, noReply: true };
   }
 
   // Fluxo por etapa
   switch (etapa) {
     case "inicio": {
-      return respondIntro(cfg, dados);
+      return { messages: [], etapa: "inicio", dados, noReply: true };
     }
 
     case "menu_categoria": {
@@ -426,7 +374,7 @@ export async function processMessage(
       const cat = categorias.find((c) => c.id === selected) ||
         categorias[parseInt(selected, 10) - 1];
       if (!cat) {
-        return silentExit(cfg, dados);
+        return silentExit(dados);
       }
       return showProdutos(supabase, cfg, dados, cat.id, cat.nome);
     }
@@ -452,7 +400,7 @@ export async function processMessage(
         slice[parseInt(selected, 10) - 1];
       if (!produto) {
         if (!selectedId && isNaN(parseInt(selected, 10))) {
-          return silentExit(cfg, dados);
+          return silentExit(dados);
         }
         return {
           messages: [textMsg("Produto inválido. Escolha um da lista ou digite *menu*.")],
@@ -1030,6 +978,10 @@ export async function handleIncomingMessage(
 
   const session = await getSession(supabase, cfg.owner_id, telefone);
 
+  if (messageId && session?.ultimo_message_id === messageId) {
+    return;
+  }
+
   const result = await processMessage(
     supabase,
     cfg,
@@ -1044,28 +996,7 @@ export async function handleIncomingMessage(
     if (result.clearSession) {
       await deleteSession(supabase, cfg.owner_id, telefone);
     }
-    console.log("zapi-webhook: noReply", { phone: telefone, etapa: result.etapa });
     return;
-  }
-
-  if (!result.messages.length) {
-    console.warn("zapi-webhook: fluxo sem mensagens e sem noReply", { phone: telefone, etapa: result.etapa });
-    return;
-  }
-
-  // Envia ANTES de gravar sessão — evita bloqueio por messageId se o Z-API falhar
-  try {
-    for (const msg of result.messages) {
-      await sendZapiMessage(cfg, telefone, msg);
-      await new Promise((r) => setTimeout(r, 800));
-    }
-  } catch (err) {
-    console.error("zapi-webhook: falha ao enviar Z-API", {
-      phone: telefone,
-      owner_id: cfg.owner_id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw err;
   }
 
   if (result.clearSession) {
@@ -1081,9 +1012,8 @@ export async function handleIncomingMessage(
     );
   }
 
-  console.log("zapi-webhook: sent", {
-    phone: telefone,
-    etapa: result.etapa,
-    messages: result.messages.length,
-  });
+  for (const msg of result.messages) {
+    await sendZapiMessage(cfg, telefone, msg);
+    await new Promise((r) => setTimeout(r, 800));
+  }
 }

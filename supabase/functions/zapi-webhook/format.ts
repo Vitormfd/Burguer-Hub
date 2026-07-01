@@ -69,8 +69,6 @@ export interface ClienteTempWa {
 
 export interface SessionDados {
   bot_ativo?: boolean;
-  /** Boas-vindas (ou link inicial) já enviadas nesta sessão */
-  welcome_enviado?: boolean;
   carrinho: CartItemWa[];
   produto_temp?: ProdutoTempWa;
   cliente?: ClienteTempWa;
@@ -105,7 +103,6 @@ export interface LojaConfig {
   zapi_client_token: string;
   zapi_ativo: boolean;
   whatsapp_pedido_ativo: boolean;
-  whatsapp_bot_modo?: "completo" | "apenas_link";
   whatsapp_msg_boas_vindas: string;
   tempo_entrega_min?: string;
   retirada_ativa?: boolean;
@@ -254,22 +251,15 @@ export const buildCardapioUrl = (cfg: LojaConfig): string => {
 
 export const formatBoasVindas = (cfg: LojaConfig): string => {
   const cardapioUrl = buildCardapioUrl(cfg);
-  const template = cfg.whatsapp_msg_boas_vindas?.trim() ||
-    "Olá! 👋 Bem-vindo(a) à *{{loja}}*!\n\nDigite *menu* para ver o cardápio.";
-  let msg = template.replaceAll("{{loja}}", cfg.nome_loja);
+  let msg = cfg.whatsapp_msg_boas_vindas.replaceAll("{{loja}}", cfg.nome_loja);
   msg = msg.replaceAll("{{cardapio}}", cardapioUrl || "(configure a URL do site em Configurações)");
   return msg;
 };
 
-export const formatCardapioLinkMsg = (cfg: LojaConfig, apenasLink = false): string => {
+export const formatCardapioLinkMsg = (cfg: LojaConfig): string => {
   const url = buildCardapioUrl(cfg);
   if (!url) {
-    return apenasLink
-      ? "🌐 O cardápio online ainda não está configurado. Entre em contato conosco."
-      : "🌐 O cardápio online ainda não está configurado. Digite *menu* para pedir por aqui.";
-  }
-  if (apenasLink) {
-    return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo. Para outras dúvidas, aguarde o atendimento._`;
+    return "🌐 O cardápio online ainda não está configurado. Digite *menu* para pedir por aqui.";
   }
   return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo, ou digite *menu* para pedir por aqui._`;
 };
@@ -339,11 +329,4 @@ export const AJUDA_TEXTO = `ℹ️ *Comandos do pedido automático:*
 *cancelar* — Sair do pedido automático
 *ajuda* — Ver esta mensagem
 
-_Para qualquer outra coisa, é só escrever — um atendente pode responder._`;
-
-export const AJUDA_LINK_TEXTO = `ℹ️ *Comandos disponíveis:*
-
-*link* — Link do cardápio online
-*ajuda* — Ver esta mensagem
-
-_Para qualquer outra coisa, é só escrever — um atendente pode responder._`;
+_For a qualquer outra coisa, é só escrever — um atendente pode responder._`;

@@ -16,110 +16,52 @@ export function createServiceClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-const LOJA_SELECT_BASE =
-  "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
-  "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
-  "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
-  "frete_gratis_ativo, frete_gratis_minimo";
-
-function normalizeInstanceId(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-async function loadWhatsappBotModo(
-  supabase: SupabaseClient,
-  configId: string,
-): Promise<LojaConfig["whatsapp_bot_modo"]> {
-  const { data, error } = await supabase
-    .from("configuracoes")
-    .select("whatsapp_bot_modo")
-    .eq("id", configId)
-    .maybeSingle();
-
-  if (!error && data?.whatsapp_bot_modo) {
-    return data.whatsapp_bot_modo as LojaConfig["whatsapp_bot_modo"];
-  }
-  if (error) {
-    console.warn("whatsapp_bot_modo indisponivel, usando completo:", error.message);
-  }
-  return "completo";
-}
-
-function isChatbotEligible(cfg: Record<string, unknown>): boolean {
-  return !!cfg.whatsapp_pedido_ativo &&
-    !!cfg.zapi_token &&
-    !!cfg.zapi_client_token &&
-    !!cfg.zapi_instance_id;
-}
-
 export async function findLojaByInstance(
   supabase: SupabaseClient,
   instanceId: string,
 ): Promise<LojaConfig | null> {
-  const normalizedId = normalizeInstanceId(instanceId);
+  const normalizedId = instanceId.trim();
 
-  const { data: rows, error } = await supabase
+  const { data, error } = await supabase
     .from("configuracoes")
-    .select(LOJA_SELECT_BASE)
-    .not("zapi_instance_id", "is", null)
+    .select(
+      "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
+      "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
+      "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
+      "frete_gratis_ativo, frete_gratis_minimo",
+    )
+    .ilike("zapi_instance_id", normalizedId)
+    .eq("whatsapp_pedido_ativo", true)
     .not("zapi_token", "is", null)
-    .not("zapi_client_token", "is", null);
+    .not("zapi_client_token", "is", null)
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     console.error("findLojaByInstance DB error:", error.message);
     return null;
   }
 
-  const all = (rows || []) as Record<string, unknown>[];
-  const eligible = all.filter(isChatbotEligible);
+  if (!data) {
+    const { data: anyCfg } = await supabase
+      .from("configuracoes")
+      .select("zapi_instance_id, whatsapp_pedido_ativo, zapi_ativo")
+      .ilike("zapi_instance_id", normalizedId)
+      .limit(1)
+      .maybeSingle();
 
-  let cfg = eligible.find(
-    (row) => normalizeInstanceId(String(row.zapi_instance_id || "")) === normalizedId,
-  );
-
-  if (!cfg && eligible.length === 1) {
-    console.warn("findLojaByInstance: instanceId diferente, usando unica loja ativa", {
-      received: instanceId,
-      stored: eligible[0].zapi_instance_id,
-    });
-    cfg = eligible[0];
-  }
-
-  if (!cfg) {
-    const partial = all.find(
-      (row) => normalizeInstanceId(String(row.zapi_instance_id || "")) === normalizedId,
-    );
-    if (partial) {
-      console.warn("findLojaByInstance: loja encontrada mas chatbot inativo ou incompleto", {
+    if (anyCfg) {
+      console.warn("Loja encontrada mas bot inativo ou credenciais ausentes:", {
         instanceId: normalizedId,
-        whatsapp_pedido_ativo: partial.whatsapp_pedido_ativo,
-        zapi_ativo: partial.zapi_ativo,
-        has_token: !!partial.zapi_token,
-        has_client_token: !!partial.zapi_client_token,
-      });
-    } else if (eligible.length > 1) {
-      console.warn("findLojaByInstance: varias lojas ativas, instanceId nao encontrado", {
-        instanceId: normalizedId,
-        known_instances: eligible.map((row) => row.zapi_instance_id),
+        whatsapp_pedido_ativo: anyCfg.whatsapp_pedido_ativo,
+        zapi_ativo: anyCfg.zapi_ativo,
       });
     } else {
-      console.warn("findLojaByInstance: nenhuma loja elegivel", {
-        instanceId: normalizedId,
-        total_configs: all.length,
-      });
+      console.warn("Nenhuma configuracao para instanceId:", normalizedId);
     }
-    return null;
   }
 
-  const whatsapp_bot_modo = await loadWhatsappBotModo(supabase, cfg.id as string);
-
-  console.log("findLojaByInstance ok:", {
-    instanceId: normalizedId,
-    owner_id: cfg.owner_id,
-    whatsapp_bot_modo,
-  });
-
-  return { ...cfg, whatsapp_bot_modo } as LojaConfig;
+  return data as LojaConfig | null;
 }
 
 export async function getSession(
@@ -139,7 +81,7 @@ export async function getSession(
 
   const session = data as WhatsappSession;
   const age = Date.now() - new Date(session.atualizado_em).getTime();
-  if (age > 80 * 60 * 1000) {
+  if (age > 45 * 60 * 1000) {
     await deleteSession(supabase, ownerId, phone);
     return null;
   }
@@ -161,7 +103,7 @@ export async function upsertSession(
   messageId?: string,
 ): Promise<void> {
   const phone = normalizePhone(telefone);
-  const { error } = await supabase.from("whatsapp_pedido_sessions").upsert(
+  await supabase.from("whatsapp_pedido_sessions").upsert(
     {
       owner_id: ownerId,
       telefone: phone,
@@ -172,9 +114,6 @@ export async function upsertSession(
     },
     { onConflict: "owner_id,telefone" },
   );
-  if (error) {
-    throw new Error(`Falha ao salvar sessão WhatsApp: ${error.message}`);
-  }
 }
 
 export async function deleteSession(

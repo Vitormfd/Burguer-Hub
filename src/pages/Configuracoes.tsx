@@ -8,7 +8,6 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { playPreset, tryUnlockAudio } from "@/lib/sound";
@@ -259,7 +258,6 @@ export default function Configuracoes() {
   const [configuringWebhook, setConfiguringWebhook] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [testingConn, setTestingConn] = useState(false);
-  const [togglingBot, setTogglingBot] = useState(false);
   const [testMsgTipo, setTestMsgTipo] = useState<TipoMensagemWhatsapp | null>(null);
 
   // Logs state
@@ -456,70 +454,31 @@ export default function Configuracoes() {
 
   // save whatsapp
 
-  const toggleWhatsappPedido = async (ativo: boolean) => {
-    if (!cfg) return;
-    setTogglingBot(true);
-    const { error } = await supabase
-      .from("configuracoes")
-      .update({
-        whatsapp_pedido_ativo: ativo,
-        ...(ativo ? { zapi_ativo: true } : {}),
-      } as any)
-      .eq("id", cfg.id);
-    setTogglingBot(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setCfg({ ...cfg, whatsapp_pedido_ativo: ativo, ...(ativo ? { zapi_ativo: true } : {}) });
-    toast.success(ativo ? "Chatbot ativado" : "Chatbot desativado");
-  };
-
-  const setWhatsappBotModo = async (modo: "completo" | "apenas_link") => {
-    if (!cfg || cfg.whatsapp_bot_modo === modo) return;
-    setTogglingBot(true);
-    const { error } = await supabase
-      .from("configuracoes")
-      .update({ whatsapp_bot_modo: modo } as any)
-      .eq("id", cfg.id);
-    setTogglingBot(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setCfg({ ...cfg, whatsapp_bot_modo: modo });
-    toast.success(modo === "apenas_link" ? "Modo: apenas enviar link" : "Modo: chatbot completo");
-  };
-
   const saveWhatsapp = async () => {
     if (!cfg) return;
     setBusyWpp(true);
-    const basePayload = {
-      zapi_instance_id: cfg.zapi_instance_id ?? null,
-      zapi_token: cfg.zapi_token ?? null,
-      zapi_client_token: cfg.zapi_client_token ?? null,
-      zapi_ativo: cfg.zapi_ativo ?? false,
-      whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
-      site_url: cfg.site_url?.trim() || window.location.origin || null,
-      whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
-      whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
-      whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
-      whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
-      whatsapp_msg_entregue: cfg.whatsapp_msg_entregue,
-      whatsapp_msg_retirada_pronto: cfg.whatsapp_msg_retirada_pronto,
-      whatsapp_msg_confirmado_ativo: cfg.whatsapp_msg_confirmado_ativo ?? true,
-      whatsapp_msg_em_preparo_ativo: cfg.whatsapp_msg_em_preparo_ativo ?? true,
-      whatsapp_msg_saiu_entrega_ativo: cfg.whatsapp_msg_saiu_entrega_ativo ?? true,
-      whatsapp_msg_entregue_ativo: cfg.whatsapp_msg_entregue_ativo ?? true,
-      whatsapp_msg_retirada_pronto_ativo: cfg.whatsapp_msg_retirada_pronto_ativo ?? true,
-    };
-    let { error } = await supabase
+    const { error } = await supabase
       .from("configuracoes")
-      .update({ ...basePayload, whatsapp_bot_modo: cfg.whatsapp_bot_modo ?? "completo" } as any)
+      .update({
+        zapi_instance_id: cfg.zapi_instance_id ?? null,
+        zapi_token: cfg.zapi_token ?? null,
+        zapi_client_token: cfg.zapi_client_token ?? null,
+        zapi_ativo: cfg.zapi_ativo ?? false,
+        whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
+        site_url: cfg.site_url?.trim() || window.location.origin || null,
+        whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
+        whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
+        whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
+        whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
+        whatsapp_msg_entregue: cfg.whatsapp_msg_entregue,
+        whatsapp_msg_retirada_pronto: cfg.whatsapp_msg_retirada_pronto,
+        whatsapp_msg_confirmado_ativo: cfg.whatsapp_msg_confirmado_ativo ?? true,
+        whatsapp_msg_em_preparo_ativo: cfg.whatsapp_msg_em_preparo_ativo ?? true,
+        whatsapp_msg_saiu_entrega_ativo: cfg.whatsapp_msg_saiu_entrega_ativo ?? true,
+        whatsapp_msg_entregue_ativo: cfg.whatsapp_msg_entregue_ativo ?? true,
+        whatsapp_msg_retirada_pronto_ativo: cfg.whatsapp_msg_retirada_pronto_ativo ?? true,
+      } as any)
       .eq("id", cfg.id);
-    if (error?.message?.includes("whatsapp_bot_modo")) {
-      ({ error } = await supabase.from("configuracoes").update(basePayload as any).eq("id", cfg.id));
-    }
     setBusyWpp(false);
     if (error) toast.error(error.message);
     else toast.success("Configuracoes WhatsApp salvas");
@@ -1342,74 +1301,19 @@ export default function Configuracoes() {
               <MessageSquare className="w-6 h-6 text-amber-500" /> Pedidos via WhatsApp
             </h2>
             <p className="text-sm text-muted-foreground">
-              Automatize respostas no WhatsApp: pedido completo pelo chatbot ou apenas o link do cardápio online.
+              Chatbot automatizado para clientes fazerem pedidos pelo WhatsApp sem atendente humano.
+              O cliente digita <strong>menu</strong> e segue o fluxo guiado até a confirmação.
             </p>
 
             {hasCredentials && (
-              <div className="rounded-lg border p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      checked={!!cfg.whatsapp_pedido_ativo}
-                      onCheckedChange={(v) => toggleWhatsappPedido(v)}
-                      disabled={togglingBot}
-                    />
-                    <div>
-                      <span className="text-sm font-medium">Respostas automáticas via WhatsApp</span>
-                      <p className="text-xs text-muted-foreground">
-                        {cfg.whatsapp_pedido_ativo
-                          ? cfg.whatsapp_bot_modo === "apenas_link"
-                            ? "Envia só o link do cardápio — demais mensagens ficam para atendimento humano."
-                            : "O chatbot responde quando o cliente digita menu, carrinho, etc."
-                          : "Desativado — mensagens ficam só para atendimento humano"}
-                      </p>
-                    </div>
-                  </div>
-                  {cfg.whatsapp_pedido_ativo ? (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => toggleWhatsappPedido(false)}
-                      disabled={togglingBot}
-                    >
-                      {togglingBot
-                        ? <><RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Desativando...</>
-                        : "Desativar chatbot"}
-                    </Button>
-                  ) : (
-                    <Badge variant="secondary">Bot desativado</Badge>
-                  )}
-                </div>
-
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={!!cfg.whatsapp_pedido_ativo}
+                  onCheckedChange={(v) => setCfg({ ...cfg, whatsapp_pedido_ativo: v })}
+                />
+                <span className="text-sm font-medium">Ativar pedidos via WhatsApp</span>
                 {cfg.whatsapp_pedido_ativo && (
-                  <div className="space-y-3 pt-3 border-t">
-                    <Label>Modo de resposta</Label>
-                    <RadioGroup
-                      value={cfg.whatsapp_bot_modo ?? "completo"}
-                      onValueChange={(v) => setWhatsappBotModo(v as "completo" | "apenas_link")}
-                      disabled={togglingBot}
-                      className="space-y-3"
-                    >
-                      <div className="flex items-start gap-3 rounded-md border p-3">
-                        <RadioGroupItem value="completo" id="bot-completo" className="mt-0.5" />
-                        <Label htmlFor="bot-completo" className="font-normal cursor-pointer space-y-1">
-                          <span className="font-medium block">Chatbot completo</span>
-                          <span className="text-xs text-muted-foreground block">
-                            Cliente pede pelo WhatsApp com menu, carrinho e confirmação.
-                          </span>
-                        </Label>
-                      </div>
-                      <div className="flex items-start gap-3 rounded-md border p-3">
-                        <RadioGroupItem value="apenas_link" id="bot-apenas-link" className="mt-0.5" />
-                        <Label htmlFor="bot-apenas-link" className="font-normal cursor-pointer space-y-1">
-                          <span className="font-medium block">Apenas enviar link</span>
-                          <span className="text-xs text-muted-foreground block">
-                            Responde só com o link do cardápio online. Ideal quando o atendimento humano cuida do resto.
-                          </span>
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 ml-auto">Bot ativo</Badge>
                 )}
               </div>
             )}
@@ -1493,19 +1397,8 @@ export default function Configuracoes() {
 
             <div className="text-sm text-muted-foreground space-y-1 border-t pt-4">
               <p className="font-medium text-foreground">Comandos do cliente:</p>
-              {cfg.whatsapp_bot_modo === "apenas_link" ? (
-                <>
-                  <p><code>link</code> — Cardápio online | <code>ajuda</code> — Ajuda</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    No modo &quot;Apenas enviar link&quot;, a primeira mensagem e os comandos acima enviam o link do cardápio. Demais mensagens ficam livres para atendimento humano.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p><code>menu</code> — Iniciar pedido automatico | <code>link</code> — Cardapio online | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Sair do bot | <code>ajuda</code> — Ajuda</p>
-                  <p className="text-xs text-muted-foreground mt-1">Mensagens fora desses comandos nao disparam o bot — a conversa fica livre para atendimento humano.</p>
-                </>
-              )}
+              <p><code>menu</code> — Iniciar pedido automatico | <code>link</code> — Cardapio online | <code>carrinho</code> — Ver pedido | <code>cancelar</code> — Sair do bot | <code>ajuda</code> — Ajuda</p>
+              <p className="text-xs text-muted-foreground mt-1">Mensagens fora desses comandos nao disparam o bot — a conversa fica livre para atendimento humano.</p>
             </div>
           </Card>
 

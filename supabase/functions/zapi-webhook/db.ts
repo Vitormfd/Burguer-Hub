@@ -16,26 +16,48 @@ export function createServiceClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+const LOJA_SELECT_BASE =
+  "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
+  "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
+  "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
+  "frete_gratis_ativo, frete_gratis_minimo";
+
+async function queryLojaByInstance(
+  supabase: SupabaseClient,
+  instanceId: string,
+  selectFields: string,
+) {
+  return supabase
+    .from("configuracoes")
+    .select(selectFields)
+    .ilike("zapi_instance_id", instanceId)
+    .eq("whatsapp_pedido_ativo", true)
+    .not("zapi_token", "is", null)
+    .not("zapi_client_token", "is", null)
+    .limit(1)
+    .maybeSingle();
+}
+
 export async function findLojaByInstance(
   supabase: SupabaseClient,
   instanceId: string,
 ): Promise<LojaConfig | null> {
   const normalizedId = instanceId.trim();
 
-  const { data, error } = await supabase
-    .from("configuracoes")
-    .select(
-      "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
-      "zapi_ativo, whatsapp_pedido_ativo, whatsapp_bot_modo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
-      "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
-      "frete_gratis_ativo, frete_gratis_minimo",
-    )
-    .ilike("zapi_instance_id", normalizedId)
-    .eq("whatsapp_pedido_ativo", true)
-    .not("zapi_token", "is", null)
-    .not("zapi_client_token", "is", null)
-    .limit(1)
-    .maybeSingle();
+  let { data, error } = await queryLojaByInstance(
+    supabase,
+    normalizedId,
+    `${LOJA_SELECT_BASE}, whatsapp_bot_modo`,
+  );
+
+  if (error) {
+    console.warn("findLojaByInstance: retry sem whatsapp_bot_modo:", error.message);
+    const retry = await queryLojaByInstance(supabase, normalizedId, LOJA_SELECT_BASE);
+    data = retry.data
+      ? { ...retry.data, whatsapp_bot_modo: "completo" as const }
+      : null;
+    error = retry.error;
+  }
 
   if (error) {
     console.error("findLojaByInstance DB error:", error.message);
@@ -103,7 +125,7 @@ export async function upsertSession(
   messageId?: string,
 ): Promise<void> {
   const phone = normalizePhone(telefone);
-  await supabase.from("whatsapp_pedido_sessions").upsert(
+  const { error } = await supabase.from("whatsapp_pedido_sessions").upsert(
     {
       owner_id: ownerId,
       telefone: phone,
@@ -114,6 +136,9 @@ export async function upsertSession(
     },
     { onConflict: "owner_id,telefone" },
   );
+  if (error) {
+    throw new Error(`Falha ao salvar sessão WhatsApp: ${error.message}`);
+  }
 }
 
 export async function deleteSession(

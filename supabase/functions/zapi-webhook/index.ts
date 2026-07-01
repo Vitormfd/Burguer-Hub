@@ -31,12 +31,16 @@ function extractMessage(payload: ZapiIncomingMessage): {
     };
   }
 
+  const raw = payload as Record<string, unknown>;
   const textObj = payload.text as { message?: string } | string | undefined;
-  const text = typeof textObj === "string"
+  const fromTextField = typeof textObj === "string"
     ? textObj
     : textObj?.message || "";
 
-  return { text, selectedId: null };
+  const fromMessageField = typeof raw.message === "string" ? raw.message : "";
+  const fromBody = typeof raw.body === "string" ? raw.body : "";
+
+  return { text: fromTextField || fromMessageField || fromBody, selectedId: null };
 }
 
 Deno.serve(async (req) => {

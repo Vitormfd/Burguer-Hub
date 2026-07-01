@@ -406,11 +406,11 @@ export async function processMessage(
     };
   }
 
-  // Fora do fluxo do bot: boas-vindas na 1ª mensagem, saudações, ou sessão legada sem flag
+  // Fora do fluxo do bot: boas-vindas na 1ª mensagem ou saudação
   if (!isBotFlowActive(etapa, dados)) {
     const shouldWelcome = !session ||
-      !dados.welcome_enviado ||
-      GREETING_COMMANDS.includes(text);
+      GREETING_COMMANDS.includes(text) ||
+      !dados.welcome_enviado;
 
     if (shouldWelcome) {
       return {
@@ -427,6 +427,13 @@ export async function processMessage(
   // Fluxo por etapa
   switch (etapa) {
     case "inicio": {
+      if (GREETING_COMMANDS.includes(text) || BOT_START_COMMANDS.includes(text)) {
+        return {
+          messages: [textMsg(formatBoasVindas(cfg))],
+          etapa: "inicio",
+          dados: { ...dados, welcome_enviado: true },
+        };
+      }
       return { messages: [], etapa: "inicio", dados, noReply: true };
     }
 
@@ -1057,7 +1064,19 @@ export async function handleIncomingMessage(
     if (result.clearSession) {
       await deleteSession(supabase, cfg.owner_id, telefone);
     }
+    console.log("zapi-webhook: noReply", { phone: telefone, etapa: result.etapa });
     return;
+  }
+
+  if (!result.messages.length) {
+    console.warn("zapi-webhook: fluxo sem mensagens e sem noReply", { phone: telefone, etapa: result.etapa });
+    return;
+  }
+
+  // Envia ANTES de gravar sessão — evita bloqueio por messageId se o Z-API falhar
+  for (const msg of result.messages) {
+    await sendZapiMessage(cfg, telefone, msg);
+    await new Promise((r) => setTimeout(r, 800));
   }
 
   if (result.clearSession) {
@@ -1073,8 +1092,9 @@ export async function handleIncomingMessage(
     );
   }
 
-  for (const msg of result.messages) {
-    await sendZapiMessage(cfg, telefone, msg);
-    await new Promise((r) => setTimeout(r, 800));
-  }
+  console.log("zapi-webhook: sent", {
+    phone: telefone,
+    etapa: result.etapa,
+    messages: result.messages.length,
+  });
 }

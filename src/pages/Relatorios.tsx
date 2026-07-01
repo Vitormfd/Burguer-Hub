@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { fetchInBatches } from "@/lib/supabaseBatch";
 import { brl } from "@/lib/format";
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 type Range = 7 | 15 | 30;
+type VendasProdutoOrdem = "mais_vendidos" | "menos_vendidos" | "maior_receita";
 
 interface TodayKpi {
   faturamento: number;
@@ -273,6 +275,7 @@ export default function Relatorios() {
   const [customDateStart, setCustomDateStart] = useState<Date | undefined>(undefined);
   const [customDateEnd, setCustomDateEnd] = useState<Date | undefined>(undefined);
   const [isCustom, setIsCustom] = useState(false);
+  const [vendasOrdem, setVendasOrdem] = useState<VendasProdutoOrdem>("mais_vendidos");
 
   const loadToday = useCallback(async () => {
     const ini = startOfDay(new Date()).toISOString();
@@ -489,7 +492,18 @@ export default function Relatorios() {
   };
 
   const totalModalidade = data.delivery + data.retirada + data.mesa || 1;
-  const vendasComMovimento = data.vendasPorProduto.filter((p) => p.quantidade > 0 || p.receita !== 0);
+  const vendasComMovimento = useMemo(() => {
+    const lista = data.vendasPorProduto.filter((p) => p.quantidade > 0 || p.receita !== 0);
+    const byNome = (a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome, "pt-BR");
+
+    if (vendasOrdem === "menos_vendidos") {
+      return [...lista].sort((a, b) => a.quantidade - b.quantidade || a.receita - b.receita || byNome(a, b));
+    }
+    if (vendasOrdem === "maior_receita") {
+      return [...lista].sort((a, b) => b.receita - a.receita || b.quantidade - a.quantidade || byNome(a, b));
+    }
+    return [...lista].sort((a, b) => b.quantidade - a.quantidade || b.receita - a.receita || byNome(a, b));
+  }, [data.vendasPorProduto, vendasOrdem]);
   const maxQtd = Math.max(...vendasComMovimento.map((p) => p.quantidade), 1);
   const totalItensVendidos = data.vendasPorProduto.reduce((s, p) => s + (p.receita >= 0 ? p.quantidade : 0), 0);
   const totalReceitaItens = data.vendasPorProduto.reduce((s, p) => s + p.receita, 0);
@@ -683,14 +697,31 @@ export default function Relatorios() {
 
       <Card className="shadow-card">
         <div className="p-5 border-b flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-primary" />
-            <div>
-              <h2 className="font-display text-2xl">Vendas por produto</h2>
-              <p className="text-sm text-muted-foreground">
-                Mesa, delivery e retirada — inclui produtos, adicionais, taxas e descontos do período.
-              </p>
+          <div className="flex flex-wrap items-end gap-4 min-w-0">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-primary shrink-0" />
+              <div>
+                <h2 className="font-display text-2xl">Vendas por produto</h2>
+                <p className="text-sm text-muted-foreground">
+                  Mesa, delivery e retirada — inclui produtos, adicionais, taxas e descontos do período.
+                </p>
+              </div>
             </div>
+            {!loading && vendasComMovimento.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">Ordenar por</span>
+                <Select value={vendasOrdem} onValueChange={(value) => setVendasOrdem(value as VendasProdutoOrdem)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mais_vendidos">Mais vendidos</SelectItem>
+                    <SelectItem value="menos_vendidos">Menos vendidos</SelectItem>
+                    <SelectItem value="maior_receita">Maior receita</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           {!loading && (
             <div className="flex flex-wrap gap-6 text-sm">

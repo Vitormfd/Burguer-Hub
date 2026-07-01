@@ -81,7 +81,7 @@ export async function getSession(
 
   const session = data as WhatsappSession;
   const age = Date.now() - new Date(session.atualizado_em).getTime();
-  if (age > 45 * 60 * 1000) {
+  if (age > 80 * 60 * 1000) {
     await deleteSession(supabase, ownerId, phone);
     return null;
   }

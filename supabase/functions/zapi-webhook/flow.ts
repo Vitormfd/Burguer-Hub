@@ -66,6 +66,21 @@ function isLinkOnlyMode(cfg: LojaConfig): boolean {
   return cfg.whatsapp_bot_modo === "apenas_link";
 }
 
+function respondIntro(cfg: LojaConfig, dados: SessionDados): FlowResult {
+  if (isLinkOnlyMode(cfg)) {
+    return {
+      messages: [textMsg(formatCardapioLinkMsg(cfg, true))],
+      etapa: "inicio",
+      dados,
+    };
+  }
+  return {
+    messages: [textMsg(formatBoasVindas(cfg))],
+    etapa: "inicio",
+    dados,
+  };
+}
+
 function processLinkOnlyMessage(
   cfg: LojaConfig,
   session: WhatsappSession | null,
@@ -88,16 +103,8 @@ function processLinkOnlyMessage(
     };
   }
 
-  const shouldSendLinkIntro = LINK_ONLY_TRIGGERS.includes(text) ||
-    GREETING_COMMANDS.includes(text) ||
-    (!isBotFlowActive(etapa, dados) && (!session || !dados.welcome_enviado));
-
-  if (shouldSendLinkIntro) {
-    return {
-      messages: [textMsg(formatCardapioLinkMsg(cfg, true))],
-      etapa: "inicio",
-      dados: { ...dados, welcome_enviado: true },
-    };
+  if (LINK_ONLY_TRIGGERS.includes(text) || GREETING_COMMANDS.includes(text) || !isBotFlowActive(etapa, dados)) {
+    return respondIntro(cfg, dados);
   }
 
   return { messages: [], etapa: "inicio", dados, noReply: true };
@@ -406,35 +413,15 @@ export async function processMessage(
     };
   }
 
-  // Fora do fluxo do bot: boas-vindas na 1ª mensagem ou saudação
+  // Fora do fluxo do pedido → boas-vindas ou link (sempre responde)
   if (!isBotFlowActive(etapa, dados)) {
-    const shouldWelcome = !session ||
-      GREETING_COMMANDS.includes(text) ||
-      !dados.welcome_enviado;
-
-    if (shouldWelcome) {
-      return {
-        messages: [textMsg(formatBoasVindas(cfg))],
-        etapa: "inicio",
-        dados: { ...dados, welcome_enviado: true },
-      };
-    }
-
-    // Mensagem livre após boas-vindas → atendimento humano
-    return { messages: [], etapa: "inicio", dados, noReply: true };
+    return respondIntro(cfg, dados);
   }
 
   // Fluxo por etapa
   switch (etapa) {
     case "inicio": {
-      if (GREETING_COMMANDS.includes(text) || BOT_START_COMMANDS.includes(text)) {
-        return {
-          messages: [textMsg(formatBoasVindas(cfg))],
-          etapa: "inicio",
-          dados: { ...dados, welcome_enviado: true },
-        };
-      }
-      return { messages: [], etapa: "inicio", dados, noReply: true };
+      return respondIntro(cfg, dados);
     }
 
     case "menu_categoria": {
@@ -1045,10 +1032,6 @@ export async function handleIncomingMessage(
   const { sendZapiMessage } = await import("./zapi.ts");
 
   const session = await getSession(supabase, cfg.owner_id, telefone);
-
-  if (messageId && session?.ultimo_message_id === messageId) {
-    return;
-  }
 
   const result = await processMessage(
     supabase,

@@ -22,42 +22,19 @@ const LOJA_SELECT_BASE =
   "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
   "frete_gratis_ativo, frete_gratis_minimo";
 
-async function queryLojaByInstance(
-  supabase: SupabaseClient,
-  instanceId: string,
-  selectFields: string,
-) {
-  return supabase
-    .from("configuracoes")
-    .select(selectFields)
-    .ilike("zapi_instance_id", instanceId)
-    .eq("whatsapp_pedido_ativo", true)
-    .not("zapi_token", "is", null)
-    .not("zapi_client_token", "is", null)
-    .limit(1)
-    .maybeSingle();
-}
-
 export async function findLojaByInstance(
   supabase: SupabaseClient,
   instanceId: string,
 ): Promise<LojaConfig | null> {
   const normalizedId = instanceId.trim();
 
-  let { data, error } = await queryLojaByInstance(
-    supabase,
-    normalizedId,
-    `${LOJA_SELECT_BASE}, whatsapp_bot_modo`,
-  );
-
-  if (error) {
-    console.warn("findLojaByInstance: retry sem whatsapp_bot_modo:", error.message);
-    const retry = await queryLojaByInstance(supabase, normalizedId, LOJA_SELECT_BASE);
-    data = retry.data
-      ? { ...retry.data, whatsapp_bot_modo: "completo" as const }
-      : null;
-    error = retry.error;
-  }
+  // Nunca incluir whatsapp_bot_modo aqui — a coluna pode não existir se a migration não rodou
+  const { data, error } = await supabase
+    .from("configuracoes")
+    .select(LOJA_SELECT_BASE)
+    .ilike("zapi_instance_id", normalizedId)
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     console.error("findLojaByInstance DB error:", error.message);
@@ -65,25 +42,42 @@ export async function findLojaByInstance(
   }
 
   if (!data) {
-    const { data: anyCfg } = await supabase
-      .from("configuracoes")
-      .select("zapi_instance_id, whatsapp_pedido_ativo, zapi_ativo")
-      .ilike("zapi_instance_id", normalizedId)
-      .limit(1)
-      .maybeSingle();
-
-    if (anyCfg) {
-      console.warn("Loja encontrada mas bot inativo ou credenciais ausentes:", {
-        instanceId: normalizedId,
-        whatsapp_pedido_ativo: anyCfg.whatsapp_pedido_ativo,
-        zapi_ativo: anyCfg.zapi_ativo,
-      });
-    } else {
-      console.warn("Nenhuma configuracao para instanceId:", normalizedId);
-    }
+    console.warn("Nenhuma configuracao para instanceId:", normalizedId);
+    return null;
   }
 
-  return data as LojaConfig | null;
+  const cfg = data as Record<string, unknown>;
+
+  if (!cfg.whatsapp_pedido_ativo) {
+    console.warn("Loja encontrada mas chatbot desativado (whatsapp_pedido_ativo=false):", normalizedId);
+    return null;
+  }
+
+  if (!cfg.zapi_token || !cfg.zapi_client_token) {
+    console.warn("Loja encontrada mas credenciais Z-API ausentes:", normalizedId);
+    return null;
+  }
+
+  let whatsapp_bot_modo: LojaConfig["whatsapp_bot_modo"] = "completo";
+  const { data: modoRow, error: modoErr } = await supabase
+    .from("configuracoes")
+    .select("whatsapp_bot_modo")
+    .eq("id", cfg.id as string)
+    .maybeSingle();
+
+  if (!modoErr && modoRow?.whatsapp_bot_modo) {
+    whatsapp_bot_modo = modoRow.whatsapp_bot_modo as LojaConfig["whatsapp_bot_modo"];
+  } else if (modoErr) {
+    console.warn("whatsapp_bot_modo indisponivel, usando completo:", modoErr.message);
+  }
+
+  console.log("findLojaByInstance ok:", {
+    instanceId: normalizedId,
+    owner_id: cfg.owner_id,
+    whatsapp_bot_modo,
+  });
+
+  return { ...cfg, whatsapp_bot_modo } as LojaConfig;
 }
 
 export async function getSession(

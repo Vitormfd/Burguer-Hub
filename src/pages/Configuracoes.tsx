@@ -491,29 +491,32 @@ export default function Configuracoes() {
   const saveWhatsapp = async () => {
     if (!cfg) return;
     setBusyWpp(true);
-    const { error } = await supabase
+    const basePayload = {
+      zapi_instance_id: cfg.zapi_instance_id ?? null,
+      zapi_token: cfg.zapi_token ?? null,
+      zapi_client_token: cfg.zapi_client_token ?? null,
+      zapi_ativo: cfg.zapi_ativo ?? false,
+      whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
+      site_url: cfg.site_url?.trim() || window.location.origin || null,
+      whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
+      whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
+      whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
+      whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
+      whatsapp_msg_entregue: cfg.whatsapp_msg_entregue,
+      whatsapp_msg_retirada_pronto: cfg.whatsapp_msg_retirada_pronto,
+      whatsapp_msg_confirmado_ativo: cfg.whatsapp_msg_confirmado_ativo ?? true,
+      whatsapp_msg_em_preparo_ativo: cfg.whatsapp_msg_em_preparo_ativo ?? true,
+      whatsapp_msg_saiu_entrega_ativo: cfg.whatsapp_msg_saiu_entrega_ativo ?? true,
+      whatsapp_msg_entregue_ativo: cfg.whatsapp_msg_entregue_ativo ?? true,
+      whatsapp_msg_retirada_pronto_ativo: cfg.whatsapp_msg_retirada_pronto_ativo ?? true,
+    };
+    let { error } = await supabase
       .from("configuracoes")
-      .update({
-        zapi_instance_id: cfg.zapi_instance_id ?? null,
-        zapi_token: cfg.zapi_token ?? null,
-        zapi_client_token: cfg.zapi_client_token ?? null,
-        zapi_ativo: cfg.zapi_ativo ?? false,
-        whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
-        whatsapp_bot_modo: cfg.whatsapp_bot_modo ?? "completo",
-        site_url: cfg.site_url?.trim() || window.location.origin || null,
-        whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
-        whatsapp_msg_confirmado: cfg.whatsapp_msg_confirmado,
-        whatsapp_msg_em_preparo: cfg.whatsapp_msg_em_preparo,
-        whatsapp_msg_saiu_entrega: cfg.whatsapp_msg_saiu_entrega,
-        whatsapp_msg_entregue: cfg.whatsapp_msg_entregue,
-        whatsapp_msg_retirada_pronto: cfg.whatsapp_msg_retirada_pronto,
-        whatsapp_msg_confirmado_ativo: cfg.whatsapp_msg_confirmado_ativo ?? true,
-        whatsapp_msg_em_preparo_ativo: cfg.whatsapp_msg_em_preparo_ativo ?? true,
-        whatsapp_msg_saiu_entrega_ativo: cfg.whatsapp_msg_saiu_entrega_ativo ?? true,
-        whatsapp_msg_entregue_ativo: cfg.whatsapp_msg_entregue_ativo ?? true,
-        whatsapp_msg_retirada_pronto_ativo: cfg.whatsapp_msg_retirada_pronto_ativo ?? true,
-      } as any)
+      .update({ ...basePayload, whatsapp_bot_modo: cfg.whatsapp_bot_modo ?? "completo" } as any)
       .eq("id", cfg.id);
+    if (error?.message?.includes("whatsapp_bot_modo")) {
+      ({ error } = await supabase.from("configuracoes").update(basePayload as any).eq("id", cfg.id));
+    }
     setBusyWpp(false);
     if (error) toast.error(error.message);
     else toast.success("Configuracoes WhatsApp salvas");

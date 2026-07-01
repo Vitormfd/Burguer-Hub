@@ -96,6 +96,13 @@ Deno.serve(async (req) => {
     return json({ ok: true, skipped: "loja_not_found_or_inactive" });
   }
 
+  console.log("zapi-webhook: loja ok", {
+    instanceId,
+    modo: loja.whatsapp_bot_modo ?? "completo",
+    phone,
+    text: text.slice(0, 80),
+  });
+
   try {
     await handleIncomingMessage(
       supabase,

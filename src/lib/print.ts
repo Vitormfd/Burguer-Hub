@@ -50,6 +50,7 @@ export interface PrintMesaData {
   loja_nome?: string;
   mesa_numero: number;
   modalidade_consumo?: "local" | "levar";
+  nome?: string | null;
   pedidos: Array<{
     numero: number;
     criado_em: string;
@@ -223,6 +224,9 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
 
   if (data.tipo === "mesa") {
     body += `<div class="section-title">MESA ${String(data.mesa_numero).padStart(2, "0")}</div>`;
+    if (data.nome?.trim()) {
+      body += `<div class="pedido-header">${esc(data.nome.trim())}</div>`;
+    }
     if (data.modalidade_consumo) {
       const modalidadeTxt = data.modalidade_consumo === "levar" ? "LEVAR" : "CONSUMIR NO LOCAL";
       body += `<div class="pedido-header">${modalidadeTxt}</div>`;

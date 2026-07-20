@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Mesa, ModalidadeConsumo } from "@/types/db";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -24,17 +26,28 @@ const modalidadeLabel: Record<ModalidadeConsumo, string> = {
 export default function AbrirContaDialog({ mesa, onClose, onOpened, onMesaUpdated }: Props) {
   const [busy, setBusy] = useState(false);
   const [modalidade, setModalidade] = useState<ModalidadeConsumo>("local");
+  const [nome, setNome] = useState("");
 
   useEffect(() => {
-    if (mesa) setModalidade("local");
+    if (mesa) {
+      setModalidade("local");
+      setNome("");
+    }
   }, [mesa]);
 
   const handleConfirm = async () => {
     if (!mesa) return;
     setBusy(true);
+    const nomeTrim = nome.trim();
     const { error: e1 } = await supabase
       .from("contas")
-      .insert({ mesa_id: mesa.id, status: "aberta", total: 0, modalidade_consumo: modalidade });
+      .insert({
+        mesa_id: mesa.id,
+        status: "aberta",
+        total: 0,
+        modalidade_consumo: modalidade,
+        nome: nomeTrim || null,
+      });
     if (e1) { setBusy(false); return toast.error(e1.message); }
 
     const { error: e2 } = await supabase
@@ -55,35 +68,49 @@ export default function AbrirContaDialog({ mesa, onClose, onOpened, onMesaUpdate
         <DialogHeader>
           <DialogTitle className="font-display text-3xl">Abrir mesa {mesa?.numero}?</DialogTitle>
           <DialogDescription>
-            Escolha a modalidade e a mesa será marcada como ocupada.
+            Informe o nome (opcional) e a modalidade. A mesa será marcada como ocupada.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 py-2">
-          <p className="text-sm font-medium text-foreground">Modalidade</p>
-          <ToggleGroup
-            type="single"
-            value={modalidade}
-            onValueChange={(v) => { if (v) setModalidade(v as ModalidadeConsumo); }}
-            className="grid grid-cols-2 gap-2"
-          >
-            <ToggleGroupItem
-              value="local"
-              aria-label="Consumir no local"
-              className="h-auto flex-col gap-1.5 py-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="mesa-nome">Nome <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+            <Input
+              id="mesa-nome"
+              placeholder="Ex.: João, Mesa aniversário..."
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              maxLength={60}
+              disabled={busy}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Modalidade</p>
+            <ToggleGroup
+              type="single"
+              value={modalidade}
+              onValueChange={(v) => { if (v) setModalidade(v as ModalidadeConsumo); }}
+              className="grid grid-cols-2 gap-2"
             >
-              <UtensilsCrossed className="h-5 w-5" />
-              <span className="text-sm font-medium">Consumir no local</span>
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="levar"
-              aria-label="Levar"
-              className="h-auto flex-col gap-1.5 py-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-            >
-              <ShoppingBag className="h-5 w-5" />
-              <span className="text-sm font-medium">Levar</span>
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <ToggleGroupItem
+                value="local"
+                aria-label="Consumir no local"
+                className="h-auto flex-col gap-1.5 py-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <UtensilsCrossed className="h-5 w-5" />
+                <span className="text-sm font-medium">Consumir no local</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="levar"
+                aria-label="Levar"
+                className="h-auto flex-col gap-1.5 py-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <ShoppingBag className="h-5 w-5" />
+                <span className="text-sm font-medium">Levar</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
         </div>
 
         <DialogFooter>

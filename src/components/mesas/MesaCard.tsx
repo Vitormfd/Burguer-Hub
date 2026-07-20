@@ -31,14 +31,17 @@ const modalidadeLabel: Record<ModalidadeConsumo, string> = {
 export default function MesaCard({
   mesa,
   modalidade,
+  nome,
   onClick,
 }: {
   mesa: Mesa;
   modalidade?: ModalidadeConsumo | null;
+  nome?: string | null;
   onClick: () => void;
 }) {
   const cfg = statusConfig[mesa.status];
   const showModalidade = mesa.status !== "livre" && modalidade;
+  const showNome = mesa.status !== "livre" && !!nome?.trim();
 
   return (
     <button onClick={onClick} className="text-left group">
@@ -54,11 +57,18 @@ export default function MesaCard({
           <span className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Mesa</span>
           <span className={cn("h-3 w-3 rounded-full shadow-sm animate-pulse", cfg.dot)} />
         </div>
-        <div className="relative">
+        <div className="relative min-w-0">
           <div className="font-display text-6xl text-foreground leading-none">
             {String(mesa.numero).padStart(2, "0")}
           </div>
-          <div className="mt-2 text-sm font-medium text-foreground/80">{cfg.label}</div>
+          {showNome && (
+            <div className="mt-2 text-sm font-semibold text-foreground truncate" title={nome!.trim()}>
+              {nome!.trim()}
+            </div>
+          )}
+          <div className={cn("text-sm font-medium text-foreground/80", showNome ? "mt-0.5" : "mt-2")}>
+            {cfg.label}
+          </div>
           {showModalidade && (
             <div className="mt-1 text-xs font-semibold text-primary">
               {modalidadeLabel[modalidade]}

@@ -9,9 +9,14 @@ import NovaMesaDialog from "@/components/mesas/NovaMesaDialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
+type ContaAbertaInfo = {
+  modalidade?: ModalidadeConsumo;
+  nome?: string | null;
+};
+
 export default function Mesas() {
   const [mesas, setMesas] = useState<Mesa[]>([]);
-  const [modalidades, setModalidades] = useState<Record<string, ModalidadeConsumo>>({});
+  const [contasInfo, setContasInfo] = useState<Record<string, ContaAbertaInfo>>({});
   const [loading, setLoading] = useState(true);
   const [mesaAbrir, setMesaAbrir] = useState<Mesa | null>(null);
   const [mesaConta, setMesaConta] = useState<Mesa | null>(null);
@@ -20,20 +25,22 @@ export default function Mesas() {
   const load = async () => {
     const [{ data, error }, { data: contasAbertas, error: contasError }] = await Promise.all([
       supabase.from("mesas").select("*").order("numero"),
-      supabase.from("contas").select("mesa_id, modalidade_consumo").eq("status", "aberta"),
+      supabase.from("contas").select("mesa_id, modalidade_consumo, nome").eq("status", "aberta"),
     ]);
     if (error) toast.error(error.message);
     else setMesas((data || []) as Mesa[]);
 
     if (contasError) toast.error(contasError.message);
     else {
-      const map: Record<string, ModalidadeConsumo> = {};
+      const map: Record<string, ContaAbertaInfo> = {};
       (contasAbertas || []).forEach((c) => {
-        if (c.mesa_id && c.modalidade_consumo) {
-          map[c.mesa_id] = c.modalidade_consumo as ModalidadeConsumo;
-        }
+        if (!c.mesa_id) return;
+        map[c.mesa_id] = {
+          modalidade: c.modalidade_consumo as ModalidadeConsumo | undefined,
+          nome: c.nome,
+        };
       });
-      setModalidades(map);
+      setContasInfo(map);
     }
     setLoading(false);
   };
@@ -91,7 +98,8 @@ export default function Mesas() {
             <MesaCard
               key={m.id}
               mesa={m}
-              modalidade={modalidades[m.id]}
+              modalidade={contasInfo[m.id]?.modalidade}
+              nome={contasInfo[m.id]?.nome}
               onClick={() => handleClick(m)}
             />
           ))}

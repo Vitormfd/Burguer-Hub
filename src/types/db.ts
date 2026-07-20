@@ -52,6 +52,7 @@ export interface Conta {
   status: ContaStatus;
   total: number;
   modalidade_consumo?: ModalidadeConsumo;
+  nome?: string | null;
   forma_pagamento?: FormaPagamento | null;
   troco_para?: number | null;
 }

@@ -404,6 +404,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       loja_nome: cfg?.nome_loja,
       mesa_numero: mesa.numero,
       modalidade_consumo: conta?.modalidade_consumo ?? "local",
+      nome: conta?.nome ?? null,
       pedidos: pedidos
         .map((p, idx) => {
           const itensAtivos = p.itens.filter((i) => !i.cancelado);
@@ -723,6 +724,19 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     toast.success(`Modalidade: ${modalidadeLabel[modalidade]}`);
   };
 
+  const handleNomeBlur = async (value: string) => {
+    if (!conta) return;
+    const nomeTrim = value.trim();
+    const atual = (conta.nome ?? "").trim();
+    if (nomeTrim === atual) return;
+    const { error } = await supabase
+      .from("contas")
+      .update({ nome: nomeTrim || null })
+      .eq("id", conta.id);
+    if (error) return toast.error(error.message);
+    setConta({ ...conta, nome: nomeTrim || null });
+  };
+
   return (
     <>
       <Sheet open={!!mesa} onOpenChange={(o) => !o && onClose()}>
@@ -732,6 +746,11 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               <div>
                 <SheetTitle className="font-display text-4xl text-primary-foreground">
                   Mesa {mesa?.numero}
+                  {conta?.nome?.trim() ? (
+                    <span className="block text-xl font-sans font-medium mt-1 text-primary-foreground/90">
+                      {conta.nome.trim()}
+                    </span>
+                  ) : null}
                 </SheetTitle>
                 <SheetDescription className="text-primary-foreground/70">
                   {conta
@@ -753,30 +772,44 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           <ScrollArea className="flex-1">
             <div className="p-6 space-y-4">
               {conta && (
-                <ToggleGroup
-                  type="single"
-                  value={conta.modalidade_consumo ?? "local"}
-                  onValueChange={handleModalidadeChange}
-                  className="grid grid-cols-2 gap-2"
-                  disabled={busy}
-                >
-                  <ToggleGroupItem
-                    value="local"
-                    aria-label="Consumir no local"
-                    className="h-auto gap-2 py-2.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="conta-nome">Nome <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                    <Input
+                      id="conta-nome"
+                      placeholder="Ex.: João, Mesa aniversário..."
+                      defaultValue={conta.nome ?? ""}
+                      key={conta.id + (conta.nome ?? "")}
+                      maxLength={60}
+                      disabled={busy}
+                      onBlur={(e) => handleNomeBlur(e.target.value)}
+                    />
+                  </div>
+                  <ToggleGroup
+                    type="single"
+                    value={conta.modalidade_consumo ?? "local"}
+                    onValueChange={handleModalidadeChange}
+                    className="grid grid-cols-2 gap-2"
+                    disabled={busy}
                   >
-                    <UtensilsCrossed className="h-4 w-4" />
-                    <span className="text-sm font-medium">Consumir no local</span>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="levar"
-                    aria-label="Levar"
-                    className="h-auto gap-2 py-2.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                  >
-                    <ShoppingBag className="h-4 w-4" />
-                    <span className="text-sm font-medium">Levar</span>
-                  </ToggleGroupItem>
-                </ToggleGroup>
+                    <ToggleGroupItem
+                      value="local"
+                      aria-label="Consumir no local"
+                      className="h-auto gap-2 py-2.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    >
+                      <UtensilsCrossed className="h-4 w-4" />
+                      <span className="text-sm font-medium">Consumir no local</span>
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="levar"
+                      aria-label="Levar"
+                      className="h-auto gap-2 py-2.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    >
+                      <ShoppingBag className="h-4 w-4" />
+                      <span className="text-sm font-medium">Levar</span>
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
               )}
 
               {pedidos.length === 0 && (

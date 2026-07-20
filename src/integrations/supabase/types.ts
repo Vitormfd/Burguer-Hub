@@ -361,6 +361,7 @@ export type Database = {
           id: string
           mesa_id: string | null
           modalidade_consumo: Database["public"]["Enums"]["modalidade_consumo"]
+          nome: string | null
           status: Database["public"]["Enums"]["conta_status"]
           total: number
           troco_para: number | null
@@ -372,6 +373,7 @@ export type Database = {
           id?: string
           mesa_id?: string | null
           modalidade_consumo?: Database["public"]["Enums"]["modalidade_consumo"]
+          nome?: string | null
           status?: Database["public"]["Enums"]["conta_status"]
           total?: number
           troco_para?: number | null
@@ -383,6 +385,7 @@ export type Database = {
           id?: string
           mesa_id?: string | null
           modalidade_consumo?: Database["public"]["Enums"]["modalidade_consumo"]
+          nome?: string | null
           status?: Database["public"]["Enums"]["conta_status"]
           total?: number
           troco_para?: number | null

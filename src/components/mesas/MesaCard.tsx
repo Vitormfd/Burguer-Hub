@@ -1,4 +1,4 @@
-import { Mesa, MesaStatus } from "@/types/db";
+import { Mesa, MesaStatus, ModalidadeConsumo } from "@/types/db";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -23,8 +23,23 @@ const statusConfig: Record<MesaStatus, { label: string; dot: string; ring: strin
   },
 };
 
-export default function MesaCard({ mesa, onClick }: { mesa: Mesa; onClick: () => void }) {
+const modalidadeLabel: Record<ModalidadeConsumo, string> = {
+  local: "Consumir no local",
+  levar: "Levar",
+};
+
+export default function MesaCard({
+  mesa,
+  modalidade,
+  onClick,
+}: {
+  mesa: Mesa;
+  modalidade?: ModalidadeConsumo | null;
+  onClick: () => void;
+}) {
   const cfg = statusConfig[mesa.status];
+  const showModalidade = mesa.status !== "livre" && modalidade;
+
   return (
     <button onClick={onClick} className="text-left group">
       <Card
@@ -44,6 +59,11 @@ export default function MesaCard({ mesa, onClick }: { mesa: Mesa; onClick: () =>
             {String(mesa.numero).padStart(2, "0")}
           </div>
           <div className="mt-2 text-sm font-medium text-foreground/80">{cfg.label}</div>
+          {showModalidade && (
+            <div className="mt-1 text-xs font-semibold text-primary">
+              {modalidadeLabel[modalidade]}
+            </div>
+          )}
         </div>
       </Card>
     </button>

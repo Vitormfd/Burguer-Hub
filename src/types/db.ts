@@ -1,5 +1,6 @@
 export type MesaStatus = "livre" | "ocupada" | "aguardando_pagamento";
 export type ContaStatus = "aberta" | "fechada";
+export type ModalidadeConsumo = "local" | "levar";
 export type PedidoTipo = "mesa" | "delivery";
 export type TipoEntrega = "delivery" | "retirada";
 export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado";
@@ -50,6 +51,7 @@ export interface Conta {
   fechada_em: string | null;
   status: ContaStatus;
   total: number;
+  modalidade_consumo?: ModalidadeConsumo;
   forma_pagamento?: FormaPagamento | null;
   troco_para?: number | null;
 }

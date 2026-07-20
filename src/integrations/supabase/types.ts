@@ -360,6 +360,7 @@ export type Database = {
           forma_pagamento: Database["public"]["Enums"]["compra_forma_pagamento"] | null
           id: string
           mesa_id: string | null
+          modalidade_consumo: Database["public"]["Enums"]["modalidade_consumo"]
           status: Database["public"]["Enums"]["conta_status"]
           total: number
           troco_para: number | null
@@ -370,6 +371,7 @@ export type Database = {
           forma_pagamento?: Database["public"]["Enums"]["compra_forma_pagamento"] | null
           id?: string
           mesa_id?: string | null
+          modalidade_consumo?: Database["public"]["Enums"]["modalidade_consumo"]
           status?: Database["public"]["Enums"]["conta_status"]
           total?: number
           troco_para?: number | null
@@ -380,6 +382,7 @@ export type Database = {
           forma_pagamento?: Database["public"]["Enums"]["compra_forma_pagamento"] | null
           id?: string
           mesa_id?: string | null
+          modalidade_consumo?: Database["public"]["Enums"]["modalidade_consumo"]
           status?: Database["public"]["Enums"]["conta_status"]
           total?: number
           troco_para?: number | null
@@ -947,6 +950,7 @@ export type Database = {
       entrega_status: "aguardando" | "saiu_para_entrega" | "entregue"
       cupom_tipo: "percentual" | "fixo" | "frete_gratis"
       mesa_status: "livre" | "ocupada" | "aguardando_pagamento"
+      modalidade_consumo: "local" | "levar"
       pedido_status: "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado"
       pedido_tipo: "mesa" | "delivery"
       tipo_entrega: "delivery" | "retirada"
@@ -1083,6 +1087,7 @@ export const Constants = {
       entrega_status: ["aguardando", "saiu_para_entrega", "entregue"],
       cupom_tipo: ["percentual", "fixo", "frete_gratis"],
       mesa_status: ["livre", "ocupada", "aguardando_pagamento"],
+      modalidade_consumo: ["local", "levar"],
       pedido_status: ["pendente", "em_preparo", "pronto", "entregue", "cancelado"],
       pedido_tipo: ["mesa", "delivery"],
       tipo_entrega: ["delivery", "retirada"],

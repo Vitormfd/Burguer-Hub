@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Utensils, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { Mesa } from "@/types/db";
+import { Mesa, ModalidadeConsumo } from "@/types/db";
 import MesaCard from "@/components/mesas/MesaCard";
 import AbrirContaDialog from "@/components/mesas/AbrirContaDialog";
 import ContaSheet from "@/components/mesas/ContaSheet";
@@ -11,15 +11,30 @@ import { toast } from "sonner";
 
 export default function Mesas() {
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  const [modalidades, setModalidades] = useState<Record<string, ModalidadeConsumo>>({});
   const [loading, setLoading] = useState(true);
   const [mesaAbrir, setMesaAbrir] = useState<Mesa | null>(null);
   const [mesaConta, setMesaConta] = useState<Mesa | null>(null);
   const [showNovaMesa, setShowNovaMesa] = useState(false);
 
   const load = async () => {
-    const { data, error } = await supabase.from("mesas").select("*").order("numero");
+    const [{ data, error }, { data: contasAbertas, error: contasError }] = await Promise.all([
+      supabase.from("mesas").select("*").order("numero"),
+      supabase.from("contas").select("mesa_id, modalidade_consumo").eq("status", "aberta"),
+    ]);
     if (error) toast.error(error.message);
     else setMesas((data || []) as Mesa[]);
+
+    if (contasError) toast.error(contasError.message);
+    else {
+      const map: Record<string, ModalidadeConsumo> = {};
+      (contasAbertas || []).forEach((c) => {
+        if (c.mesa_id && c.modalidade_consumo) {
+          map[c.mesa_id] = c.modalidade_consumo as ModalidadeConsumo;
+        }
+      });
+      setModalidades(map);
+    }
     setLoading(false);
   };
 
@@ -28,6 +43,7 @@ export default function Mesas() {
     const ch = supabase
       .channel("mesas-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "mesas" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "contas" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
@@ -72,7 +88,12 @@ export default function Mesas() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {mesas.map((m) => (
-            <MesaCard key={m.id} mesa={m} onClick={() => handleClick(m)} />
+            <MesaCard
+              key={m.id}
+              mesa={m}
+              modalidade={modalidades[m.id]}
+              onClick={() => handleClick(m)}
+            />
           ))}
         </div>
       )}

@@ -49,6 +49,7 @@ export interface PrintMesaData {
   tipo: "mesa";
   loja_nome?: string;
   mesa_numero: number;
+  modalidade_consumo?: "local" | "levar";
   pedidos: Array<{
     numero: number;
     criado_em: string;
@@ -222,6 +223,10 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
 
   if (data.tipo === "mesa") {
     body += `<div class="section-title">MESA ${String(data.mesa_numero).padStart(2, "0")}</div>`;
+    if (data.modalidade_consumo) {
+      const modalidadeTxt = data.modalidade_consumo === "levar" ? "LEVAR" : "CONSUMIR NO LOCAL";
+      body += `<div class="pedido-header">${modalidadeTxt}</div>`;
+    }
     data.pedidos.forEach((p) => {
       body += `<div class="sep-dashed"></div>`;
       body += `<div class="pedido-header">Pedido #${p.numero} &mdash; ${new Date(p.criado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>`;

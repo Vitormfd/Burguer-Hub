@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback } from "react";
-import { Mesa, Conta, ContaPagamento, FormaPagamento, Pedido, PedidoItem, Produto, Configuracao } from "@/types/db";
+import { Mesa, Conta, ContaPagamento, FormaPagamento, ModalidadeConsumo, Pedido, PedidoItem, Produto, Configuracao } from "@/types/db";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoPedidoDialog from "./NovoPedidoDialog";
 import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
 import { pedidoEditavel } from "@/lib/pedidoEdit";
-import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle, Pencil } from "lucide-react";
+import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle, Pencil, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { printReceipt } from "@/lib/print";
 import { itemPedidoSubtotal, refreshContaTotalInDb } from "@/lib/contaTotal";
 
@@ -70,6 +71,11 @@ const formaPagamentoLabel: Record<FormaPagamento, string> = {
   pix: "PIX",
   cartao: "Cartão",
   boleto: "Boleto",
+};
+
+const modalidadeLabel: Record<ModalidadeConsumo, string> = {
+  local: "Consumir no local",
+  levar: "Levar",
 };
 
 export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | null; onClose: () => void; onClosed?: () => void }) {
@@ -397,6 +403,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
       tipo: "mesa",
       loja_nome: cfg?.nome_loja,
       mesa_numero: mesa.numero,
+      modalidade_consumo: conta?.modalidade_consumo ?? "local",
       pedidos: pedidos
         .map((p, idx) => {
           const itensAtivos = p.itens.filter((i) => !i.cancelado);
@@ -703,6 +710,19 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     await load();
   };
 
+  const handleModalidadeChange = async (value: string) => {
+    if (!conta || !value) return;
+    const modalidade = value as ModalidadeConsumo;
+    if (modalidade === (conta.modalidade_consumo ?? "local")) return;
+    const { error } = await supabase
+      .from("contas")
+      .update({ modalidade_consumo: modalidade })
+      .eq("id", conta.id);
+    if (error) return toast.error(error.message);
+    setConta({ ...conta, modalidade_consumo: modalidade });
+    toast.success(`Modalidade: ${modalidadeLabel[modalidade]}`);
+  };
+
   return (
     <>
       <Sheet open={!!mesa} onOpenChange={(o) => !o && onClose()}>
@@ -714,7 +734,9 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
                   Mesa {mesa?.numero}
                 </SheetTitle>
                 <SheetDescription className="text-primary-foreground/70">
-                  {conta ? `Conta aberta em ${new Date(conta.aberta_em).toLocaleString("pt-BR")}` : "Carregando..."}
+                  {conta
+                    ? `${modalidadeLabel[conta.modalidade_consumo ?? "local"]} · aberta em ${new Date(conta.aberta_em).toLocaleString("pt-BR")}`
+                    : "Carregando..."}
                 </SheetDescription>
               </div>
               <Button
@@ -730,6 +752,33 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
 
           <ScrollArea className="flex-1">
             <div className="p-6 space-y-4">
+              {conta && (
+                <ToggleGroup
+                  type="single"
+                  value={conta.modalidade_consumo ?? "local"}
+                  onValueChange={handleModalidadeChange}
+                  className="grid grid-cols-2 gap-2"
+                  disabled={busy}
+                >
+                  <ToggleGroupItem
+                    value="local"
+                    aria-label="Consumir no local"
+                    className="h-auto gap-2 py-2.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <UtensilsCrossed className="h-4 w-4" />
+                    <span className="text-sm font-medium">Consumir no local</span>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="levar"
+                    aria-label="Levar"
+                    className="h-auto gap-2 py-2.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <ShoppingBag className="h-4 w-4" />
+                    <span className="text-sm font-medium">Levar</span>
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              )}
+
               {pedidos.length === 0 && (
                 <Card className="p-8 text-center border-dashed">
                   <Receipt className="w-8 h-8 mx-auto text-muted-foreground mb-2" />

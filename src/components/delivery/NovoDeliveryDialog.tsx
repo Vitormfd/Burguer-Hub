@@ -57,6 +57,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [bairroOpen, setBairroOpen] = useState(false);
   const [clienteBusca, setClienteBusca] = useState("");
   const [clienteOpen, setClienteOpen] = useState(false);
+  const [formaPagamento, setFormaPagamento] = useState<"dinheiro" | "pix" | "cartao">("pix");
+  const [trocoPara, setTrocoPara] = useState("");
   const bairroWrapRef = useRef<HTMLDivElement>(null);
   const clienteWrapRef = useRef<HTMLDivElement>(null);
 
@@ -133,6 +135,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     setClienteBusca("");
     setBairroOpen(false);
     setClienteOpen(false);
+    setFormaPagamento("pix");
+    setTrocoPara("");
   };
 
   const handleSelectCliente = (cliente: Cliente) => {
@@ -277,6 +281,9 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     }
 
     // 3. Entrega
+    const trocoNum = formaPagamento === "dinheiro"
+      ? (Number(String(trocoPara).replace(",", ".")) || null)
+      : null;
     const { error: e3 } = await supabase.from("entregas").insert({
       pedido_id: pedido.id,
       cliente_nome: parsed.data.cliente_nome,
@@ -286,6 +293,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
       complemento: parsed.data.complemento || null,
       bairro: parsed.data.bairro || null,
       taxa_entrega: parsed.data.taxa_entrega,
+      forma_pagamento: formaPagamento,
+      troco_para: trocoNum,
       status: "aguardando",
     });
     setBusy(false);
@@ -317,6 +326,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         complemento: parsed.data.complemento || null,
         bairro: parsed.data.bairro || null,
         taxa_entrega: parsed.data.taxa_entrega,
+        forma_pagamento: formaPagamento,
+        troco_para: trocoNum,
         itens: items.map((item) => ({
           nome: item.produto.nome,
           quantidade: item.quantidade,
@@ -465,6 +476,37 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               id="d-taxa" className="h-9"
               type="number" min={0} max={999} step="0.50"
               value={taxa} onChange={(e) => setTaxa(e.target.value)}
+            />
+          </div>
+          <div className="col-span-2 md:col-span-3 space-y-1">
+            <Label htmlFor="d-forma" className="text-xs">Pagamento</Label>
+            <select
+              id="d-forma"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={formaPagamento}
+              onChange={(e) => {
+                const value = e.target.value as "dinheiro" | "pix" | "cartao";
+                setFormaPagamento(value);
+                if (value !== "dinheiro") setTrocoPara("");
+              }}
+            >
+              <option value="pix">PIX</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="cartao">Cartão</option>
+            </select>
+          </div>
+          <div className="col-span-2 md:col-span-3 space-y-1">
+            <Label htmlFor="d-troco" className="text-xs">Troco para (opcional)</Label>
+            <Input
+              id="d-troco"
+              className="h-9"
+              type="number"
+              min={0}
+              step="1"
+              placeholder="Ex: 100"
+              value={trocoPara}
+              onChange={(e) => setTrocoPara(e.target.value)}
+              disabled={formaPagamento !== "dinheiro"}
             />
           </div>
         </div>

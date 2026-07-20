@@ -42,6 +42,8 @@ interface Props {
   pedidoId: string | null;
   variant: "mesa" | "delivery";
   mesaNumero?: number;
+  contaNome?: string | null;
+  modalidadeConsumo?: "local" | "levar";
   tipoEntrega?: "delivery" | "retirada";
   onClose: () => void;
   onSaved: () => void | Promise<void>;
@@ -52,6 +54,8 @@ export default function EditarPedidoDialog({
   pedidoId,
   variant,
   mesaNumero,
+  contaNome,
+  modalidadeConsumo,
   tipoEntrega = "delivery",
   onClose,
   onSaved,
@@ -70,6 +74,8 @@ export default function EditarPedidoDialog({
   const [complemento, setComplemento] = useState("");
   const [bairro, setBairro] = useState("");
   const [taxa, setTaxa] = useState("0");
+  const [formaPagamento, setFormaPagamento] = useState<"dinheiro" | "pix" | "cartao">("pix");
+  const [trocoPara, setTrocoPara] = useState("");
   const [bairrosTaxas, setBairrosTaxas] = useState<BairroTaxaOption[]>([]);
 
   const isRetirada = tipoEntrega === "retirada";
@@ -142,6 +148,9 @@ export default function EditarPedidoDialog({
             setComplemento(entrega.complemento || "");
             setBairro(entrega.bairro || "");
             setTaxa(String(Number(entrega.taxa_entrega || 0)));
+            const forma = (entrega.forma_pagamento as "dinheiro" | "pix" | "cartao" | null) || "pix";
+            setFormaPagamento(forma === "boleto" ? "pix" : forma);
+            setTrocoPara(entrega.troco_para != null ? String(Number(entrega.troco_para)) : "");
           }
         }
       } catch (err) {
@@ -187,7 +196,10 @@ export default function EditarPedidoDialog({
     try {
       await replacePedidoItens(pedidoId, cart);
 
-      if (variant === "delivery" && deliveryParsed && entregaId) {
+        if (variant === "delivery" && deliveryParsed && entregaId) {
+        const trocoNum = formaPagamento === "dinheiro"
+          ? (Number(String(trocoPara).replace(",", ".")) || null)
+          : null;
         const { error: entregaError } = await supabase
           .from("entregas")
           .update({
@@ -198,6 +210,8 @@ export default function EditarPedidoDialog({
             complemento: deliveryParsed.complemento || null,
             bairro: deliveryParsed.bairro || null,
             taxa_entrega: deliveryParsed.taxa_entrega,
+            forma_pagamento: formaPagamento,
+            troco_para: trocoNum,
           })
           .eq("id", entregaId);
 
@@ -213,6 +227,8 @@ export default function EditarPedidoDialog({
             tipo: "mesa",
             loja_nome: cfg?.nome_loja,
             mesa_numero: mesaNumero,
+            nome: contaNome ?? null,
+            modalidade_consumo: modalidadeConsumo ?? "local",
             pedidos: [{
               numero: 1,
               criado_em: new Date().toISOString(),
@@ -231,6 +247,9 @@ export default function EditarPedidoDialog({
             total: subtotal,
           });
         } else if (variant === "delivery" && deliveryParsed) {
+          const trocoNum = formaPagamento === "dinheiro"
+            ? (Number(String(trocoPara).replace(",", ".")) || null)
+            : null;
           printReceipt({
             tipo: tipoEntrega,
             loja_nome: cfg?.nome_loja,
@@ -241,6 +260,8 @@ export default function EditarPedidoDialog({
             complemento: deliveryParsed.complemento || null,
             bairro: deliveryParsed.bairro || null,
             taxa_entrega: deliveryParsed.taxa_entrega,
+            forma_pagamento: formaPagamento,
+            troco_para: trocoNum,
             itens: cart.map((item) => ({
               nome: item.produto.nome,
               quantidade: item.quantidade,
@@ -336,6 +357,37 @@ export default function EditarPedidoDialog({
                     </div>
                   </>
                 )}
+                <div className="col-span-2 md:col-span-3 space-y-1">
+                  <Label htmlFor="e-forma" className="text-xs">Pagamento</Label>
+                  <select
+                    id="e-forma"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                    value={formaPagamento}
+                    onChange={(e) => {
+                      const value = e.target.value as "dinheiro" | "pix" | "cartao";
+                      setFormaPagamento(value);
+                      if (value !== "dinheiro") setTrocoPara("");
+                    }}
+                  >
+                    <option value="pix">PIX</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="cartao">Cartão</option>
+                  </select>
+                </div>
+                <div className="col-span-2 md:col-span-3 space-y-1">
+                  <Label htmlFor="e-troco" className="text-xs">Troco para (opcional)</Label>
+                  <Input
+                    id="e-troco"
+                    className="h-9"
+                    type="number"
+                    min={0}
+                    step="1"
+                    placeholder="Ex: 100"
+                    value={trocoPara}
+                    onChange={(e) => setTrocoPara(e.target.value)}
+                    disabled={formaPagamento !== "dinheiro"}
+                  />
+                </div>
               </div>
             )}
 

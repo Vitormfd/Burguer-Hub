@@ -13,11 +13,21 @@ interface Props {
   open: boolean;
   contaId: string;
   mesaNumero?: number;
+  nome?: string | null;
+  modalidadeConsumo?: "local" | "levar";
   onClose: () => void;
   onCreated: () => void;
 }
 
-export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, onCreated }: Props) {
+export default function NovoPedidoDialog({
+  open,
+  contaId,
+  mesaNumero,
+  nome,
+  modalidadeConsumo,
+  onClose,
+  onCreated,
+}: Props) {
   const [cart, setCart] = useState<Cart>([]);
   const [busy, setBusy] = useState(false);
   const [autoPrint, setAutoPrint] = useState(true);
@@ -88,6 +98,8 @@ export default function NovoPedidoDialog({ open, contaId, mesaNumero, onClose, o
         tipo: "mesa",
         loja_nome: cfg?.nome_loja,
         mesa_numero: mesaNumero,
+        nome: nome ?? null,
+        modalidade_consumo: modalidadeConsumo ?? "local",
         pedidos: [{
           numero: 1,
           criado_em: new Date().toISOString(),

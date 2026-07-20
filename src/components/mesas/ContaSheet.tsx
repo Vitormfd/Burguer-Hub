@@ -1089,6 +1089,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           open={novoOpen}
           contaId={conta.id}
           mesaNumero={mesa?.numero}
+          nome={conta.nome}
+          modalidadeConsumo={conta.modalidade_consumo ?? "local"}
           onClose={() => setNovoOpen(false)}
           onCreated={() => { setNovoOpen(false); void load(); }}
         />
@@ -1099,6 +1101,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
         pedidoId={editPedido?.id ?? null}
         variant="mesa"
         mesaNumero={mesa?.numero}
+        contaNome={conta?.nome}
+        modalidadeConsumo={conta?.modalidade_consumo ?? "local"}
         onClose={() => setEditPedido(null)}
         onSaved={async () => {
           if (conta) await refreshContaTotal(conta.id);

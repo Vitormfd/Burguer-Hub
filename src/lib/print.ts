@@ -225,11 +225,11 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
   if (data.tipo === "mesa") {
     body += `<div class="section-title">MESA ${String(data.mesa_numero).padStart(2, "0")}</div>`;
     if (data.nome?.trim()) {
-      body += `<div class="pedido-header">${esc(data.nome.trim())}</div>`;
+      body += `<div class="info-line"><strong>Nome:</strong> ${esc(data.nome.trim())}</div>`;
     }
     if (data.modalidade_consumo) {
       const modalidadeTxt = data.modalidade_consumo === "levar" ? "LEVAR" : "CONSUMIR NO LOCAL";
-      body += `<div class="pedido-header">${modalidadeTxt}</div>`;
+      body += `<div class="section-title">${modalidadeTxt}</div>`;
     }
     data.pedidos.forEach((p) => {
       body += `<div class="sep-dashed"></div>`;
@@ -238,38 +238,36 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     });
     body += `<div class="sep"></div>`;
     body += `<div class="total-line"><span>TOTAL</span><span>${brlPrint(data.total)}</span></div>`;
-    if (data.pagamentos?.length) {
+    {
       const formaLabel: Record<string, string> = {
         dinheiro: "Dinheiro",
         pix: "PIX",
         cartao: "Cartão",
         boleto: "Boleto",
       };
-      body += `<div class="sep-dashed"></div>`;
-      data.pagamentos.forEach((pagamento) => {
-        body += `<div class="subtotal-line"><span>${esc(formaLabel[pagamento.forma] ?? pagamento.forma)}</span><span>${brlPrint(pagamento.valor)}</span></div>`;
-      });
-    } else if (data.forma_pagamento) {
-      const formaLabel: Record<string, string> = {
-        dinheiro: "Dinheiro",
-        pix: "PIX",
-        cartao: "Cartão",
-        boleto: "Boleto",
-      };
-      body += `<div class="sep-dashed"></div>`;
-      body += `<div class="subtotal-line"><span>Pagamento</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
-    }
-    const valorDinheiroMesa = (data.pagamentos ?? [])
-      .filter((p) => p.forma === "dinheiro")
-      .reduce((s, p) => s + p.valor, 0);
-    const baseTrocoMesa = data.pagamentos?.length ? valorDinheiroMesa : data.total;
-    if (
-      data.troco_para != null &&
-      baseTrocoMesa > 0 &&
-      data.troco_para > baseTrocoMesa
-    ) {
-      body += `<div class="subtotal-line"><span>Recebido em dinheiro</span><span>${brlPrint(data.troco_para)}</span></div>`;
-      body += `<div class="subtotal-line troco"><span>Troco</span><span>${brlPrint(data.troco_para - baseTrocoMesa)}</span></div>`;
+      if (data.pagamentos?.length) {
+        body += `<div class="sep-dashed"></div>`;
+        body += `<div class="section-title">PAGAMENTO</div>`;
+        data.pagamentos.forEach((pagamento) => {
+          body += `<div class="subtotal-line"><span>${esc(formaLabel[pagamento.forma] ?? pagamento.forma)}</span><span>${brlPrint(pagamento.valor)}</span></div>`;
+        });
+      } else if (data.forma_pagamento) {
+        body += `<div class="sep-dashed"></div>`;
+        body += `<div class="section-title">PAGAMENTO</div>`;
+        body += `<div class="subtotal-line"><span>Forma</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
+      }
+      const valorDinheiroMesa = (data.pagamentos ?? [])
+        .filter((p) => p.forma === "dinheiro")
+        .reduce((s, p) => s + p.valor, 0);
+      const baseTrocoMesa = data.pagamentos?.length ? valorDinheiroMesa : data.total;
+      if (
+        data.troco_para != null &&
+        baseTrocoMesa > 0 &&
+        data.troco_para > baseTrocoMesa
+      ) {
+        body += `<div class="subtotal-line"><span>Troco para</span><span>${brlPrint(data.troco_para)}</span></div>`;
+        body += `<div class="subtotal-line troco"><span>Troco</span><span>${brlPrint(data.troco_para - baseTrocoMesa)}</span></div>`;
+      }
     }
   } else {
     body += `<div class="section-title">${data.tipo === "retirada" ? "RETIRADA" : "DELIVERY"}</div>`;
@@ -296,10 +294,12 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
       const formaLabel: Record<string, string> = {
         dinheiro: "Dinheiro",
         pix: "PIX",
-        cartao: "Cart\u00e3o",
+        cartao: "Cartão",
+        boleto: "Boleto",
       };
       body += `<div class="sep-dashed"></div>`;
-      body += `<div class="subtotal-line"><span>Pagamento</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
+      body += `<div class="section-title">PAGAMENTO</div>`;
+      body += `<div class="subtotal-line"><span>Forma</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
       if (
         data.forma_pagamento === "dinheiro" &&
         data.troco_para != null &&

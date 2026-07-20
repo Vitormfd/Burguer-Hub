@@ -40,6 +40,10 @@ interface PedidoHistoricoRow {
   cliente_nome: string | null;
   cliente_telefone: string | null;
   mesa_numero: number | null;
+  mesa_nome: string | null;
+  modalidade_consumo: "local" | "levar" | null;
+  troco_para: number | null;
+  pagamentos: Array<{ forma: string; valor: number }> | null;
   forma_pagamento: FormaPagamento | null;
   taxa_entrega: number;
   fechado_em: string | null;
@@ -185,8 +189,19 @@ export default function HistoricoPedidos() {
         .select("pedido_id, cliente_nome, cliente_telefone, taxa_entrega, forma_pagamento")
         .in("pedido_id", pedidoIds),
       contaIds.length
-        ? supabase.from("contas").select("id, fechada_em, forma_pagamento, mesa_id, total, mesas(numero)").in("id", contaIds)
-        : Promise.resolve({ data: [] as Array<{ id: string; fechada_em: string | null; forma_pagamento: FormaPagamento | null; mesa_id: string | null; total: number; mesas: { numero: number } | null }> }),
+        ? supabase.from("contas").select("id, fechada_em, forma_pagamento, mesa_id, total, nome, modalidade_consumo, troco_para, conta_pagamentos(forma_pagamento, valor), mesas(numero)").in("id", contaIds)
+        : Promise.resolve({ data: [] as Array<{
+            id: string;
+            fechada_em: string | null;
+            forma_pagamento: FormaPagamento | null;
+            mesa_id: string | null;
+            total: number;
+            nome: string | null;
+            modalidade_consumo: "local" | "levar" | null;
+            troco_para: number | null;
+            conta_pagamentos: Array<{ forma_pagamento: string; valor: number }> | null;
+            mesas: { numero: number } | null;
+          }> }),
       clienteIds.length
         ? supabase.from("clientes").select("id, nome, telefone").in("id", clienteIds)
         : Promise.resolve({ data: [] as Array<{ id: string; nome: string; telefone: string }> }),
@@ -233,6 +248,12 @@ export default function HistoricoPedidos() {
         cliente_nome: entrega?.cliente_nome || cliente?.nome || null,
         cliente_telefone: entrega?.cliente_telefone || cliente?.telefone || null,
         mesa_numero: conta?.mesas?.numero ?? null,
+        mesa_nome: conta?.nome ?? null,
+        modalidade_consumo: (conta?.modalidade_consumo as "local" | "levar" | null) ?? null,
+        troco_para: conta?.troco_para != null ? Number(conta.troco_para) : null,
+        pagamentos: (conta?.conta_pagamentos || []).length
+          ? (conta?.conta_pagamentos || []).map((p) => ({ forma: p.forma_pagamento, valor: Number(p.valor) }))
+          : null,
         forma_pagamento: (entrega?.forma_pagamento || conta?.forma_pagamento || null) as FormaPagamento | null,
         taxa_entrega: taxa,
         fechado_em: conta?.fechada_em ?? null,
@@ -365,6 +386,8 @@ export default function HistoricoPedidos() {
         tipo: "mesa",
         loja_nome: cfgData?.nome_loja,
         mesa_numero: row.mesa_numero || 0,
+        nome: row.mesa_nome,
+        modalidade_consumo: row.modalidade_consumo ?? "local",
         pedidos: [{
           numero: 1,
           criado_em: row.criado_em,
@@ -377,7 +400,9 @@ export default function HistoricoPedidos() {
           })),
         }],
         total: row.total,
-        forma_pagamento: row.forma_pagamento,
+        pagamentos: row.pagamentos?.length ? row.pagamentos : undefined,
+        forma_pagamento: row.pagamentos?.length ? undefined : row.forma_pagamento,
+        troco_para: row.troco_para,
       });
       return;
     }

@@ -3,6 +3,7 @@ import type { TipoEntrega } from "@/types/db";
 export type FreteGratisMotivo =
   | "retirada"
   | "cupom"
+  | "promocao"
   | "promocao_global"
   | "promocao_bairro"
   | "valor_minimo"
@@ -74,6 +75,10 @@ export function calcularTaxaEntrega(params: {
   config?: FreteGratisConfig | null;
   bairro?: BairroFreteGratisConfig | null;
   cupomZeraFrete?: boolean;
+  /** Frete grátis / subsidio vindo do motor de promoções. */
+  promoZeraFrete?: boolean;
+  /** Desconto parcial no frete (promo "até X reais"). */
+  promoDescontoFrete?: number;
   bloqueiaFreteGratis?: boolean;
 }): TaxaEntregaCalculada {
   const taxaBairro = Math.max(Number(params.taxaBairro || 0), 0);
@@ -87,6 +92,21 @@ export function calcularTaxaEntrega(params: {
 
   if (params.cupomZeraFrete) {
     return { taxaBairro, taxaEfetiva: 0, freteGratis: true, motivo: "cupom" };
+  }
+
+  if (params.promoZeraFrete) {
+    return { taxaBairro, taxaEfetiva: 0, freteGratis: true, motivo: "promocao" };
+  }
+
+  const descontoFretePromo = Math.max(Number(params.promoDescontoFrete || 0), 0);
+  if (descontoFretePromo > 0) {
+    const efetiva = Math.max(taxaBairro - descontoFretePromo, 0);
+    return {
+      taxaBairro,
+      taxaEfetiva: efetiva,
+      freteGratis: efetiva <= 0,
+      motivo: "promocao",
+    };
   }
 
   if (params.bloqueiaFreteGratis) {

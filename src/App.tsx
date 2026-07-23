@@ -15,6 +15,7 @@ import Configuracoes from "./pages/Configuracoes";
 import CardapioPublico from "./pages/CardapioPublico";
 import FidelidadeAdmin from "./pages/FidelidadeAdmin";
 import CuponsAdmin from "./pages/CuponsAdmin";
+import PromocoesAdmin from "./pages/PromocoesAdmin";
 import Financeiro from "./pages/Financeiro";
 import Clientes from "./pages/Clientes";
 import HistoricoPedidos from "./pages/HistoricoPedidos";
@@ -42,6 +43,7 @@ const App = () => (
               <Route path="/admin/adicionais" element={<AdicionaisAdmin />} />
               <Route path="/admin/fidelidade" element={<FidelidadeAdmin />} />
               <Route path="/admin/cupons" element={<CuponsAdmin />} />
+              <Route path="/admin/promocoes" element={<PromocoesAdmin />} />
               <Route path="/admin/financeiro" element={<Financeiro />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />

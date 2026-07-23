@@ -6,6 +6,13 @@ export type TipoEntrega = "delivery" | "retirada";
 export type PedidoStatus = "pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado";
 export type RecompensaTipo = "item_gratis" | "desconto_percentual" | "desconto_fixo";
 export type CupomTipo = "percentual" | "fixo" | "frete_gratis";
+export type {
+  Promocao,
+  PromocaoTipo,
+  PromocaoCondicao,
+  PromocaoAcao,
+  EscopoProdutos,
+} from "@/lib/promocoes/types";
 export type ResgateStatus = "pendente" | "aplicado" | "cancelado";
 export type WhatsappLogStatus = "enviado" | "erro";
 export type TipoMensagemWhatsapp = "confirmado" | "em_preparo" | "saiu_entrega" | "entregue" | "retirada_pronto";
@@ -86,12 +93,14 @@ export interface Pedido {
   conta_id: string | null;
   cliente_id?: string | null;
   cupom_id?: string | null;
+  promocao_id?: string | null;
   tipo: PedidoTipo;
   status: PedidoStatus;
   criado_em: string;
   subtotal?: number;
   desconto?: number;
   valor_desconto?: number;
+  valor_desconto_promocao?: number;
   total?: number;
   recompensa_resgatada_id?: string | null;
   observacoes_internas?: string | null;

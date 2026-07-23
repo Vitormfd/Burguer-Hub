@@ -54,6 +54,12 @@ import {
 } from "@/lib/fidelidade";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
 import { precoEfetivo } from "@/lib/produtos";
+import {
+  avaliarPromocoes,
+  carregarPromocoesAtivas,
+  type PromoEffect,
+  type Promocao,
+} from "@/lib/promocoes";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
@@ -261,6 +267,8 @@ export default function CardapioPublico() {
   const [cupomCodigo, setCupomCodigo] = useState("");
   const [cupomBusy, setCupomBusy] = useState(false);
   const [cupomAplicado, setCupomAplicado] = useState<CupomAplicado | null>(null);
+  const [promocoesCampanha, setPromocoesCampanha] = useState<Promocao[]>([]);
+  const [codigoCampanha, setCodigoCampanha] = useState<string | null>(null);
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>("delivery");
   const [sucessoTipoEntrega, setSucessoTipoEntrega] = useState<TipoEntrega>("delivery");
   const [sucessoTempoRetirada, setSucessoTempoRetirada] = useState<number>(25);
@@ -309,6 +317,10 @@ export default function CardapioPublico() {
       setRecompensas((rewards || []) as Recompensa[]);
       setBairros((b || []) as BairroTaxa[]);
       if (cs[0]) setActiveCat(cs[0].id);
+
+      if (ownerId) {
+        void carregarPromocoesAtivas(String(ownerId)).then(setPromocoesCampanha);
+      }
 
       const counts = new Map<string, number>();
       (itens || []).forEach((i: any) => {
@@ -408,6 +420,46 @@ export default function CardapioPublico() {
     () => categoriasBloqueandoFreteGratis(cart, categorias),
     [cart, categorias],
   );
+
+  const promocaoAplicada = useMemo((): PromoEffect | null => {
+    if (tipoEntrega !== "delivery" || !promocoesCampanha.length || !cart.length) return null;
+    const result = avaliarPromocoes(promocoesCampanha, {
+      tipoEntrega,
+      subtotal,
+      taxaEntrega: taxaBase,
+      formaPagamento: forma,
+      bairro: bairroSelecionado?.nome ?? null,
+      itens: cart.map((item) => ({
+        produtoId: item.produto.id,
+        categoriaId: item.produto.categoria_id,
+        nome: item.produto.nome,
+        quantidade: item.quantidade,
+        precoUnit: item.precoUnit,
+      })),
+      cliente: {
+        id: fidelidadeCliente?.id,
+        telefone: normalizePhone(tel) || null,
+        totalPedidos: Number(fidelidadeCliente?.total_pedidos ?? 0),
+      },
+      codigoCupomDigitado: codigoCampanha,
+    });
+    return result.aplicada;
+  }, [
+    tipoEntrega,
+    promocoesCampanha,
+    cart,
+    subtotal,
+    taxaBase,
+    forma,
+    bairroSelecionado?.nome,
+    fidelidadeCliente?.id,
+    fidelidadeCliente?.total_pedidos,
+    tel,
+    codigoCampanha,
+  ]);
+
+  const descontoPromocao = promocaoAplicada?.desconto ?? 0;
+
   const taxaCalculada = useMemo(
     () => calcularTaxaEntrega({
       tipoEntrega,
@@ -416,14 +468,31 @@ export default function CardapioPublico() {
       config: cfg,
       bairro: bairroSelecionado,
       cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
+      promoZeraFrete: Boolean(promocaoAplicada?.freteGratis),
+      promoDescontoFrete: promocaoAplicada && !promocaoAplicada.freteGratis
+        ? promocaoAplicada.descontoFrete
+        : 0,
       bloqueiaFreteGratis,
     }),
-    [tipoEntrega, taxaBase, subtotal, cfg, bairroSelecionado, cupomAplicado?.taxa_entrega_zerada, bloqueiaFreteGratis],
+    [
+      tipoEntrega,
+      taxaBase,
+      subtotal,
+      cfg,
+      bairroSelecionado,
+      cupomAplicado?.taxa_entrega_zerada,
+      promocaoAplicada?.freteGratis,
+      promocaoAplicada?.descontoFrete,
+      bloqueiaFreteGratis,
+    ],
   );
   const taxaEfetiva = taxaCalculada.taxaEfetiva;
   const freteGratisFalta = freteGratisFaltamEfetivo(subtotal, cfg, bairroSelecionado, bloqueiaFreteGratis);
   const freteGratisTexto = freteGratisResumo(cfg, bairroSelecionado, bloqueiaFreteGratis);
-  const total = Math.max(subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom, subtotal > 0 ? 0.01 : 0);
+  const total = Math.max(
+    subtotal + taxaEfetiva - rewardBenefit.desconto - descontoCupom - descontoPromocao,
+    subtotal > 0 ? 0.01 : 0,
+  );
   const recompensasDisponiveis = useMemo(() => {
     if (!fidelidadeCliente) return [] as Recompensa[];
     return recompensasOrdenadas.filter((reward) => isRewardAvailable(reward, pedidosNoCiclo));
@@ -474,10 +543,16 @@ export default function CardapioPublico() {
   }, [selectedReward, fidelidadeCliente, pedidosNoCiclo]);
 
   useEffect(() => {
-    if (!cupomAplicado) return;
     setCupomAplicado(null);
     setCupomCodigo("");
+    setCodigoCampanha(null);
   }, [subtotal, bairroId, tel, tipoEntrega]);
+
+  // Evita Select com value órfão (bairro desativado/removido) — crash conhecido do Radix.
+  useEffect(() => {
+    if (!bairroId || !bairros.length) return;
+    if (!bairros.some((b) => b.id === bairroId)) setBairroId("");
+  }, [bairroId, bairros]);
 
   useEffect(() => {
     const phone = normalizePhone(tel);
@@ -492,7 +567,9 @@ export default function CardapioPublico() {
       if (!endereco.trim() && cached.endereco) setEndereco(cached.endereco);
       if (!numero.trim() && cached.numero) setNumero(cached.numero);
       if (!complemento.trim() && cached.complemento) setComplemento(cached.complemento);
-      if (!bairroId && cached.bairroId) setBairroId(cached.bairroId);
+      if (!bairroId && cached.bairroId && bairros.some((b) => b.id === cached.bairroId)) {
+        setBairroId(cached.bairroId);
+      }
     }
 
     void (async () => {
@@ -594,10 +671,9 @@ export default function CardapioPublico() {
     }
 
     setCupomBusy(true);
-    let payload: Awaited<ReturnType<typeof validarCupom>>;
 
     try {
-      payload = await validarCupom({
+      const payload = await validarCupom({
         codigo,
         telefone: normalizePhone(tel) || null,
         subtotal,
@@ -606,32 +682,71 @@ export default function CardapioPublico() {
         produto_ids: cart.map((item) => item.produto.id),
         commit: false,
       });
+
+      if (!payload?.cupom) {
+        throw new Error("Cupom inválido ou inexistente");
+      }
+
+      setCodigoCampanha(null);
+      setCupomAplicado({
+        id: payload.cupom.id,
+        codigo: payload.cupom.codigo,
+        tipo: payload.cupom.tipo,
+        valor: payload.cupom.valor,
+        valor_minimo_pedido: payload.cupom.valor_minimo_pedido,
+        valor_desconto_aplicado: Number(payload.valor_desconto_aplicado || 0),
+        taxa_entrega_zerada: !!payload.taxa_entrega_zerada,
+      });
+      setCupomCodigo(payload.cupom.codigo);
+      toast.success(`Cupom aplicado ✅ ${payload.cupom.codigo}`);
+      return;
     } catch (error) {
-      setCupomBusy(false);
+      // Fallback: código de campanha do módulo de promoções
+      if (tipoEntrega === "delivery") {
+        const campanha = promocoesCampanha.find(
+          (p) => p.necessita_cupom && (p.codigo_cupom || "").toUpperCase() === codigo,
+        );
+        if (campanha) {
+          const trial = avaliarPromocoes(promocoesCampanha, {
+            tipoEntrega,
+            subtotal,
+            taxaEntrega: taxaBase,
+            formaPagamento: forma,
+            bairro: bairroSelecionado?.nome ?? null,
+            itens: cart.map((item) => ({
+              produtoId: item.produto.id,
+              categoriaId: item.produto.categoria_id,
+              nome: item.produto.nome,
+              quantidade: item.quantidade,
+              precoUnit: item.precoUnit,
+            })),
+            cliente: {
+              id: fidelidadeCliente?.id,
+              telefone: normalizePhone(tel) || null,
+              totalPedidos: Number(fidelidadeCliente?.total_pedidos ?? 0),
+            },
+            codigoCupomDigitado: codigo,
+          });
+
+          if (trial.aplicada?.promocaoId === campanha.id) {
+            setCupomAplicado(null);
+            setCodigoCampanha(codigo);
+            setCupomCodigo(codigo);
+            toast.success(`Promoção aplicada ✅ ${campanha.nome}`);
+            return;
+          }
+        }
+      }
+
       return toast.error(error instanceof Error ? error.message : "Erro ao validar cupom");
+    } finally {
+      setCupomBusy(false);
     }
-
-    setCupomBusy(false);
-
-    if (!payload?.cupom) {
-      return toast.error("Cupom inválido ou inexistente");
-    }
-
-    setCupomAplicado({
-      id: payload.cupom.id,
-      codigo: payload.cupom.codigo,
-      tipo: payload.cupom.tipo,
-      valor: payload.cupom.valor,
-      valor_minimo_pedido: payload.cupom.valor_minimo_pedido,
-      valor_desconto_aplicado: Number(payload.valor_desconto_aplicado || 0),
-      taxa_entrega_zerada: !!payload.taxa_entrega_zerada,
-    });
-    setCupomCodigo(payload.cupom.codigo);
-    toast.success(`Cupom aplicado ✅ ${payload.cupom.codigo}`);
   };
 
   const removeCoupon = () => {
     setCupomAplicado(null);
+    setCodigoCampanha(null);
     setCupomCodigo("");
     toast.message("Cupom removido");
   };
@@ -977,6 +1092,7 @@ export default function CardapioPublico() {
     const descontoFidelidade = rewardBenefit.desconto;
     const itemGratis = rewardBenefit.itemGratis;
     const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
+    const descontoPromoAplicado = tipoEntrega === "delivery" ? (promocaoAplicada?.desconto ?? 0) : 0;
     const taxaEntregaFinal = calcularTaxaEntrega({
       tipoEntrega,
       taxaBairro: Number(bairro?.taxa || 0),
@@ -984,9 +1100,17 @@ export default function CardapioPublico() {
       config: cfg,
       bairro: bairro ?? null,
       cupomZeraFrete: cupomAplicado?.taxa_entrega_zerada,
+      promoZeraFrete: Boolean(promocaoAplicada?.freteGratis) && tipoEntrega === "delivery",
+      promoDescontoFrete:
+        tipoEntrega === "delivery" && promocaoAplicada && !promocaoAplicada.freteGratis
+          ? promocaoAplicada.descontoFrete
+          : 0,
       bloqueiaFreteGratis: carrinhoBloqueiaFreteGratis(cart, categorias),
     }).taxaEfetiva;
-    const totalFinal = Math.max(subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado, subtotal > 0 ? 0.01 : 0);
+    const totalFinal = Math.max(
+      subtotal + taxaEntregaFinal - descontoFidelidade - descontoCupomAplicado - descontoPromoAplicado,
+      subtotal > 0 ? 0.01 : 0,
+    );
     const trocoVal = forma === "dinheiro" && troco ? Number(troco.replace(",", ".")) : null;
     const ownerId = (cfg as Configuracao & { owner_id?: string | null }).owner_id;
 
@@ -1026,6 +1150,25 @@ export default function CardapioPublico() {
       });
     }
 
+    if (tipoEntrega === "delivery" && promocaoAplicada?.itensBonus?.length) {
+      for (const bonus of promocaoAplicada.itensBonus) {
+        const produtoBonus = produtos.find((p) => p.id === bonus.produtoId);
+        if (!produtoBonus) continue;
+        itensPayload.push({
+          produto_id: produtoBonus.id,
+          produtoId: produtoBonus.id,
+          quantidade: Math.max(1, bonus.quantidade),
+          preco_unitario: 0,
+          precoUnitario: 0,
+          observacao: encodeKdsItemObservation(
+            produtoBonus.nome,
+            `Brinde promoção: ${promocaoAplicada.nome}`,
+          ),
+          adicionais: [],
+        });
+      }
+    }
+
     setBusy(true);
 
     const { data: rpcResult, error: rpcError } = await (supabase as any).rpc("create_public_delivery_order", {
@@ -1048,6 +1191,11 @@ export default function CardapioPublico() {
       p_cliente_id: fidelidadeCliente?.id ?? null,
       p_selected_reward_id: selectedReward?.id ?? null,
       p_items: itensPayload,
+      p_promocao_id: tipoEntrega === "delivery" ? (promocaoAplicada?.promocaoId ?? null) : null,
+      p_valor_desconto_promocao: descontoPromoAplicado,
+      p_pontos_extra_promocao: tipoEntrega === "delivery" ? (promocaoAplicada?.pontosExtra ?? 0) : 0,
+      p_promocao_meta: promocaoAplicada?.meta ?? {},
+      p_promo_zera_frete: Boolean(promocaoAplicada?.freteGratis) && tipoEntrega === "delivery",
     });
 
     if (rpcError || !rpcResult?.pedido_id) {
@@ -1089,7 +1237,7 @@ export default function CardapioPublico() {
 
     // Dispara mensagem WhatsApp de confirmação (fire-and-forget)
     if (tel.trim()) {
-      const descontoTotal = descontoFidelidade + descontoCupomAplicado;
+      const descontoTotal = descontoFidelidade + descontoCupomAplicado + descontoPromoAplicado;
       sendWhatsapp(
         pedidoId,
         "confirmado",
@@ -1122,6 +1270,7 @@ export default function CardapioPublico() {
     setTelefoneBuscado("");
     setCupomAplicado(null);
     setCupomCodigo("");
+    setCodigoCampanha(null);
   };
 
   if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
@@ -1622,10 +1771,15 @@ export default function CardapioPublico() {
                 </div>
                 <div className="space-y-2">
                   <Label>Bairro *</Label>
-                  <Select value={bairroId} onValueChange={setBairroId}>
+                  {/* modal={false}: evita conflito de pointer-events do Select dentro do Sheet (tela branca em alguns aparelhos). */}
+                  <Select
+                    value={bairroId || undefined}
+                    onValueChange={setBairroId}
+                    modal={false}
+                  >
                     <SelectTrigger><SelectValue placeholder="Selecione o bairro" /></SelectTrigger>
                     <SelectContent>
-                      {bairros.map((b) => {
+                      {bairros.filter((b) => !!b.id).map((b) => {
                         const freteBairro = freteGratisBairroResumo(b);
                         const taxaLabel = b.frete_gratis_ativo
                           ? "Frete grátis"
@@ -1678,7 +1832,7 @@ export default function CardapioPublico() {
                   <p className="text-xs text-zinc-500">
                     Cupons não podem ser usados com produtos em promoção.
                   </p>
-                ) : !cupomAplicado ? (
+                ) : !cupomAplicado && !codigoCampanha ? (
                   <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                     <div className="space-y-1">
                       <Label className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Tem um cupom?</Label>
@@ -1696,7 +1850,9 @@ export default function CardapioPublico() {
                 ) : (
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Badge className="border-emerald-500/25 bg-emerald-500/15 text-emerald-700">
-                      Cupom aplicado ✅ {cupomAplicado.codigo}
+                      {cupomAplicado
+                        ? `Cupom aplicado ✅ ${cupomAplicado.codigo}`
+                        : `Promoção ✅ ${promocaoAplicada?.nome || codigoCampanha}`}
                     </Badge>
                     <Button type="button" variant="outline" size="sm" onClick={removeCoupon}>
                       Remover
@@ -1704,6 +1860,46 @@ export default function CardapioPublico() {
                   </div>
                 )}
               </div>
+              {tipoEntrega === "delivery" && promocaoAplicada && !codigoCampanha && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 space-y-1">
+                  <div className="flex justify-between gap-2 font-semibold">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Promoção aplicada
+                    </span>
+                    <span>{promocaoAplicada.nome}</span>
+                  </div>
+                  {promocaoAplicada.desconto > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span>Desconto</span>
+                      <span>-{brl(promocaoAplicada.desconto)}</span>
+                    </div>
+                  )}
+                  {(promocaoAplicada.freteGratis || promocaoAplicada.descontoFrete > 0) && (
+                    <div className="flex justify-between text-xs">
+                      <span>Frete</span>
+                      <span>{promocaoAplicada.freteGratis ? "Grátis" : `−${brl(promocaoAplicada.descontoFrete)}`}</span>
+                    </div>
+                  )}
+                  {promocaoAplicada.pontosExtra > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span>Pontos extras</span>
+                      <span>+{promocaoAplicada.pontosExtra}</span>
+                    </div>
+                  )}
+                  {promocaoAplicada.itensBonus.length > 0 && (
+                    <p className="text-xs">
+                      Brinde(s): {promocaoAplicada.itensBonus.map((b) => {
+                        const p = produtos.find((x) => x.id === b.produtoId);
+                        return `${b.quantidade}x ${p?.nome || "item"}`;
+                      }).join(", ")}
+                    </p>
+                  )}
+                  {promocaoAplicada.economiaTotal > 0 && (
+                    <p className="text-xs font-medium">Você economiza {brl(promocaoAplicada.economiaTotal)}</p>
+                  )}
+                </div>
+              )}
               {cupomAplicado?.tipo === "percentual" && (
                 <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
                   <span>Desconto ({Number(cupomAplicado.valor || 0).toFixed(0)}%)</span>
@@ -1714,6 +1910,18 @@ export default function CardapioPublico() {
                 <div className="flex justify-between" style={{ color: withAlpha(fidelidadeCor, 0.95) }}>
                   <span>Desconto</span>
                   <span>-{brl(descontoCupom)}</span>
+                </div>
+              )}
+              {descontoPromocao > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Promoção ({promocaoAplicada?.nome})</span>
+                  <span>-{brl(descontoPromocao)}</span>
+                </div>
+              )}
+              {promocaoAplicada && promocaoAplicada.pontosExtra > 0 && descontoPromocao <= 0 && !promocaoAplicada.freteGratis && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Promoção ({promocaoAplicada.nome})</span>
+                  <span>+{promocaoAplicada.pontosExtra} pts</span>
                 </div>
               )}
               {cupomAplicado?.tipo === "frete_gratis" && (

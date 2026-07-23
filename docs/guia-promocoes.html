@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Como usar as Promoções — Burguer Hub</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: #1c1917;
+      line-height: 1.45;
+      font-size: 11pt;
+      margin: 0;
+    }
+    h1 {
+      font-size: 22pt;
+      margin: 0 0 4px;
+      color: #9a3412;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: #78716c;
+      margin: 0 0 18px;
+      font-size: 11pt;
+    }
+    h2 {
+      font-size: 13pt;
+      margin: 18px 0 8px;
+      color: #9a3412;
+      border-bottom: 2px solid #fed7aa;
+      padding-bottom: 4px;
+    }
+    p, li { margin: 0 0 6px; }
+    ul { margin: 0 0 8px; padding-left: 18px; }
+    .box {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 10px 0;
+    }
+    .box strong { color: #9a3412; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 12px;
+      font-size: 10pt;
+    }
+    th, td {
+      border: 1px solid #e7e5e4;
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #fff7ed;
+      color: #9a3412;
+      font-weight: 600;
+    }
+    .steps { counter-reset: step; list-style: none; padding: 0; }
+    .steps li {
+      counter-increment: step;
+      margin-bottom: 8px;
+      padding-left: 32px;
+      position: relative;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #ea580c;
+      color: #fff;
+      font-size: 10pt;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 22px;
+      text-align: center;
+    }
+    .footer {
+      margin-top: 22px;
+      padding-top: 10px;
+      border-top: 1px solid #e7e5e4;
+      color: #78716c;
+      font-size: 9pt;
+    }
+    .tip { color: #57534e; }
+  </style>
+</head>
+<body>
+  <h1>Como usar as Promoções</h1>
+  <p class="subtitle">Guia rápido para o painel Burguer Hub</p>
+
+  <h2>1. Onde fica</h2>
+  <p>No painel administrativo, abra o menu <strong>Criar promoções</strong> (ao lado de Cupons).</p>
+  <div class="box">
+    <strong>Cupons</strong> — códigos simples de desconto (como antes).<br />
+    <strong>Criar promoções</strong> — campanhas completas, automáticas ou com código.
+  </div>
+
+  <h2>2. Regras importantes</h2>
+  <ul>
+    <li>Vale <strong>somente no delivery</strong> (pedido pelo cardápio online com entrega).</li>
+    <li><strong>Só uma promoção por pedido</strong> — a de maior prioridade ganha. Elas não acumulam entre si.</li>
+    <li>Cupons antigos e o programa de fidelidade continuam funcionando à parte.</li>
+  </ul>
+
+  <h2>3. Como criar uma promoção</h2>
+  <ol class="steps">
+    <li>Clique em <strong>Nova promoção</strong>.</li>
+    <li>Escolha o <strong>tipo</strong> (ex.: 10% off, frete grátis, brinde).</li>
+    <li>Preencha apenas os campos que aparecerem para aquele tipo.</li>
+    <li>Defina <strong>quando</strong> vale: datas, horário e dias da semana.</li>
+    <li>Se quiser, adicione <strong>condições</strong> (pedido mínimo, bairro, cliente novo, etc.).</li>
+    <li>Confira a <strong>prévia</strong> no formulário e salve com status <strong>Ativa</strong>.</li>
+  </ol>
+
+  <h2>4. Tipos disponíveis</h2>
+  <table>
+    <thead>
+      <tr><th>Tipo</th><th>Exemplo de uso</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Desconto percentual</td><td>15% no pedido</td></tr>
+      <tr><td>Desconto fixo</td><td>R$ 10 de desconto</td></tr>
+      <tr><td>Frete grátis</td><td>Frete zerado ou até um valor</td></tr>
+      <tr><td>Compre X leve Y</td><td>Compre 2, leve 3</td></tr>
+      <tr><td>Brinde</td><td>Pedido acima de R$ 80 → ganha batata</td></tr>
+      <tr><td>Combo</td><td>Hambúrguer + batata + refri por preço fixo</td></tr>
+      <tr><td>Desconto em categoria</td><td>20% em bebidas</td></tr>
+      <tr><td>Desconto em produto</td><td>Desconto só em itens escolhidos</td></tr>
+      <tr><td>Leve mais, pague menos</td><td>2 por R$ 50 · 3 por R$ 70</td></tr>
+      <tr><td>Pontos extras</td><td>Cliente ganha pontos a mais na fidelidade</td></tr>
+      <tr><td>Cupom (campanha)</td><td>Mesma lógica, mas o cliente digita um código</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Campos que mais importam</h2>
+  <table>
+    <thead>
+      <tr><th>Campo</th><th>Para que serve</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Prioridade</td><td>Se duas promoções baterem, vale a de número maior.</td></tr>
+      <tr><td>Aplicar automaticamente</td><td>Entra sozinha no carrinho, sem código.</td></tr>
+      <tr><td>Necessita cupom?</td><td>Cliente digita o código no checkout.</td></tr>
+      <tr><td>Limite de usos</td><td>Limite total da campanha e/ou por cliente.</td></tr>
+      <tr><td>Cliente novo</td><td>Quem ainda tem 0 pedidos.</td></tr>
+      <tr><td>Cliente VIP</td><td>Quem tem mais de N pedidos (você define o N).</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Como o cliente vê no pedido</h2>
+  <p>No checkout do delivery, quando a promoção aplicar, aparece:</p>
+  <ul>
+    <li>Nome da promoção</li>
+    <li>Valor economizado</li>
+    <li>Frete grátis (se for o caso)</li>
+    <li>Itens de brinde</li>
+    <li>Pontos extras</li>
+  </ul>
+  <p>Se for campanha com código, o cliente usa o campo <strong>“Tem um cupom?”</strong>.</p>
+
+  <h2>7. Cupons × Promoções</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>Cupons</th><th>Criar promoções</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Melhor para</td><td>Código rápido (ex.: BURGER10)</td><td>Campanhas com regras</td></tr>
+      <tr><td>Automático?</td><td>Não (precisa digitar)</td><td>Sim, se marcar</td></tr>
+      <tr><td>Frete / brinde / combo / X leve Y</td><td>Limitado</td><td>Completo</td></tr>
+    </tbody>
+  </table>
+
+  <h2>8. Dicas rápidas</h2>
+  <ul class="tip">
+    <li>Comece simples: “R$ 80 → frete grátis” ou “10% no primeiro pedido”.</li>
+    <li>Use <strong>prioridade alta</strong> nas campanhas principais do mês.</li>
+    <li>Desative (não precisa apagar) quando a campanha acabar.</li>
+    <li>Teste um pedido real no cardápio público antes de divulgar.</li>
+  </ul>
+
+  <div class="footer">
+    Burguer Hub — Guia de Promoções · Uso interno do estabelecimento
+  </div>
+</body>
+</html>

@@ -41,7 +41,7 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import type { BairroTaxa, Categoria, Cliente, Configuracao, Cupom, HorarioFuncionamentoDia, Produto, Recompensa, TipoEntrega } from "@/types/db";
+import type { BairroTaxa, CarrosselSlide, Categoria, Cliente, Configuracao, Cupom, HorarioFuncionamentoDia, Produto, Recompensa, TipoEntrega } from "@/types/db";
 import ProdutoCascadeDialog from "@/components/cardapio/ProdutoCascadeDialog";
 import { cartTemPromocao, type CartItem } from "@/components/cardapio/cartTypes";
 import {
@@ -54,6 +54,11 @@ import {
 } from "@/lib/fidelidade";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
 import { precoEfetivo } from "@/lib/produtos";
+import {
+  getCarrosselSlides,
+  produtosDaPromocao,
+  slideIsClickable,
+} from "@/lib/carrossel";
 import {
   avaliarPromocoes,
   carregarPromocoesAtivas,
@@ -385,19 +390,28 @@ export default function CardapioPublico() {
     return top.length ? top : promocoes.slice(0, 6);
   }, [produtos, topSellers, promocoes]);
 
-  const bannerSlides = useMemo(() => {
-    const configuradas = (cfg?.carrossel_imagens || []).filter((v) => !!v);
+  const bannerSlides = useMemo((): CarrosselSlide[] => {
+    const configuradas = getCarrosselSlides(cfg);
     if (configuradas.length > 0) return configuradas;
 
-    const imagens = [
-      cfg?.banner_url || null,
-      ...promocoes.map((p) => p.imagem_url).filter(Boolean),
-      ...maisPedidos.map((p) => p.imagem_url).filter(Boolean),
-    ].filter((v): v is string => !!v);
+    const fromProdutos: CarrosselSlide[] = [];
+    const seen = new Set<string>();
 
-    const unicas = Array.from(new Set(imagens));
-    return unicas.slice(0, 6);
-  }, [cfg?.banner_url, promocoes, maisPedidos]);
+    const pushProduto = (p: Produto) => {
+      if (!p.imagem_url || seen.has(p.imagem_url)) return;
+      seen.add(p.imagem_url);
+      fromProdutos.push({ url: p.imagem_url, produto_id: p.id, promocao_id: null });
+    };
+
+    if (cfg?.banner_url && !seen.has(cfg.banner_url)) {
+      seen.add(cfg.banner_url);
+      fromProdutos.push({ url: cfg.banner_url, produto_id: null, promocao_id: null });
+    }
+    promocoes.forEach(pushProduto);
+    maisPedidos.forEach(pushProduto);
+
+    return fromProdutos.slice(0, 6);
+  }, [cfg, promocoes, maisPedidos]);
 
   const categoriaById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
   const fidelidadeCliente = fidelidadeBusca?.cliente ?? null;
@@ -526,6 +540,72 @@ export default function CardapioPublico() {
   const removeItem = (idx: number) => setCart((prev) => prev.filter((_, i) => i !== idx));
   const updateQty = (idx: number, delta: number) =>
     setCart((prev) => prev.map((it, i) => (i === idx ? { ...it, quantidade: Math.max(1, it.quantidade + delta) } : it)));
+
+  const makeCartItem = (produto: Produto, quantidade = 1): CartItem => {
+    const precoBaseUnit = precoEfetivo(produto);
+    return {
+      id: crypto.randomUUID(),
+      produto,
+      quantidade: Math.max(1, quantidade),
+      observacao: "",
+      adicionais: [],
+      precoBaseUnit,
+      precoAdicionaisUnit: 0,
+      precoUnit: precoBaseUnit,
+    };
+  };
+
+  const handleBannerClick = (slide: CarrosselSlide) => {
+    if (!slideIsClickable(slide)) return;
+    if (!cfg?.ativo || !isOpenNow(cfg)) {
+      toast.error("A loja está fechada no momento");
+      return;
+    }
+
+    if (slide.promocao_id) {
+      const promo = promocoesCampanha.find((p) => p.id === slide.promocao_id);
+      if (!promo) {
+        toast.error("Promoção indisponível no momento");
+        return;
+      }
+      const needs = produtosDaPromocao(promo);
+      if (needs.length === 0) {
+        toast.error("Esta promoção não tem produtos para adicionar. Vincule um produto na imagem.");
+        return;
+      }
+      if (needs.length === 1) {
+        const produto = produtos.find((p) => p.id === needs[0].produtoId);
+        if (!produto) {
+          toast.error("Produto da promoção não encontrado");
+          return;
+        }
+        openAdd(produto);
+        return;
+      }
+
+      const items: CartItem[] = [];
+      for (const need of needs) {
+        const produto = produtos.find((p) => p.id === need.produtoId);
+        if (!produto) {
+          toast.error("Um ou mais produtos da promoção estão indisponíveis");
+          return;
+        }
+        items.push(makeCartItem(produto, need.qtd));
+      }
+      setCart((prev) => [...prev, ...items]);
+      toast.success(`${promo.nome} adicionado ao carrinho`);
+      return;
+    }
+
+    if (slide.produto_id) {
+      const produto = produtos.find((p) => p.id === slide.produto_id);
+      if (!produto) {
+        toast.error("Produto indisponível");
+        return;
+      }
+      openAdd(produto);
+    }
+  };
 
   useEffect(() => {
     const currentPhone = normalizePhone(tel);
@@ -1404,18 +1484,31 @@ export default function CardapioPublico() {
               <div className="relative overflow-hidden rounded-[12px] bg-zinc-100" style={{ aspectRatio: "16 / 10.4" }}>
                 {bannerSlides.length > 0 ? (
                   <>
-                    {bannerSlides.map((src, idx) => (
-                      <img
-                        key={`${src}-${idx}`}
-                        src={src}
-                        alt={`Banner ${idx + 1}`}
-                        className={cn(
-                          "absolute inset-0 h-full w-full object-cover transition-opacity duration-500",
-                          idx === bannerIndex ? "opacity-100" : "opacity-0"
-                        )}
-                        loading={idx === 0 ? "eager" : "lazy"}
-                      />
-                    ))}
+                    {bannerSlides.map((slide, idx) => {
+                      const clickable = slideIsClickable(slide);
+                      return (
+                        <button
+                          key={`${slide.url}-${idx}`}
+                          type="button"
+                          disabled={!clickable}
+                          aria-label={clickable ? `Adicionar promoção do banner ${idx + 1}` : `Banner ${idx + 1}`}
+                          onClick={() => handleBannerClick(slide)}
+                          className={cn(
+                            "absolute inset-0 block h-full w-full p-0 border-0 bg-transparent transition-opacity duration-500",
+                            idx === bannerIndex ? "opacity-100" : "opacity-0 pointer-events-none",
+                            clickable ? "cursor-pointer" : "cursor-default",
+                          )}
+                        >
+                          <img
+                            src={slide.url}
+                            alt={`Banner ${idx + 1}`}
+                            className="h-full w-full object-cover"
+                            loading={idx === 0 ? "eager" : "lazy"}
+                            draggable={false}
+                          />
+                        </button>
+                      );
+                    })}
                   </>
                 ) : (
                   <div

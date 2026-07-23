@@ -117,6 +117,7 @@ export type Database = {
           ativo: boolean
           banner_url: string | null
           carrossel_imagens: string[]
+          carrossel_slides: Json
           cor_primaria: string
           created_at: string
           fidelidade_ativa: boolean
@@ -142,6 +143,7 @@ export type Database = {
           ativo?: boolean
           banner_url?: string | null
           carrossel_imagens?: string[]
+          carrossel_slides?: Json
           cor_primaria?: string
           created_at?: string
           fidelidade_ativa?: boolean
@@ -167,6 +169,7 @@ export type Database = {
           ativo?: boolean
           banner_url?: string | null
           carrossel_imagens?: string[]
+          carrossel_slides?: Json
           cor_primaria?: string
           created_at?: string
           fidelidade_ativa?: boolean

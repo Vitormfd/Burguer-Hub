@@ -165,13 +165,25 @@ export interface HorarioFuncionamentoDia {
   fechamento: string;
 }
 
+/** Slide do carrossel do cardápio público (imagem + CTA opcional). */
+export interface CarrosselSlide {
+  url: string;
+  /** Ao clicar, abre o fluxo de adicionar este produto. */
+  produto_id?: string | null;
+  /** Ao clicar, adiciona os itens da promoção (ex.: combo) ao carrinho. */
+  promocao_id?: string | null;
+}
+
 export interface Configuracao {
   id: string;
   nome_loja: string;
   referencia: string | null;
   logo_url: string | null;
   banner_url: string | null;
+  /** @deprecated Preferir carrossel_slides; mantido sincronizado como lista de URLs. */
   carrossel_imagens: string[];
+  /** Slides com URL e vínculo opcional a produto/promoção. */
+  carrossel_slides?: CarrosselSlide[];
   cor_primaria: string;
   ativo: boolean;
   hora_abertura: string;

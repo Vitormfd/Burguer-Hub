@@ -9,6 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { playPreset, tryUnlockAudio } from "@/lib/sound";
 import {
@@ -29,10 +36,19 @@ import {
   Printer,
 } from "lucide-react";
 import { type PrintConfig, readPrintConfig, savePrintConfig, printCashSummary } from "@/lib/print";
-import type { BairroTaxa, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
+import type { BairroTaxa, CarrosselSlide, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
+import { getCarrosselSlides, slidesToUrls } from "@/lib/carrossel";
+import { carregarTodasPromocoes, PROMOCAO_TIPO_LABELS, type Promocao } from "@/lib/promocoes";
 import { configureWhatsappWebhook } from "@/lib/whatsapp";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+
+const SEM_VINCULO = "__none__";
+
+interface ProdutoOpt {
+  id: string;
+  nome: string;
+}
 
 // --- helpers -----------------------------------------------------------------
 
@@ -241,6 +257,8 @@ function TestMsgModal({
 export default function Configuracoes() {
   const [cfg, setCfg] = useState<Configuracao | null>(null);
   const [bairros, setBairros] = useState<BairroTaxa[]>([]);
+  const [produtosOpt, setProdutosOpt] = useState<ProdutoOpt[]>([]);
+  const [promocoesOpt, setPromocoesOpt] = useState<Promocao[]>([]);
   const [novoBairro, setNovoBairro] = useState("");
   const [novaTaxa, setNovaTaxa] = useState("");
   const [novaImagemCarrossel, setNovaImagemCarrossel] = useState("");
@@ -250,6 +268,15 @@ export default function Configuracoes() {
   const logoRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
   const carrosselRef = useRef<HTMLInputElement>(null);
+
+  const setCarrosselSlides = (slides: CarrosselSlide[]) => {
+    if (!cfg) return;
+    setCfg({
+      ...cfg,
+      carrossel_slides: slides,
+      carrossel_imagens: slidesToUrls(slides),
+    });
+  };
 
   // WhatsApp state
   const [zapiStatus, setZapiStatus] = useState<"idle" | "ok" | "error">("idle");
@@ -327,19 +354,32 @@ export default function Configuracoes() {
   // loaders
 
   const load = async () => {
-    const [{ data: c }, { data: b }] = await Promise.all([
+    const [{ data: c }, { data: b }, { data: prod }] = await Promise.all([
       supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
       supabase.from("bairros_taxas").select("*").order("nome"),
+      supabase.from("produtos").select("id, nome").order("nome"),
     ]);
     if (c) {
       const cfgData = c as unknown as Configuracao;
+      const slides = getCarrosselSlides(cfgData);
       setCfg({
         ...cfgData,
-        carrossel_imagens: cfgData.carrossel_imagens || [],
+        carrossel_slides: slides,
+        carrossel_imagens: slidesToUrls(slides),
         horario_funcionamento: normalizeWeeklySchedule(cfgData),
       });
+      const ownerId = (c as { owner_id?: string | null }).owner_id;
+      if (ownerId) {
+        try {
+          const promos = await carregarTodasPromocoes(String(ownerId));
+          setPromocoesOpt(promos);
+        } catch {
+          setPromocoesOpt([]);
+        }
+      }
     }
     setBairros((b || []) as BairroTaxa[]);
+    setProdutosOpt((prod || []) as ProdutoOpt[]);
   };
 
   const loadLogs = async () => {
@@ -396,7 +436,8 @@ export default function Configuracoes() {
     if (upErr) { setUploading(null); return toast.error(upErr.message); }
     const { data } = supabase.storage.from("loja").getPublicUrl(path);
     const url = data.publicUrl;
-    setCfg({ ...cfg, carrossel_imagens: [...(cfg.carrossel_imagens || []), url] });
+    const atuais = getCarrosselSlides(cfg);
+    setCarrosselSlides([...atuais, { url, produto_id: null, promocao_id: null }]);
     setUploading(null);
     toast.success("Imagem adicionada ao carrossel");
   };
@@ -406,15 +447,22 @@ export default function Configuracoes() {
     const url = novaImagemCarrossel.trim();
     if (!url) return;
     if (!/^https?:\/\//i.test(url)) return toast.error("Informe uma URL valida iniciando com http:// ou https://");
-    const atuais = cfg.carrossel_imagens || [];
-    if (atuais.includes(url)) return toast.error("Essa imagem ja esta no carrossel");
-    setCfg({ ...cfg, carrossel_imagens: [...atuais, url] });
+    const atuais = getCarrosselSlides(cfg);
+    if (atuais.some((s) => s.url === url)) return toast.error("Essa imagem ja esta no carrossel");
+    setCarrosselSlides([...atuais, { url, produto_id: null, promocao_id: null }]);
     setNovaImagemCarrossel("");
   };
 
-  const removeCarouselImage = (url: string) => {
+  const removeCarouselImage = (idx: number) => {
     if (!cfg) return;
-    setCfg({ ...cfg, carrossel_imagens: (cfg.carrossel_imagens || []).filter((item) => item !== url) });
+    setCarrosselSlides(getCarrosselSlides(cfg).filter((_, i) => i !== idx));
+  };
+
+  const updateCarouselSlide = (idx: number, patch: Partial<CarrosselSlide>) => {
+    if (!cfg) return;
+    setCarrosselSlides(
+      getCarrosselSlides(cfg).map((slide, i) => (i === idx ? { ...slide, ...patch } : slide)),
+    );
   };
 
   // save geral
@@ -443,7 +491,8 @@ export default function Configuracoes() {
           ? Number(cfg.frete_gratis_minimo)
           : null,
         endereco_estabelecimento: cfg.endereco_estabelecimento ?? null,
-        carrossel_imagens: cfg.carrossel_imagens || [],
+        carrossel_slides: getCarrosselSlides(cfg),
+        carrossel_imagens: slidesToUrls(getCarrosselSlides(cfg)),
         horario_funcionamento: normalizeWeeklySchedule(cfg) as any,
       })
       .eq("id", cfg.id);
@@ -751,17 +800,63 @@ export default function Configuracoes() {
 
               <div className="space-y-3 md:col-span-2">
                 <Label>Imagens do carrossel do topo</Label>
-                <p className="text-xs text-muted-foreground">Essas imagens sao exibidas no carrossel grande da pagina publica.</p>
-                {(cfg.carrossel_imagens || []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Exibidas no carrossel grande do cardápio. Vincule um produto ou uma promoção para que o clique adicione ao carrinho.
+                </p>
+                {getCarrosselSlides(cfg).length === 0 ? (
                   <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nenhuma imagem adicionada no carrossel ainda.</div>
                 ) : (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {(cfg.carrossel_imagens || []).map((url, idx) => (
-                      <div key={`${url}-${idx}`} className="relative rounded-md overflow-hidden border bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
-                        <img src={url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
-                        <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => removeCarouselImage(url)}>
-                          <X className="w-4 h-4" />
-                        </Button>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {getCarrosselSlides(cfg).map((slide, idx) => (
+                      <div key={`${slide.url}-${idx}`} className="rounded-md border bg-muted/30 overflow-hidden">
+                        <div className="relative bg-muted" style={{ aspectRatio: "16 / 8.8" }}>
+                          <img src={slide.url} alt={`Carrossel ${idx + 1}`} className="w-full h-full object-cover" />
+                          <Button type="button" size="icon" variant="destructive" className="absolute top-1 right-1 h-7 w-7" onClick={() => removeCarouselImage(idx)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="p-3 space-y-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Ao clicar → produto</Label>
+                            <Select
+                              value={slide.produto_id || SEM_VINCULO}
+                              onValueChange={(v) => updateCarouselSlide(idx, { produto_id: v === SEM_VINCULO ? null : v })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Nenhum" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={SEM_VINCULO}>Nenhum</SelectItem>
+                                {produtosOpt.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Ao clicar → promoção (combo / campanha)</Label>
+                            <Select
+                              value={slide.promocao_id || SEM_VINCULO}
+                              onValueChange={(v) => updateCarouselSlide(idx, { promocao_id: v === SEM_VINCULO ? null : v })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Nenhuma" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={SEM_VINCULO}>Nenhuma</SelectItem>
+                                {promocoesOpt.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.nome} ({PROMOCAO_TIPO_LABELS[p.tipo]})
+                                    {!p.ativo ? " — inativa" : ""}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            Se ambos estiverem definidos, a promoção tem prioridade (ex.: adiciona o combo inteiro).
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>

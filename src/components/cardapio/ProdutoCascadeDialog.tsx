@@ -192,7 +192,7 @@ export default function ProdutoCascadeDialog({
           {!loading && produto && (
             <div className="space-y-4">
               {produto.imagem_url && (
-                <div className="h-56 rounded-xl overflow-hidden border">
+                <div className="mx-auto w-full max-w-[280px] aspect-square rounded-xl overflow-hidden border bg-muted">
                   <img src={produto.imagem_url} alt={produto.nome} className="w-full h-full object-cover" />
                 </div>
               )}

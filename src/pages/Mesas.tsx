@@ -6,6 +6,9 @@ import MesaCard from "@/components/mesas/MesaCard";
 import AbrirContaDialog from "@/components/mesas/AbrirContaDialog";
 import ContaSheet from "@/components/mesas/ContaSheet";
 import NovaMesaDialog from "@/components/mesas/NovaMesaDialog";
+import AbrirCaixaDialog from "@/components/caixa/AbrirCaixaDialog";
+import CaixaFechadoBanner from "@/components/caixa/CaixaFechadoBanner";
+import { useCaixaAberto } from "@/hooks/useCaixaAberto";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -21,6 +24,7 @@ export default function Mesas() {
   const [mesaAbrir, setMesaAbrir] = useState<Mesa | null>(null);
   const [mesaConta, setMesaConta] = useState<Mesa | null>(null);
   const [showNovaMesa, setShowNovaMesa] = useState(false);
+  const caixa = useCaixaAberto();
 
   const load = async () => {
     const [{ data, error }, { data: contasAbertas, error: contasError }] = await Promise.all([
@@ -56,8 +60,11 @@ export default function Mesas() {
   }, []);
 
   const handleClick = (m: Mesa) => {
-    if (m.status === "livre") setMesaAbrir(m);
-    else setMesaConta(m);
+    if (m.status === "livre") {
+      caixa.requireCaixa(() => setMesaAbrir(m));
+      return;
+    }
+    setMesaConta(m);
   };
 
   const counts = {
@@ -87,6 +94,10 @@ export default function Mesas() {
           </Button>
         </div>
       </div>
+
+      {!caixa.loading && !caixa.isAberto && (
+        <CaixaFechadoBanner onAbrir={() => caixa.openAbrirCaixa()} />
+      )}
 
       {loading ? (
         <div className="text-muted-foreground">Carregando...</div>
@@ -121,6 +132,12 @@ export default function Mesas() {
         open={showNovaMesa}
         onClose={() => setShowNovaMesa(false)}
         onCreated={() => load()}
+      />
+      <AbrirCaixaDialog
+        open={caixa.dialogOpen}
+        sugestaoValorInicial={caixa.sugestaoValorInicial}
+        onClose={caixa.closeDialog}
+        onOpened={() => void caixa.handleOpened()}
       />
     </div>
   );

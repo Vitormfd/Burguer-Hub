@@ -20,6 +20,9 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoDeliveryDialog from "@/components/delivery/NovoDeliveryDialog";
 import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
+import AbrirCaixaDialog from "@/components/caixa/AbrirCaixaDialog";
+import CaixaFechadoBanner from "@/components/caixa/CaixaFechadoBanner";
+import { useCaixaAberto } from "@/hooks/useCaixaAberto";
 import { pedidoEditavel } from "@/lib/pedidoEdit";
 import {
   MOTIVOS_CANCELAMENTO,
@@ -99,6 +102,7 @@ const getStatusCfg = (row: DeliveryRow) => row.tipo_entrega === "retirada" ? sta
 
 export default function Delivery() {
   const { user } = useAuth();
+  const caixa = useCaixaAberto();
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -434,10 +438,14 @@ export default function Delivery() {
           </h1>
           <p className="text-muted-foreground mt-1">Pedidos do dia em tempo real</p>
         </div>
-        <Button size="lg" onClick={() => setNovoOpen(true)}>
+        <Button size="lg" onClick={() => caixa.requireCaixa(() => setNovoOpen(true))}>
           <Plus className="h-4 w-4 mr-1" /> Novo delivery
         </Button>
       </div>
+
+      {!caixa.loading && !caixa.isAberto && (
+        <CaixaFechadoBanner onAbrir={() => caixa.openAbrirCaixa()} />
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Card className="p-4 flex items-center gap-3 shadow-soft">
@@ -678,6 +686,13 @@ export default function Delivery() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AbrirCaixaDialog
+        open={caixa.dialogOpen}
+        sugestaoValorInicial={caixa.sugestaoValorInicial}
+        onClose={caixa.closeDialog}
+        onOpened={() => void caixa.handleOpened()}
+      />
     </div>
   );
 }

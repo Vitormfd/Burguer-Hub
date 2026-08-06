@@ -30,6 +30,8 @@ import { brl } from "@/lib/format";
 import { toast } from "sonner";
 import NovoPedidoDialog from "./NovoPedidoDialog";
 import EditarPedidoDialog from "@/components/pedidos/EditarPedidoDialog";
+import AbrirCaixaDialog from "@/components/caixa/AbrirCaixaDialog";
+import { useCaixaAberto } from "@/hooks/useCaixaAberto";
 import { pedidoEditavel } from "@/lib/pedidoEdit";
 import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle, Pencil, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { printReceipt } from "@/lib/print";
@@ -80,6 +82,7 @@ const modalidadeLabel: Record<ModalidadeConsumo, string> = {
 
 export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | null; onClose: () => void; onClosed?: () => void }) {
   const { user } = useAuth();
+  const caixa = useCaixaAberto();
   const [conta, setConta] = useState<Conta | null>(null);
   const [pedidos, setPedidos] = useState<PedidoComItens[]>([]);
   const [pagamentos, setPagamentos] = useState<ContaPagamento[]>([]);
@@ -1070,7 +1073,11 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <Button variant="outline" onClick={() => setNovoOpen(true)} disabled={!conta || busy}>
+              <Button
+                variant="outline"
+                onClick={() => caixa.requireCaixa(() => setNovoOpen(true))}
+                disabled={!conta || busy}
+              >
                 <Plus className="h-4 w-4 mr-1" /> Novo pedido
               </Button>
               <Button variant="outline" onClick={handlePrint} disabled={!conta || !pedidos.length || busy}>
@@ -1297,6 +1304,13 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AbrirCaixaDialog
+        open={caixa.dialogOpen}
+        sugestaoValorInicial={caixa.sugestaoValorInicial}
+        onClose={caixa.closeDialog}
+        onOpened={() => void caixa.handleOpened()}
+      />
     </>
   );
 }

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Flame } from "lucide-react";
+import { Utensils } from "lucide-react";
 import { requestDesktopNotificationPermission, tryUnlockAudio } from "@/lib/sound";
 
 export default function Auth() {
@@ -56,7 +56,7 @@ export default function Auth() {
       <Card className="w-full max-w-md p-8 shadow-elegant">
         <div className="flex flex-col items-center mb-8">
           <div className="bg-gradient-primary p-3 rounded-2xl mb-4 shadow-elegant">
-            <Flame className="w-8 h-8 text-primary-foreground" />
+            <Utensils className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-4xl font-display text-foreground">Easy Food Hub</h1>
           <p className="text-sm text-muted-foreground mt-1">Gestão para restaurantes e food service</p>

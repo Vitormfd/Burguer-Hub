@@ -8,7 +8,7 @@ import floatVeg from "@/assets/float-veg.png";
 import {
   Settings, Timer, Users, Wallet, UtensilsCrossed, Armchair, Bike, TrendingUp,
   Gift, MessageCircle, Check, ArrowRight, Star, Instagram, Linkedin, Phone,
-  ChevronDown, Flame,
+  ChevronDown, Flame, Utensils,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -168,7 +168,7 @@ function Nav() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <a href="#" className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
-            <Flame className="h-5 w-5" />
+            <Utensils className="h-5 w-5" />
           </span>
           <span className="font-display text-2xl tracking-wide">EASY FOOD HUB</span>
         </a>
@@ -745,7 +745,7 @@ function Footer() {
         <div className="md:col-span-2">
           <div className="flex items-center gap-2">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-primary text-primary-foreground">
-              <Flame className="h-5 w-5" />
+              <Utensils className="h-5 w-5" />
             </span>
             <span className="font-display text-2xl">EASY FOOD HUB</span>
           </div>

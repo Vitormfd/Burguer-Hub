@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, BarChart3, Flame, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone } from "lucide-react";
+import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -108,7 +108,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-3 p-2">
           <div className="bg-gradient-primary p-2 rounded-lg shrink-0 shadow-elegant">
-            <Flame className="w-5 h-5 text-primary-foreground" />
+            <Utensils className="w-5 h-5 text-primary-foreground" />
           </div>
           {!collapsed && (
             <div className="flex flex-col leading-tight">

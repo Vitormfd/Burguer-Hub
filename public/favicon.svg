@@ -1,41 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <!-- Pão superior com sementes -->
-  <ellipse cx="100" cy="50" rx="70" ry="35" fill="#D2691E"/>
-  <ellipse cx="100" cy="48" rx="70" ry="30" fill="#E8B67B"/>
-  
-  <!-- Sementes de gergelim -->
-  <circle cx="75" cy="35" r="4" fill="#DEB887"/>
-  <circle cx="95" cy="30" r="4" fill="#DEB887"/>
-  <circle cx="115" cy="33" r="4" fill="#DEB887"/>
-  <circle cx="130" cy="40" r="4" fill="#DEB887"/>
-  <circle cx="85" cy="45" r="3" fill="#DEB887"/>
-  <circle cx="120" cy="48" r="3" fill="#DEB887"/>
-  
-  <!-- Alface -->
-  <ellipse cx="100" cy="75" rx="72" ry="15" fill="#228B22"/>
-  <path d="M 30 75 Q 25 70 30 80 Q 28 75 32 85" stroke="#1a6b1a" stroke-width="1.5" fill="none"/>
-  <path d="M 170 75 Q 175 70 170 80 Q 172 75 168 85" stroke="#1a6b1a" stroke-width="1.5" fill="none"/>
-  
-  <!-- Queijo -->
-  <rect x="32" y="88" width="136" height="18" rx="4" fill="#FFD700"/>
-  <circle cx="50" cy="95" r="2" fill="#FFA500" opacity="0.6"/>
-  <circle cx="80" cy="92" r="2" fill="#FFA500" opacity="0.6"/>
-  <circle cx="120" cy="98" r="2" fill="#FFA500" opacity="0.6"/>
-  <circle cx="150" cy="94" r="2" fill="#FFA500" opacity="0.6"/>
-  
-  <!-- Hambúrguer -->
-  <ellipse cx="100" cy="120" rx="70" ry="20" fill="#8B4513"/>
-  <ellipse cx="100" cy="118" rx="70" ry="18" fill="#A0522D"/>
-  
-  <!-- Tomate -->
-  <ellipse cx="100" cy="145" rx="68" ry="18" fill="#DC143C"/>
-  <circle cx="70" cy="142" r="6" fill="#FF1744" opacity="0.4"/>
-  <circle cx="130" cy="148" r="6" fill="#FF1744" opacity="0.4"/>
-  
-  <!-- Pão inferior -->
-  <ellipse cx="100" cy="168" rx="70" ry="32" fill="#D2691E"/>
-  <ellipse cx="100" cy="170" rx="70" ry="28" fill="#E8B67B"/>
-  
-  <!-- Sombra -->
-  <ellipse cx="100" cy="200" rx="75" ry="8" fill="black" opacity="0.1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Easy Food Hub">
+  <rect width="32" height="32" rx="8" fill="#F58C14"/>
+  <!-- Garfo -->
+  <path fill="#fff" d="M8.2 6.4c.55 0 1 .4 1 .9v5.1h1.15V7.3c0-.5.45-.9 1-.9s1 .4 1 .9v5.1H13.5V7.3c0-.5.45-.9 1-.9s1 .4 1 .9v6.35c0 1.15-.7 2.15-1.75 2.5v8.35c0 .7-.55 1.25-1.25 1.25h-.7c-.7 0-1.25-.55-1.25-1.25v-8.35c-1.05-.35-1.75-1.35-1.75-2.5V7.3c0-.5.45-.9 1-.9z"/>
+  <!-- Faca -->
+  <path fill="#fff" d="M22.6 6.3c.85 0 1.45.75 1.25 1.55L21.2 19.1h.05v6.15c0 .7-.55 1.25-1.25 1.25h-.7c-.7 0-1.25-.55-1.25-1.25V18.7c0-.2.05-.4.15-.55l3.15-10.7c.2-.7.85-1.15 1.55-1.15z"/>
 </svg>

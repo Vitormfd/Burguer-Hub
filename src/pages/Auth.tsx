@@ -58,8 +58,8 @@ export default function Auth() {
           <div className="bg-gradient-primary p-3 rounded-2xl mb-4 shadow-elegant">
             <Flame className="w-8 h-8 text-primary-foreground" />
           </div>
-          <h1 className="text-4xl font-display text-foreground">BURGER OS</h1>
-          <p className="text-sm text-muted-foreground mt-1">Sistema da hamburgueria</p>
+          <h1 className="text-4xl font-display text-foreground">Easy Food Hub</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gestão para restaurantes e food service</p>
         </div>
 
         <Tabs defaultValue="login">

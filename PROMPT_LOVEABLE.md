@@ -1,14 +1,14 @@
-# Prompt para Loveable - Landing Page Burguer Hub
+﻿# Prompt para Loveable - Landing Page Easy Food Hub
 
 ## Instruções Gerais
-Crie uma landing page moderna e responsiva para o **Burguer Hub**, um sistema completo de gestão para hamburguerias e negócios de food service. O design deve ser clean, profissional, com tons de laranja/vermelho (cores de food/burgers) combinados com branco e cinza escuro.
+Crie uma landing page moderna e responsiva para o **Easy Food Hub**, um sistema completo de gestão para restaurantes, lanchonetes e operações de food service. O design deve ser clean, profissional, com tons de laranja/vermelho (cores de food/burgers) combinados com branco e cinza escuro.
 
 ---
 
 ## Seções Principais
 
 ### 1. Hero Section (Com Parallax)
-- **Headline**: "Burguer Hub - Seu Sistema Completo de Gestão de Hamburguerias"
+- **Headline**: "Easy Food Hub - Seu Sistema Completo de Gestão para Restaurantes e Food Service"
 - **Subheadline**: "Gerencie cardápio, pedidos, delivery, financeiro e fidelidade de clientes em uma única plataforma intuitiva"
 - **Background**: Imagem de hambúrguer/comida com efeito **parallax** - a imagem se move mais lentamente que o scroll, criando profundidade
 - **Elementos Flutuantes**: Adicionar elementos decorativos (ícones, cards com números) que se movem com parallax diferente (prato, talheres, moedas)
@@ -17,7 +17,7 @@ Crie uma landing page moderna e responsiva para o **Burguer Hub**, um sistema co
 - **Efeito de Entrada**: Elementos aparecem com animação ao carregar a página (fade-in + slide)
 
 ### 2. Problemas & Soluções (Com Parallax de Cards)
-Mostrar 4 cards com problemas comuns e como o Burguer Hub resolve. Cards aparecem com efeito de fade-in ao descer a página.
+Mostrar 4 cards com problemas comuns e como o Easy Food Hub resolve. Cards aparecem com efeito de fade-in ao descer a página.
 
 1. **Múltiplos Sistemas Desconectados**
    - Ícone: ⚙️
@@ -186,8 +186,8 @@ Se houver planos, criar 3 cards:
 
 - **Vídeo Demo**: Embed de vídeo curto (60s) em section com fundo e parallax
 - **Elementos Decorativos Flutuantes**: Hambúrgueres, batatas fritas, moedas animadas em parallax no fundo (diferentes velocidades)
-- **Animação de Números**: Counters que contam de 0 até número final quando scroll chega (ex: "+500 hamburguerias", "+2M pedidos")
-- **Blog/Casos de Uso**: Seção com 3 artigos sobre gestão de hamburguerias com cards com hover zoom
+- **Animação de Números**: Counters que contam de 0 até número final quando scroll chega (ex: "+500 estabelecimentos", "+2M pedidos")
+- **Blog/Casos de Uso**: Seção com 3 artigos sobre Gestão para Restaurantes e Food Service com cards com hover zoom
 - **Newsletter**: Signup form para receber atualizações (com validação animada)
 - **Live Chat**: Botão flutuante de suporte ao vivo com pulsação
 - **Ícones Customizados**: Ícones únicos para cada funcionalidade com animações de entrada
@@ -210,7 +210,7 @@ Se houver planos, criar 3 cards:
 ## Extras / Nice to Have
 
 - **Vídeo Demo**: Embed de vídeo curto (60s) mostrando o sistema em ação
-- **Blog/Casos de Uso**: Seção com 3 artigos sobre gestão de hamburguerias
+- **Blog/Casos de Uso**: Seção com 3 artigos sobre Gestão para Restaurantes e Food Service
 - **Newsletter**: Signup form para receber atualizações
 - **Live Chat**: Botão de suporte ao vivo
 - **Ícones Customizados**: Ícones únicos para cada funcionalidade

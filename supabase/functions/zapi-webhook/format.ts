@@ -243,7 +243,9 @@ export const formatCart = (carrinho: CartItemWa[]): string => {
 };
 
 export const buildCardapioUrl = (cfg: LojaConfig): string => {
-  const base = (cfg.site_url || "").trim().replace(/\/+$/, "");
+  const fromCfg = (cfg.site_url || "").trim().replace(/\/+$/, "");
+  const fromEnv = (Deno.env.get("PUBLIC_APP_URL") || "").trim().replace(/\/+$/, "");
+  const base = fromCfg || fromEnv;
   if (!base) return "";
   const ref = (cfg.referencia || "").trim().replace(/^\/+|\/+$/g, "");
   return ref ? `${base}/${ref}/cardapio` : `${base}/cardapio`;

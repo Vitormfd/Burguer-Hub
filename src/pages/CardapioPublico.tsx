@@ -924,7 +924,7 @@ export default function CardapioPublico() {
                     color: withAlpha(fidelidadeCor, 0.95),
                   }}
                 >
-                  <Trophy className="h-3.5 w-3.5" /> Fidelidade Burger Hub
+                  <Trophy className="h-3.5 w-3.5" /> Fidelidade Easy Food Hub
                 </div>
                 <h3 className={cn("font-bold tracking-tight text-zinc-900", compact ? "text-xl" : "text-3xl")}>Suas recompensas 🎁</h3>
                 <p className="max-w-2xl text-sm" style={{ color: withAlpha(fidelidadeCor, 0.9) }}>{cfg.fidelidade_texto || "A cada 10 pedidos, ganhe uma recompensa!"}</p>

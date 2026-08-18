@@ -218,7 +218,7 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
   const now = new Date();
   const dateStr = now.toLocaleDateString("pt-BR");
   const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  const lojaName = esc(data.loja_nome ?? "Burguer Hub");
+  const lojaName = esc(data.loja_nome ?? "Easy Food Hub");
 
   let body = "";
 
@@ -365,7 +365,7 @@ export function printCashSummary(summary: CashSummary, config?: PrintConfig) {
   const now = new Date();
   const dateStr = now.toLocaleDateString("pt-BR");
   const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  const lojaName = esc(summary.loja_nome || "Burguer Hub");
+  const lojaName = esc(summary.loja_nome || "Easy Food Hub");
 
   const fs = fontSizeMap[config.fonte];
   const w = config.largura;

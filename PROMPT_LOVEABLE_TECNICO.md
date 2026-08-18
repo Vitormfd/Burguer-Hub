@@ -1,4 +1,4 @@
-# Instruções Técnicas - Landing Page Burguer Hub com Parallax
+﻿# Instruções Técnicas - Landing Page Easy Food Hub com Parallax
 
 ## Bibliotecas Recomendadas
 
@@ -52,7 +52,7 @@ Exemplo: Hambúrgueres, moedas, talheres no fundo do hero
   - Duração: 1.5s (1500ms)
   - Usar requestAnimationFrame para smooth
 - Exemplo:
-  * "+500 Hamburguerias" → conta de 0 a 500
+  * "+500 Estabelecimentos" → conta de 0 a 500
   * "+2M Pedidos" → conta de 0 a 2,000,000
 ```
 

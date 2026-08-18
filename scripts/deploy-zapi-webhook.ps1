@@ -1,4 +1,4 @@
-# Deploy zapi-webhook + limpeza de sessoes WhatsApp (Burguer Hub)
+# Deploy zapi-webhook + limpeza de sessoes WhatsApp (Easy Food Hub)
 # Uso: $env:SUPABASE_ACCESS_TOKEN = "seu-token"; .\scripts\deploy-zapi-webhook.ps1
 
 $ErrorActionPreference = "Stop"

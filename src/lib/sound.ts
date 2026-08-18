@@ -522,12 +522,12 @@ export const showNewOrderDesktopNotification = (message = "Novo pedido chegou") 
     lastDesktopNotificationAt = now;
 
     try {
-      new Notification("Burguer Hub", {
+      new Notification("Easy Food Hub", {
         body: message,
-        tag: "burguer-hub-new-order",
+        tag: "easy-food-hub-new-order",
         renotify: true,
         silent: false,
-        icon: "/favicon.ico",
+        icon: "/favicon.svg",
       });
     } catch {
       // Ignore notification errors from restrictive browser environments.

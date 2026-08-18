@@ -14,10 +14,12 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Burguer Hub — Sistema de Gestão Completo para Hamburguerias" },
-      { name: "description", content: "Cardápio, mesas, delivery, financeiro e fidelidade numa plataforma só. Aumente seus pedidos e organize sua hamburgueria com o Burguer Hub." },
-      { property: "og:title", content: "Burguer Hub — Gestão Completa para Hamburguerias" },
-      { property: "og:description", content: "A plataforma que organiza pedidos, delivery, mesas e fidelidade da sua hamburgueria." },
+      { title: "Easy Food Hub — Gestão para Restaurantes e Food Service" },
+      { name: "description", content: "Sistema de gestão para restaurantes, lanchonetes e operações de food service, com salão, delivery, cardápio online, caixa, promoções, fidelidade e WhatsApp." },
+      { property: "og:title", content: "Easy Food Hub — Gestão para Restaurantes e Food Service" },
+      { property: "og:description", content: "Pedidos, salão, delivery e gestão em um só sistema para restaurantes e food service." },
+      { property: "og:url", content: "https://easyfoodhub.com.br/" },
+      { property: "og:site_name", content: "Easy Food Hub" },
     ],
   }),
   component: Index,
@@ -69,7 +71,7 @@ const recursos = [
 ];
 
 const planos = [
-  { name: "Básico", price: "R$ 89", desc: "Para hamburguerias começando online",
+  { name: "Básico", price: "R$ 89", desc: "Para estabelecimentos começando online",
     features: ["1 loja", "Até 300 pedidos/mês", "Cardápio público", "Suporte por e-mail"], cta: "Começar grátis" },
   { name: "Profissional", price: "R$ 189", desc: "Para operações em crescimento",
     features: ["Até 3 lojas", "Pedidos ilimitados", "Analytics avançado", "Fidelidade & cupons", "Suporte prioritário"], cta: "Quero esse plano", highlight: true },
@@ -93,7 +95,7 @@ const faqs = [
 ];
 
 const stats = [
-  { value: 500, suffix: "+", label: "Hamburguerias ativas" },
+  { value: 500, suffix: "+", label: "Estabelecimentos ativos" },
   { value: 2, suffix: "M+", label: "Pedidos processados" },
   { value: 42, suffix: "%", label: "Aumento médio em vendas" },
   { value: 99.9, suffix: "%", label: "Uptime garantido" },
@@ -168,7 +170,7 @@ function Nav() {
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
             <Flame className="h-5 w-5" />
           </span>
-          <span className="font-display text-2xl tracking-wide">BURGUER HUB</span>
+          <span className="font-display text-2xl tracking-wide">EASY FOOD HUB</span>
         </a>
         <nav className="hidden items-center gap-8 md:flex">
           {nav.map((n) => (
@@ -245,13 +247,13 @@ function Hero() {
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
             className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider backdrop-blur"
           >
-            <Flame className="h-3.5 w-3.5 text-highlight" /> Sistema #1 para hamburguerias
+            <Flame className="h-3.5 w-3.5 text-highlight" /> Gestão para restaurantes e food service
           </motion.span>
           <motion.h1
             initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.1 }}
             className="mt-6 font-display text-5xl leading-[0.95] sm:text-6xl lg:text-7xl"
           >
-            Seu sistema completo de gestão de <span className="text-gradient">hamburguerias</span>
+            Pedidos, salão, delivery e gestão em um só <span className="text-gradient">sistema</span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.25 }}
@@ -276,7 +278,7 @@ function Hero() {
           >
             <div className="flex items-center gap-1">
               {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 fill-highlight text-highlight" />)}
-              <span className="ml-2">4.9/5 — +800 hamburguerias</span>
+              <span className="ml-2">4.9/5 — +800 estabelecimentos</span>
             </div>
             <span>30 dias grátis · sem cartão</span>
           </motion.div>
@@ -383,7 +385,7 @@ function Problemas() {
       </motion.div>
 
       <div className="relative mx-auto max-w-7xl px-6">
-        <SectionTitle eyebrow="Problemas & Soluções" title="Pare de remediar. Comece a operar." desc="O que toda hamburgueria enfrenta — e como o Burguer Hub resolve." />
+        <SectionTitle eyebrow="Problemas & Soluções" title="Pare de remediar. Comece a operar." desc="O que toda operação de food service enfrenta — e como o Easy Food Hub resolve." />
         <div className="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {problemas.map((p, i) => (
             <Reveal key={p.title} delay={i * 0.1}>
@@ -421,7 +423,7 @@ function Funcionalidades() {
       </motion.div>
 
       <div className="relative mx-auto max-w-7xl px-6">
-        <SectionTitle eyebrow="Funcionalidades" title="Tudo o que sua hamburgueria precisa" desc="Seis módulos integrados, um só painel." />
+        <SectionTitle eyebrow="Funcionalidades" title="Tudo o que seu negócio precisa" desc="Seis módulos integrados, um só painel." />
         <div className="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((f, i) => {
             const col = i % 3;
@@ -745,10 +747,10 @@ function Footer() {
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-primary text-primary-foreground">
               <Flame className="h-5 w-5" />
             </span>
-            <span className="font-display text-2xl">BURGUER HUB</span>
+            <span className="font-display text-2xl">EASY FOOD HUB</span>
           </div>
           <p className="mt-4 max-w-sm text-sm text-muted-foreground">
-            O sistema completo de gestão para hamburguerias modernas.
+            Gestão para restaurantes, lanchonetes e operações de food service.
           </p>
           <div className="mt-6 flex gap-3">
             {[Instagram, Linkedin, Phone].map((Icon, i) => (
@@ -774,7 +776,7 @@ function Footer() {
         </div>
       </div>
       <div className="mx-auto mt-10 max-w-7xl border-t border-border px-6 pt-6 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} Burguer Hub. Todos os direitos reservados.
+        © {new Date().getFullYear()} Easy Food Hub. Todos os direitos reservados.
       </div>
     </footer>
   );

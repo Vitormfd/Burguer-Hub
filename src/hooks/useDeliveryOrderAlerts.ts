@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { countDeliveryPendentes } from "@/lib/deliveryBoard";
 import {
   initOrderAlertAudio,
   showNewOrderDesktopNotification,
@@ -28,15 +29,9 @@ export function useDeliveryOrderAlerts(enabled: boolean) {
     let isActive = true;
 
     const syncAndAlert = async (notifyOnIncrease = false) => {
-      const { count } = await supabase
-        .from("pedidos")
-        .select("id", { head: true, count: "exact" })
-        .eq("tipo", "delivery")
-        .eq("status", "pendente");
+      const next = await countDeliveryPendentes();
 
       if (!isActive) return;
-
-      const next = count ?? 0;
       const prev = previousPendingRef.current;
 
       if (notifyOnIncrease && prev !== null && next > prev) {

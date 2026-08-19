@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { countDeliveryPendentes } from "@/lib/deliveryBoard";
 
 const items = [
   { title: "Mesas", url: "/mesas", icon: Utensils },
@@ -47,16 +48,12 @@ export function AppSidebar() {
     let isActive = true;
 
     const syncPendingCount = async () => {
-      const { count } = await supabase
-        .from("pedidos")
-        .select("id", { head: true, count: "exact" })
-        .eq("tipo", "delivery")
-        .eq("status", "pendente");
+      const count = await countDeliveryPendentes();
 
       if (!isActive) return;
 
-      previousPendingRef.current = count ?? 0;
-      setPendingCount(count ?? 0);
+      previousPendingRef.current = count;
+      setPendingCount(count);
     };
 
     void syncPendingCount();

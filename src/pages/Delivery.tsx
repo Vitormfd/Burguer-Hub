@@ -33,6 +33,7 @@ import {
 } from "@/lib/pedidoCancelamento";
 import { printReceipt } from "@/lib/print";
 import { sendWhatsapp } from "@/lib/whatsapp";
+import { loadPedidosDeliveryBoard } from "@/lib/deliveryBoard";
 import type { PedidoStatus } from "@/types/db";
 
 type EntregaStatus = "aguardando" | "saiu_para_entrega" | "entregue";
@@ -132,19 +133,10 @@ export default function Delivery() {
   }, []);
 
   const load = useCallback(async () => {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const { data: pedidos, error } = await supabase
-      .from("pedidos")
-      .select("id, criado_em, tipo_entrega, status")
-      .eq("tipo", "delivery")
-      .neq("status", "cancelado")
-      .gte("criado_em", startOfDay.toISOString())
-      .order("criado_em", { ascending: false });
+    const { data: pedidos, error } = await loadPedidosDeliveryBoard();
 
     if (error) { toast.error(error.message); setLoading(false); return; }
-    const pedidoIds = (pedidos || []).map((p) => p.id);
+    const pedidoIds = pedidos.map((p) => p.id);
     if (!pedidoIds.length) {
       setRows([]);
       setLoading(false);
@@ -180,26 +172,31 @@ export default function Delivery() {
       ])
     );
 
-    const list: DeliveryRow[] = (entregas || []).map((e) => {
-      const ped = pedidos!.find((p) => p.id === e.pedido_id)!;
-      return {
-        entrega_id: e.id,
-        pedido_id: e.pedido_id,
-        tipo_entrega: (ped.tipo_entrega as EntregaTipo) || "delivery",
-        pedido_status: (ped.status as PedidoStatusAtivo) || "pendente",
-        cliente_nome: e.cliente_nome,
-        cliente_telefone: e.cliente_telefone,
-        endereco: e.endereco,
-        numero: e.numero,
-        complemento: e.complemento,
-        bairro: e.bairro,
-        taxa_entrega: Number(e.taxa_entrega),
-        status: e.status as EntregaStatus,
-        criado_em: ped.criado_em,
-        itens_total: totals.get(e.pedido_id) || 0,
-        resgate: resgateMap.get(e.pedido_id) || null,
-      };
-    }).sort((a, b) => +new Date(b.criado_em) - +new Date(a.criado_em));
+    const entregaMap = new Map((entregas || []).map((e) => [e.pedido_id, e]));
+
+    const list: DeliveryRow[] = pedidos
+      .filter((ped) => ped.status === "pendente" || ped.status === "em_preparo" || ped.status === "pronto" || ped.status === "entregue")
+      .map((ped) => {
+        const e = entregaMap.get(ped.id);
+        return {
+          entrega_id: e?.id || ped.id,
+          pedido_id: ped.id,
+          tipo_entrega: (ped.tipo_entrega as EntregaTipo) || "delivery",
+          pedido_status: ped.status as PedidoStatusAtivo,
+          cliente_nome: e?.cliente_nome || "Cliente",
+          cliente_telefone: e?.cliente_telefone || "",
+          endereco: e?.endereco || "",
+          numero: e?.numero ?? null,
+          complemento: e?.complemento ?? null,
+          bairro: e?.bairro ?? null,
+          taxa_entrega: Number(e?.taxa_entrega || 0),
+          status: (e?.status as EntregaStatus) || "aguardando",
+          criado_em: ped.criado_em,
+          itens_total: totals.get(ped.id) || 0,
+          resgate: resgateMap.get(ped.id) || null,
+        };
+      })
+      .sort((a, b) => +new Date(b.criado_em) - +new Date(a.criado_em));
 
     setRows(list);
     setLoading(false);
@@ -498,7 +495,7 @@ export default function Delivery() {
             const Icon = cfg.icon;
             const total = r.itens_total + r.taxa_entrega;
             return (
-              <Card key={r.entrega_id} className="p-5 shadow-card flex flex-col gap-3 hover:shadow-elegant transition-shadow">
+              <Card key={r.pedido_id} className="p-5 shadow-card flex flex-col gap-3 hover:shadow-elegant transition-shadow">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-display text-xl leading-tight">{r.cliente_nome}</div>

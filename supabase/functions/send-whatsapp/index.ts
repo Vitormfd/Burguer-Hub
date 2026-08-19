@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
   let cfgQuery = supabase
     .from("configuracoes")
     .select(
-      "id, zapi_instance_id, zapi_token, zapi_client_token, zapi_ativo, " +
+      "id, owner_id, zapi_instance_id, zapi_token, zapi_client_token, zapi_ativo, " +
       "whatsapp_msg_confirmado, whatsapp_msg_em_preparo, whatsapp_msg_saiu_entrega, " +
       "whatsapp_msg_entregue, whatsapp_msg_retirada_pronto, " +
       "whatsapp_msg_confirmado_ativo, whatsapp_msg_em_preparo_ativo, whatsapp_msg_saiu_entrega_ativo, " +
@@ -142,6 +142,7 @@ Deno.serve(async (req) => {
 
     if (pedido_id && tipo_mensagem && telefone) {
       await supabase.from("whatsapp_logs").insert({
+        owner_id: ownerIdFromPedido,
         pedido_id,
         telefone: normalizePhone(telefone) || telefone,
         tipo_mensagem,
@@ -246,6 +247,7 @@ Deno.serve(async (req) => {
   if (!phone) {
     const cleaned = normalizePhone(telefone);
     await supabase.from("whatsapp_logs").insert({
+      owner_id: (cfg as { owner_id?: string | null }).owner_id ?? ownerIdFromPedido,
       pedido_id,
       telefone: cleaned || telefone,
       tipo_mensagem,
@@ -330,6 +332,7 @@ Deno.serve(async (req) => {
 
   // Log result — always, regardless of outcome
   await supabase.from("whatsapp_logs").insert({
+    owner_id: (cfg as { owner_id?: string | null }).owner_id ?? ownerIdFromPedido,
     pedido_id,
     telefone: formattedPhone,
     tipo_mensagem,

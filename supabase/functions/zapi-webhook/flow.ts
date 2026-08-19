@@ -574,7 +574,7 @@ export async function processMessage(
       }
       dados.tipo_entrega = selected as "delivery" | "retirada";
 
-      const cliente = await loadClienteByPhone(supabase, telefone);
+      const cliente = await loadClienteByPhone(supabase, telefone, cfg.owner_id);
       if (cliente) {
         dados.cliente = {
           nome: cliente.nome,

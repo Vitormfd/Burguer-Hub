@@ -196,11 +196,13 @@ export async function loadBairros(
 export async function loadClienteByPhone(
   supabase: SupabaseClient,
   telefone: string,
+  ownerId: string,
 ) {
   const phone = normalizePhone(telefone);
   const { data } = await supabase
     .from("clientes")
     .select("id, nome, endereco, numero, complemento, bairro")
+    .eq("owner_id", ownerId)
     .eq("telefone", phone)
     .maybeSingle();
   return data;

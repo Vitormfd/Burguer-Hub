@@ -25,11 +25,23 @@ export async function loadGruposProduto(
 
   if (!vinculos?.length && !fallbackAll) return [];
 
-  const { data: gruposDisponiveis, error: gruposDisponiveisError } = await supabase
+  const { data: produtoRow } = await supabase
+    .from("produtos")
+    .select("id, owner_id")
+    .eq("id", produtoId)
+    .maybeSingle();
+
+  let gruposDisponiveisQuery = supabase
     .from("grupos_adicionais")
     .select("id")
     .eq("disponivel", true)
     .order("ordem", { ascending: true });
+
+  if (produtoRow?.owner_id) {
+    gruposDisponiveisQuery = gruposDisponiveisQuery.eq("owner_id", produtoRow.owner_id);
+  }
+
+  const { data: gruposDisponiveis, error: gruposDisponiveisError } = await gruposDisponiveisQuery;
 
   if (gruposDisponiveisError) throw gruposDisponiveisError;
 

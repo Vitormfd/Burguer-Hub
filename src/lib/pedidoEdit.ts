@@ -26,7 +26,7 @@ export async function loadPedidoCart(pedidoId: string): Promise<Cart> {
       : Promise.resolve({ data: [] as Produto[] }),
     supabase
       .from("pedido_item_adicionais")
-      .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
+      .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
       .in("pedido_item_id", itemIds),
   ]);
 
@@ -52,13 +52,13 @@ export async function loadPedidoCart(pedidoId: string): Promise<Cart> {
 
   const adicionaisPorItem = new Map<string, CartAdicionalSelecionado[]>();
   (itemAdicionais || []).forEach((row) => {
-    const meta = adicionalMap.get(row.adicional_id);
+    const meta = row.adicional_id ? adicionalMap.get(row.adicional_id) : undefined;
     const cur = adicionaisPorItem.get(row.pedido_item_id) ?? [];
     cur.push({
       grupoId: meta?.grupo_id ?? "",
       grupoNome: grupoMap.get(meta?.grupo_id ?? "") ?? "Adicional",
-      adicionalId: row.adicional_id,
-      adicionalNome: meta?.nome ?? "Adicional",
+      adicionalId: row.adicional_id ?? "",
+      adicionalNome: row.nome || meta?.nome || "Adicional",
       quantidade: row.quantidade,
       precoUnitario: Number(row.preco_unitario),
     });

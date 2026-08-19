@@ -122,6 +122,10 @@ export default function AdicionaisAdmin() {
   };
 
   const excluirGrupo = async (id: string) => {
+    if (!window.confirm("Excluir este grupo e todos os adicionais dele? Pedidos antigos continuam com o que já foi cobrado.")) {
+      return;
+    }
+
     const { error } = await supabase.from("grupos_adicionais").delete().eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Grupo removido");
@@ -194,6 +198,10 @@ export default function AdicionaisAdmin() {
   };
 
   const excluirAdicional = async (id: string) => {
+    if (!window.confirm("Excluir este adicional? Pedidos antigos continuam com o que já foi cobrado.")) {
+      return;
+    }
+
     const { error } = await supabase.from("adicionais").delete().eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Adicional removido");

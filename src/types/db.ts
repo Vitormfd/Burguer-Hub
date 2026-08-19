@@ -131,6 +131,7 @@ export interface GrupoAdicional {
   max_escolhas: number;
   ordem: number;
   disponivel: boolean;
+  owner_id?: string;
 }
 
 export interface Adicional {
@@ -153,7 +154,8 @@ export interface ProdutoGrupoAdicional {
 export interface PedidoItemAdicional {
   id: string;
   pedido_item_id: string;
-  adicional_id: string;
+  adicional_id: string | null;
+  nome?: string | null;
   quantidade: number;
   preco_unitario: number;
 }

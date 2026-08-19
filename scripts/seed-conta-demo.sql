@@ -198,7 +198,12 @@ BEGIN
   DELETE FROM public.recompensas WHERE owner_id = v_user_id;
   DELETE FROM public.clientes WHERE owner_id = v_user_id;
 
-  IF v_grupo_ids IS NOT NULL THEN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'grupos_adicionais' AND column_name = 'owner_id'
+  ) THEN
+    DELETE FROM public.grupos_adicionais WHERE owner_id = v_user_id;
+  ELSIF v_grupo_ids IS NOT NULL THEN
     DELETE FROM public.grupos_adicionais WHERE id = ANY(v_grupo_ids);
   END IF;
 
@@ -370,49 +375,49 @@ BEGIN
   -- ---------------------------------------------------------------------------
   -- 5) Adicionais em cascata
   -- ---------------------------------------------------------------------------
-  INSERT INTO public.grupos_adicionais (id, nome, descricao, obrigatorio, min_escolhas, max_escolhas, ordem, disponivel) VALUES
-    (pg_temp.sid('g_ponto'), 'Ponto da carne', 'Escolha o ponto do burger.', true, 1, 1, 0, true),
-    (pg_temp.sid('g_queijo'), 'Queijo extra', 'Adicione até 2 queijos.', false, 0, 2, 1, true),
-    (pg_temp.sid('g_extras'), 'Extras', 'Deixe o burger do seu jeito.', false, 0, 5, 2, true),
-    (pg_temp.sid('g_refri'), 'Escolha o refrigerante', 'Incluso no combo.', true, 1, 1, 0, true);
+  INSERT INTO public.grupos_adicionais (id, owner_id, nome, descricao, obrigatorio, min_escolhas, max_escolhas, ordem, disponivel) VALUES
+    (pg_temp.sid('g_ponto'), v_user_id, 'Ponto da carne', 'Escolha o ponto do burger.', true, 1, 1, 0, true),
+    (pg_temp.sid('g_queijo'), v_user_id, 'Queijo extra', 'Adicione até 2 queijos.', false, 0, 2, 1, true),
+    (pg_temp.sid('g_extras'), v_user_id, 'Extras', 'Deixe o burger do seu jeito.', false, 0, 5, 2, true),
+    (pg_temp.sid('g_refri'), v_user_id, 'Escolha o refrigerante', 'Incluso no combo.', true, 1, 1, 0, true);
 
-  INSERT INTO public.adicionais (id, grupo_id, nome, preco, disponivel, ordem) VALUES
-    (pg_temp.sid('a_mal'), pg_temp.sid('g_ponto'), 'Mal passada', 0, true, 0),
-    (pg_temp.sid('a_ponto'), pg_temp.sid('g_ponto'), 'Ao ponto', 0, true, 1),
-    (pg_temp.sid('a_bem'), pg_temp.sid('g_ponto'), 'Bem passada', 0, true, 2),
-    (pg_temp.sid('a_cheddar'), pg_temp.sid('g_queijo'), 'Cheddar extra', 3.00, true, 0),
-    (pg_temp.sid('a_mussarela'), pg_temp.sid('g_queijo'), 'Mussarela extra', 3.00, true, 1),
-    (pg_temp.sid('a_gorgonzola'), pg_temp.sid('g_queijo'), 'Gorgonzola', 5.00, true, 2),
-    (pg_temp.sid('a_bacon'), pg_temp.sid('g_extras'), 'Bacon crocante', 6.00, true, 0),
-    (pg_temp.sid('a_ovo'), pg_temp.sid('g_extras'), 'Ovo', 4.00, true, 1),
-    (pg_temp.sid('a_cebola'), pg_temp.sid('g_extras'), 'Cebola crispy', 4.00, true, 2),
-    (pg_temp.sid('a_molho'), pg_temp.sid('g_extras'), 'Molho da casa extra', 3.00, true, 3),
-    (pg_temp.sid('a_bbq'), pg_temp.sid('g_extras'), 'Barbecue extra', 2.00, true, 4),
-    (pg_temp.sid('a_coca'), pg_temp.sid('g_refri'), 'Coca-Cola', 0, true, 0),
-    (pg_temp.sid('a_guarana'), pg_temp.sid('g_refri'), 'Guaraná', 0, true, 1),
-    (pg_temp.sid('a_sprite'), pg_temp.sid('g_refri'), 'Sprite', 0, true, 2);
+  INSERT INTO public.adicionais (id, owner_id, grupo_id, nome, preco, disponivel, ordem) VALUES
+    (pg_temp.sid('a_mal'), v_user_id, pg_temp.sid('g_ponto'), 'Mal passada', 0, true, 0),
+    (pg_temp.sid('a_ponto'), v_user_id, pg_temp.sid('g_ponto'), 'Ao ponto', 0, true, 1),
+    (pg_temp.sid('a_bem'), v_user_id, pg_temp.sid('g_ponto'), 'Bem passada', 0, true, 2),
+    (pg_temp.sid('a_cheddar'), v_user_id, pg_temp.sid('g_queijo'), 'Cheddar extra', 3.00, true, 0),
+    (pg_temp.sid('a_mussarela'), v_user_id, pg_temp.sid('g_queijo'), 'Mussarela extra', 3.00, true, 1),
+    (pg_temp.sid('a_gorgonzola'), v_user_id, pg_temp.sid('g_queijo'), 'Gorgonzola', 5.00, true, 2),
+    (pg_temp.sid('a_bacon'), v_user_id, pg_temp.sid('g_extras'), 'Bacon crocante', 6.00, true, 0),
+    (pg_temp.sid('a_ovo'), v_user_id, pg_temp.sid('g_extras'), 'Ovo', 4.00, true, 1),
+    (pg_temp.sid('a_cebola'), v_user_id, pg_temp.sid('g_extras'), 'Cebola crispy', 4.00, true, 2),
+    (pg_temp.sid('a_molho'), v_user_id, pg_temp.sid('g_extras'), 'Molho da casa extra', 3.00, true, 3),
+    (pg_temp.sid('a_bbq'), v_user_id, pg_temp.sid('g_extras'), 'Barbecue extra', 2.00, true, 4),
+    (pg_temp.sid('a_coca'), v_user_id, pg_temp.sid('g_refri'), 'Coca-Cola', 0, true, 0),
+    (pg_temp.sid('a_guarana'), v_user_id, pg_temp.sid('g_refri'), 'Guaraná', 0, true, 1),
+    (pg_temp.sid('a_sprite'), v_user_id, pg_temp.sid('g_refri'), 'Sprite', 0, true, 2);
 
-  INSERT INTO public.produto_grupos_adicionais (produto_id, grupo_id, ordem) VALUES
-    (pg_temp.sid('p_smash'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_smash'), pg_temp.sid('g_queijo'), 1),
-    (pg_temp.sid('p_smash'), pg_temp.sid('g_extras'), 2),
-    (pg_temp.sid('p_smash_duplo'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_smash_duplo'), pg_temp.sid('g_queijo'), 1),
-    (pg_temp.sid('p_smash_duplo'), pg_temp.sid('g_extras'), 2),
-    (pg_temp.sid('p_smash_bacon'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_smash_bacon'), pg_temp.sid('g_queijo'), 1),
-    (pg_temp.sid('p_smash_bacon'), pg_temp.sid('g_extras'), 2),
-    (pg_temp.sid('p_smash_costela'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_smash_costela'), pg_temp.sid('g_extras'), 1),
-    (pg_temp.sid('p_cheese'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_cheese'), pg_temp.sid('g_extras'), 1),
-    (pg_temp.sid('p_house'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_house'), pg_temp.sid('g_queijo'), 1),
-    (pg_temp.sid('p_house'), pg_temp.sid('g_extras'), 2),
-    (pg_temp.sid('p_combo_smash'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_combo_smash'), pg_temp.sid('g_refri'), 1),
-    (pg_temp.sid('p_combo_bacon'), pg_temp.sid('g_ponto'), 0),
-    (pg_temp.sid('p_combo_bacon'), pg_temp.sid('g_refri'), 1);
+  INSERT INTO public.produto_grupos_adicionais (produto_id, grupo_id, owner_id, ordem) VALUES
+    (pg_temp.sid('p_smash'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_smash'), pg_temp.sid('g_queijo'), v_user_id, 1),
+    (pg_temp.sid('p_smash'), pg_temp.sid('g_extras'), v_user_id, 2),
+    (pg_temp.sid('p_smash_duplo'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_smash_duplo'), pg_temp.sid('g_queijo'), v_user_id, 1),
+    (pg_temp.sid('p_smash_duplo'), pg_temp.sid('g_extras'), v_user_id, 2),
+    (pg_temp.sid('p_smash_bacon'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_smash_bacon'), pg_temp.sid('g_queijo'), v_user_id, 1),
+    (pg_temp.sid('p_smash_bacon'), pg_temp.sid('g_extras'), v_user_id, 2),
+    (pg_temp.sid('p_smash_costela'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_smash_costela'), pg_temp.sid('g_extras'), v_user_id, 1),
+    (pg_temp.sid('p_cheese'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_cheese'), pg_temp.sid('g_extras'), v_user_id, 1),
+    (pg_temp.sid('p_house'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_house'), pg_temp.sid('g_queijo'), v_user_id, 1),
+    (pg_temp.sid('p_house'), pg_temp.sid('g_extras'), v_user_id, 2),
+    (pg_temp.sid('p_combo_smash'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_combo_smash'), pg_temp.sid('g_refri'), v_user_id, 1),
+    (pg_temp.sid('p_combo_bacon'), pg_temp.sid('g_ponto'), v_user_id, 0),
+    (pg_temp.sid('p_combo_bacon'), pg_temp.sid('g_refri'), v_user_id, 1);
 
   -- ---------------------------------------------------------------------------
   -- 6) Mesas, bairros, cupons, fidelidade, promoções

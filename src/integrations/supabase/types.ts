@@ -47,6 +47,7 @@ export type Database = {
           imagem_url: string | null
           nome: string
           ordem: number
+          owner_id: string | null
           preco: number
         }
         Insert: {
@@ -57,6 +58,7 @@ export type Database = {
           imagem_url?: string | null
           nome: string
           ordem?: number
+          owner_id?: string | null
           preco?: number
         }
         Update: {
@@ -67,6 +69,7 @@ export type Database = {
           imagem_url?: string | null
           nome?: string
           ordem?: number
+          owner_id?: string | null
           preco?: number
         }
         Relationships: [
@@ -470,6 +473,7 @@ export type Database = {
           nome: string
           obrigatorio: boolean
           ordem: number
+          owner_id: string | null
         }
         Insert: {
           created_at?: string
@@ -481,6 +485,7 @@ export type Database = {
           nome: string
           obrigatorio?: boolean
           ordem?: number
+          owner_id?: string | null
         }
         Update: {
           created_at?: string
@@ -492,6 +497,7 @@ export type Database = {
           nome?: string
           obrigatorio?: boolean
           ordem?: number
+          owner_id?: string | null
         }
         Relationships: []
       }
@@ -518,25 +524,28 @@ export type Database = {
       }
       pedido_item_adicionais: {
         Row: {
-          adicional_id: string
+          adicional_id: string | null
           created_at: string
           id: string
+          nome: string | null
           pedido_item_id: string
           preco_unitario: number
           quantidade: number
         }
         Insert: {
-          adicional_id: string
+          adicional_id?: string | null
           created_at?: string
           id?: string
+          nome?: string | null
           pedido_item_id: string
           preco_unitario?: number
           quantidade?: number
         }
         Update: {
-          adicional_id?: string
+          adicional_id?: string | null
           created_at?: string
           id?: string
+          nome?: string | null
           pedido_item_id?: string
           preco_unitario?: number
           quantidade?: number
@@ -704,6 +713,7 @@ export type Database = {
           grupo_id: string
           id: string
           ordem: number
+          owner_id: string | null
           produto_id: string
         }
         Insert: {
@@ -711,6 +721,7 @@ export type Database = {
           grupo_id: string
           id?: string
           ordem?: number
+          owner_id?: string | null
           produto_id: string
         }
         Update: {
@@ -718,6 +729,7 @@ export type Database = {
           grupo_id?: string
           id?: string
           ordem?: number
+          owner_id?: string | null
           produto_id?: string
         }
         Relationships: [
@@ -748,6 +760,7 @@ export type Database = {
           id: string
           imagem_url: string | null
           nome: string
+          owner_id: string | null
           preco: number
           preco_promocional: number | null
           promocao: boolean
@@ -762,6 +775,7 @@ export type Database = {
           id?: string
           imagem_url?: string | null
           nome: string
+          owner_id?: string | null
           preco?: number
           preco_promocional?: number | null
           promocao?: boolean
@@ -776,6 +790,7 @@ export type Database = {
           id?: string
           imagem_url?: string | null
           nome?: string
+          owner_id?: string | null
           preco?: number
           preco_promocional?: number | null
           promocao?: boolean

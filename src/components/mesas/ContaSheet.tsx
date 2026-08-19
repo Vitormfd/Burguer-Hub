@@ -150,8 +150,8 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
         ? supabase.from("produtos").select("*").in("id", prodIds)
         : Promise.resolve({ data: [] as Produto[] }),
       itemIds.length
-        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, quantidade, preco_unitario").in("pedido_item_id", itemIds)
-        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string; quantidade: number; preco_unitario: number }[] }),
+        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario").in("pedido_item_id", itemIds)
+        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string | null; nome: string | null; quantidade: number; preco_unitario: number }[] }),
       rewardIds.length
         ? supabase.from("recompensas").select("id, nome").in("id", rewardIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
@@ -179,7 +179,7 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     (itemAdicionais || []).forEach((row) => {
       const cur = adPorItem.get(row.pedido_item_id) ?? [];
       cur.push({
-        nome: adicionalMap.get(row.adicional_id) ?? "Adicional",
+        nome: row.nome || adicionalMap.get(row.adicional_id ?? "") || "Adicional",
         quantidade: row.quantidade,
         preco_unitario: Number(row.preco_unitario),
       });

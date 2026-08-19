@@ -245,8 +245,8 @@ export default function Delivery() {
         ? supabase.from("produtos").select("id, nome").in("id", prodIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
       itemIds.length
-        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, quantidade, preco_unitario").in("pedido_item_id", itemIds)
-        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string; quantidade: number; preco_unitario: number }[] }),
+        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario").in("pedido_item_id", itemIds)
+        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string | null; nome: string | null; quantidade: number; preco_unitario: number }[] }),
       supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
     ]);
 
@@ -260,7 +260,7 @@ export default function Delivery() {
     const adPorItem = new Map<string, { nome: string; quantidade: number; preco_unitario: number }[]>();
     (itemAdicionais || []).forEach((a) => {
       const cur = adPorItem.get(a.pedido_item_id) ?? [];
-      cur.push({ nome: adicionalMap.get(a.adicional_id) ?? "Adicional", quantidade: a.quantidade, preco_unitario: Number(a.preco_unitario) });
+      cur.push({ nome: a.nome || adicionalMap.get(a.adicional_id ?? "") || "Adicional", quantidade: a.quantidade, preco_unitario: Number(a.preco_unitario) });
       adPorItem.set(a.pedido_item_id, cur);
     });
 

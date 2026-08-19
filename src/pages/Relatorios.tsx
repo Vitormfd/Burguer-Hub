@@ -151,7 +151,7 @@ async function fetchRangeData(ini: string, fim: string) {
       const adicionais = await fetchInBatches(itemIds, (batch) =>
         supabase
           .from("pedido_item_adicionais")
-          .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
+          .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
           .in("pedido_item_id", batch),
       );
 
@@ -164,7 +164,7 @@ async function fetchRangeData(ini: string, fim: string) {
         );
         addVenda(
           acc,
-          `${ADICIONAL_PREFIX}${adicional.adicional_id}`,
+          `${ADICIONAL_PREFIX}${adicional.adicional_id || `nome:${adicional.nome || "avulso"}`}`,
           adicional.quantidade,
           valor,
         );
@@ -217,7 +217,8 @@ async function buildVendasPorProduto(acc: VendasAcc) {
 
   const adicionalIds = [...acc.keys()]
     .filter((key) => key.startsWith(ADICIONAL_PREFIX))
-    .map((key) => key.slice(ADICIONAL_PREFIX.length));
+    .map((key) => key.slice(ADICIONAL_PREFIX.length))
+    .filter((id) => !id.startsWith("nome:"));
 
   const { data: adicionaisCatalogo } = adicionalIds.length
     ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
@@ -238,7 +239,11 @@ async function buildVendasPorProduto(acc: VendasAcc) {
     if (pid.startsWith(ADICIONAL_PREFIX)) {
       const adicionalId = pid.slice(ADICIONAL_PREFIX.length);
       lista.push({
-        nome: adicionalNomeMap.get(adicionalId) ? `+ ${adicionalNomeMap.get(adicionalId)}` : "Adicional removido",
+        nome: adicionalId.startsWith("nome:")
+          ? `+ ${adicionalId.slice(5)}`
+          : adicionalNomeMap.get(adicionalId)
+            ? `+ ${adicionalNomeMap.get(adicionalId)}`
+            : "Adicional removido",
         quantidade: v.quantidade,
         receita: v.receita,
       });

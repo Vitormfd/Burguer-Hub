@@ -330,8 +330,8 @@ export default function HistoricoPedidos() {
         ? supabase.from("produtos").select("id, nome").in("id", prodIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
       itemIds.length
-        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, quantidade, preco_unitario").in("pedido_item_id", itemIds)
-        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string; quantidade: number; preco_unitario: number }[] }),
+        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario").in("pedido_item_id", itemIds)
+        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string | null; nome: string | null; quantidade: number; preco_unitario: number }[] }),
     ]);
 
     const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
@@ -346,7 +346,7 @@ export default function HistoricoPedidos() {
     (itemAdicionais || []).forEach((adicional) => {
       const atual = adPorItem.get(adicional.pedido_item_id) ?? [];
       atual.push({
-        nome: adicionalMap.get(adicional.adicional_id) ?? "Adicional",
+        nome: adicional.nome || adicionalMap.get(adicional.adicional_id ?? "") || "Adicional",
         quantidade: adicional.quantidade,
         preco_unitario: Number(adicional.preco_unitario),
       });

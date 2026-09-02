@@ -31,7 +31,7 @@ import {
   pedidoCancelavel,
   type MotivoCancelamento,
 } from "@/lib/pedidoCancelamento";
-import { printReceipt } from "@/lib/print";
+import { printReceipt, loadPrintAdicionaisPorItem } from "@/lib/print";
 import { sendWhatsapp } from "@/lib/whatsapp";
 import { loadPedidosDeliveryBoard } from "@/lib/deliveryBoard";
 import type { PedidoStatus } from "@/types/db";
@@ -237,29 +237,16 @@ export default function Delivery() {
     const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
     const itemIds = itensList.map((i) => i.id);
 
-    const [{ data: produtos }, { data: itemAdicionais }, { data: cfgData }] = await Promise.all([
+    const [{ data: produtos }, { data: cfgData }] = await Promise.all([
       prodIds.length
         ? supabase.from("produtos").select("id, nome").in("id", prodIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
-      itemIds.length
-        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario").in("pedido_item_id", itemIds)
-        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string | null; nome: string | null; quantidade: number; preco_unitario: number }[] }),
       supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
     ]);
 
-    const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
-    const { data: adicionais } = adicionalIds.length
-      ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
-      : { data: [] as { id: string; nome: string }[] };
+    const adPorItem = await loadPrintAdicionaisPorItem(itemIds);
 
     const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
-    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome as string]));
-    const adPorItem = new Map<string, { nome: string; quantidade: number; preco_unitario: number }[]>();
-    (itemAdicionais || []).forEach((a) => {
-      const cur = adPorItem.get(a.pedido_item_id) ?? [];
-      cur.push({ nome: a.nome || adicionalMap.get(a.adicional_id ?? "") || "Adicional", quantidade: a.quantidade, preco_unitario: Number(a.preco_unitario) });
-      adPorItem.set(a.pedido_item_id, cur);
-    });
 
     const { data: entrega } = await supabase
       .from("entregas")

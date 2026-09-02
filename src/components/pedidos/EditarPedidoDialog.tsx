@@ -19,7 +19,7 @@ import {
   updateDeliveryPedidoTotals,
 } from "@/lib/pedidoEdit";
 import { brl } from "@/lib/format";
-import { printReceipt } from "@/lib/print";
+import { printReceipt, mapCartToPrintItems } from "@/lib/print";
 import type { Configuracao } from "@/types/db";
 
 const deliverySchema = z.object({
@@ -232,17 +232,7 @@ export default function EditarPedidoDialog({
             pedidos: [{
               numero: 1,
               criado_em: new Date().toISOString(),
-              itens: cart.map((item) => ({
-                nome: item.produto.nome,
-                quantidade: item.quantidade,
-                preco_unitario: item.precoUnit,
-                observacao: item.observacao || null,
-                adicionais: item.adicionais.map((a) => ({
-                  nome: a.adicionalNome,
-                  quantidade: a.quantidade,
-                  preco_unitario: a.precoUnitario,
-                })),
-              })),
+              itens: mapCartToPrintItems(cart),
             }],
             total: subtotal,
           });
@@ -262,17 +252,7 @@ export default function EditarPedidoDialog({
             taxa_entrega: deliveryParsed.taxa_entrega,
             forma_pagamento: formaPagamento,
             troco_para: trocoNum,
-            itens: cart.map((item) => ({
-              nome: item.produto.nome,
-              quantidade: item.quantidade,
-              preco_unitario: item.precoUnit,
-              observacao: item.observacao || null,
-              adicionais: item.adicionais.map((a) => ({
-                nome: a.adicionalNome,
-                quantidade: a.quantidade,
-                preco_unitario: a.precoUnitario,
-              })),
-            })),
+            itens: mapCartToPrintItems(cart),
             subtotal,
             total: subtotal + deliveryParsed.taxa_entrega,
             criado_em: new Date().toISOString(),

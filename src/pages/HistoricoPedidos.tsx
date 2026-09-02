@@ -14,7 +14,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { brl } from "@/lib/format";
-import { printReceipt } from "@/lib/print";
+import { printReceipt, loadPrintAdicionaisPorItem } from "@/lib/print";
 import { toast } from "sonner";
 import type { FormaPagamento, PedidoStatus, PedidoTipo, TipoEntrega } from "@/types/db";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +56,7 @@ interface ItemDetalhe {
   preco_unitario: number;
   observacao: string | null;
   cancelado: boolean;
-  adicionais: Array<{ nome: string; quantidade: number; preco_unitario: number }>;
+  adicionais: Array<{ nome: string; quantidade: number; preco_unitario: number; grupo_nome?: string }>;
 }
 
 const statusLabel: Record<PedidoStatus, string> = {
@@ -325,33 +325,14 @@ export default function HistoricoPedidos() {
     const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
     const itemIds = itensList.map((i) => i.id);
 
-    const [{ data: produtos }, { data: itemAdicionais }] = await Promise.all([
+    const [{ data: produtos }] = await Promise.all([
       prodIds.length
         ? supabase.from("produtos").select("id, nome").in("id", prodIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
-      itemIds.length
-        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario").in("pedido_item_id", itemIds)
-        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string | null; nome: string | null; quantidade: number; preco_unitario: number }[] }),
     ]);
 
-    const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
-    const { data: adicionais } = adicionalIds.length
-      ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
-      : { data: [] as { id: string; nome: string }[] };
-
+    const adPorItem = await loadPrintAdicionaisPorItem(itemIds);
     const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome]));
-    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome]));
-    const adPorItem = new Map<string, ItemDetalhe["adicionais"]>();
-
-    (itemAdicionais || []).forEach((adicional) => {
-      const atual = adPorItem.get(adicional.pedido_item_id) ?? [];
-      atual.push({
-        nome: adicional.nome || adicionalMap.get(adicional.adicional_id ?? "") || "Adicional",
-        quantidade: adicional.quantidade,
-        preco_unitario: Number(adicional.preco_unitario),
-      });
-      adPorItem.set(adicional.pedido_item_id, atual);
-    });
 
     const detalhes: ItemDetalhe[] = itensList.map((item) => ({
       id: item.id,

@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { calcularTaxaEntrega, carrinhoBloqueiaFreteGratis } from "@/lib/freteGratis";
 import { brl } from "@/lib/format";
-import { printReceipt } from "@/lib/print";
+import { printReceipt, mapCartToPrintItems } from "@/lib/print";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
 import type { Cliente, Configuracao, Categoria } from "@/types/db";
 
@@ -270,6 +270,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
       item.adicionais.map((adicional) => ({
         pedido_item_id: insertedItems?.[idx]?.id,
         adicional_id: adicional.adicionalId,
+        nome: adicional.adicionalNome,
         quantidade: adicional.quantidade,
         preco_unitario: adicional.precoUnitario,
       }))
@@ -328,17 +329,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         taxa_entrega: parsed.data.taxa_entrega,
         forma_pagamento: formaPagamento,
         troco_para: trocoNum,
-        itens: items.map((item) => ({
-          nome: item.produto.nome,
-          quantidade: item.quantidade,
-          preco_unitario: item.precoUnit,
-          observacao: item.observacao || null,
-          adicionais: item.adicionais.map((a) => ({
-            nome: a.adicionalNome,
-            quantidade: a.quantidade,
-            preco_unitario: a.precoUnitario,
-          })),
-        })),
+        itens: mapCartToPrintItems(items),
         subtotal,
         total: subtotal + taxaNum,
         criado_em: new Date().toISOString(),

@@ -133,6 +133,7 @@ export async function replacePedidoItens(
     item.adicionais.map((adicional) => ({
       pedido_item_id: insertedItems?.[idx]?.id,
       adicional_id: adicional.adicionalId,
+      nome: adicional.adicionalNome,
       quantidade: adicional.quantidade,
       preco_unitario: adicional.precoUnitario,
     }))

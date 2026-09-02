@@ -1,4 +1,5 @@
-// ─── Config de impressão ───────────────────────────────────────────────────────
+import type { Cart } from "@/components/cardapio/cartTypes";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface PrintConfig {
   largura: "58mm" | "80mm";
@@ -37,12 +38,19 @@ export function savePrintConfig(config: PrintConfig): void {
 
 // ─── Tipos públicos ────────────────────────────────────────────────────────────
 
+export interface PrintAdicional {
+  nome: string;
+  quantidade: number;
+  preco_unitario: number;
+  grupo_nome?: string;
+}
+
 export interface PrintItem {
   nome: string;
   quantidade: number;
   preco_unitario: number;
   observacao?: string | null;
-  adicionais?: Array<{ nome: string; quantidade: number; preco_unitario: number }>;
+  adicionais?: PrintAdicional[];
 }
 
 export interface PrintMesaData {
@@ -83,6 +91,83 @@ export interface PrintDeliveryData {
 }
 
 export type PrintData = PrintMesaData | PrintDeliveryData;
+
+type PedidoItemAdicionalRow = {
+  pedido_item_id: string;
+  adicional_id: string | null;
+  nome: string | null;
+  quantidade: number;
+  preco_unitario: number;
+};
+
+export function mapCartToPrintItems(cart: Cart): PrintItem[] {
+  return cart.map((item) => ({
+    nome: item.produto.nome,
+    quantidade: item.quantidade,
+    preco_unitario: item.precoUnit,
+    observacao: item.observacao || null,
+    adicionais: item.adicionais.map((adicional) => ({
+      nome: adicional.adicionalNome,
+      quantidade: adicional.quantidade,
+      preco_unitario: adicional.precoUnitario,
+      grupo_nome: adicional.grupoNome,
+    })),
+  }));
+}
+
+export async function loadPrintAdicionaisPorItem(
+  itemIds: string[],
+): Promise<Map<string, PrintAdicional[]>> {
+  if (!itemIds.length) return new Map();
+
+  const { data: itemAdicionais, error } = await supabase
+    .from("pedido_item_adicionais")
+    .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
+    .in("pedido_item_id", itemIds);
+
+  if (error) throw error;
+
+  const rows = (itemAdicionais || []) as PedidoItemAdicionalRow[];
+  const adicionalIds = Array.from(new Set(rows.map((row) => row.adicional_id).filter(Boolean))) as string[];
+
+  const { data: adicionais } = adicionalIds.length
+    ? await supabase.from("adicionais").select("id, nome, grupo_id").in("id", adicionalIds)
+    : { data: [] as { id: string; nome: string; grupo_id: string | null }[] };
+
+  const grupoIds = Array.from(
+    new Set((adicionais || []).map((adicional) => adicional.grupo_id).filter(Boolean)),
+  ) as string[];
+
+  const { data: grupos } = grupoIds.length
+    ? await supabase.from("grupos_adicionais").select("id, nome").in("id", grupoIds)
+    : { data: [] as { id: string; nome: string }[] };
+
+  const grupoMap = new Map((grupos || []).map((grupo) => [grupo.id, grupo.nome]));
+  const adicionalMap = new Map(
+    (adicionais || []).map((adicional) => [
+      adicional.id,
+      {
+        nome: adicional.nome,
+        grupo_nome: adicional.grupo_id ? grupoMap.get(adicional.grupo_id) : undefined,
+      },
+    ]),
+  );
+
+  const adPorItem = new Map<string, PrintAdicional[]>();
+  rows.forEach((row) => {
+    const meta = row.adicional_id ? adicionalMap.get(row.adicional_id) : undefined;
+    const atual = adPorItem.get(row.pedido_item_id) ?? [];
+    atual.push({
+      nome: row.nome?.trim() || meta?.nome || "Adicional",
+      quantidade: row.quantidade,
+      preco_unitario: Number(row.preco_unitario),
+      grupo_nome: meta?.grupo_nome,
+    });
+    adPorItem.set(row.pedido_item_id, atual);
+  });
+
+  return adPorItem;
+}
 
 // ─── Helpers internos ──────────────────────────────────────────────────────────
 
@@ -193,16 +278,34 @@ function openAndPrint(html: string): void {
   }
 }
 
+function adicionaisPorUnidade(adicionais: PrintAdicional[] = []): number {
+  return adicionais.reduce((sum, adicional) => sum + adicional.quantidade * adicional.preco_unitario, 0);
+}
+
+function formatPrintAdicionalLabel(adicional: PrintAdicional): string {
+  return adicional.grupo_nome ? `${adicional.grupo_nome}: ${adicional.nome}` : adicional.nome;
+}
+
 function renderItems(itens: PrintItem[]): string {
   return itens
     .map((item) => {
-      const total = brlPrint(item.quantidade * item.preco_unitario);
-      let html = `<div class="item"><span>${item.quantidade}x ${esc(item.nome)}</span><span>${total}</span></div>`;
-      if (item.adicionais?.length) {
-        item.adicionais.forEach((a) => {
-          html += `<div class="sub"><span>+${a.quantidade}x ${esc(a.nome)}</span><span>${brlPrint(a.quantidade * a.preco_unitario)}</span></div>`;
-        });
-      }
+      const adicionais = item.adicionais ?? [];
+      const addonsPerUnit = adicionaisPorUnidade(adicionais);
+      const baseUnit = Math.max(0, item.preco_unitario - addonsPerUnit);
+      const lineTotal = item.quantidade * item.preco_unitario;
+      const mainLineTotal = adicionais.length
+        ? item.quantidade * baseUnit
+        : lineTotal;
+
+      let html = `<div class="item"><span>${item.quantidade}x ${esc(item.nome)}</span><span>${brlPrint(mainLineTotal)}</span></div>`;
+
+      adicionais.forEach((adicional) => {
+        const qtyTotal = adicional.quantidade * item.quantidade;
+        const addonTotal = qtyTotal * adicional.preco_unitario;
+        const priceHtml = addonTotal > 0 ? `<span>${brlPrint(addonTotal)}</span>` : "<span></span>";
+        html += `<div class="sub"><span>+${qtyTotal}x ${esc(formatPrintAdicionalLabel(adicional))}</span>${priceHtml}</div>`;
+      });
+
       if (item.observacao) {
         html += `<div class="obs">&#8627; ${esc(item.observacao)}</div>`;
       }

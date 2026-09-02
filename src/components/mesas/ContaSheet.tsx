@@ -34,7 +34,7 @@ import AbrirCaixaDialog from "@/components/caixa/AbrirCaixaDialog";
 import { useCaixaAberto } from "@/hooks/useCaixaAberto";
 import { pedidoEditavel } from "@/lib/pedidoEdit";
 import { Plus, Receipt, Clock, Printer, XCircle, AlertTriangle, Pencil, ShoppingBag, UtensilsCrossed } from "lucide-react";
-import { printReceipt } from "@/lib/print";
+import { printReceipt, loadPrintAdicionaisPorItem } from "@/lib/print";
 import { itemPedidoSubtotal, refreshContaTotalInDb } from "@/lib/contaTotal";
 
 type ItemAdicional = { nome: string; quantidade: number; preco_unitario: number };
@@ -145,25 +145,17 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
     const itemIds = itensList.map((i) => i.id);
     const rewardIds = Array.from(new Set((resgates || []).map((resgate) => resgate.recompensa_id)));
 
-    const [{ data: prods }, { data: itemAdicionais }, { data: rewards }] = await Promise.all([
+    const [{ data: prods }, { data: rewards }] = await Promise.all([
       prodIds.length
         ? supabase.from("produtos").select("*").in("id", prodIds)
         : Promise.resolve({ data: [] as Produto[] }),
-      itemIds.length
-        ? supabase.from("pedido_item_adicionais").select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario").in("pedido_item_id", itemIds)
-        : Promise.resolve({ data: [] as { pedido_item_id: string; adicional_id: string | null; nome: string | null; quantidade: number; preco_unitario: number }[] }),
       rewardIds.length
         ? supabase.from("recompensas").select("id, nome").in("id", rewardIds)
         : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
     ]);
 
-    const adicionalIds = Array.from(new Set((itemAdicionais || []).map((a) => a.adicional_id).filter(Boolean)));
-    const { data: adicionais } = adicionalIds.length
-      ? await supabase.from("adicionais").select("id, nome").in("id", adicionalIds)
-      : { data: [] as { id: string; nome: string }[] };
-
+    const adPorItem = await loadPrintAdicionaisPorItem(itemIds);
     const prodMap = new Map((prods || []).map((p) => [p.id, p as Produto]));
-    const adicionalMap = new Map((adicionais || []).map((a) => [a.id, a.nome]));
     const rewardMap = new Map((rewards || []).map((reward) => [reward.id, reward.nome as string]));
     const resgateMap = new Map(
       (resgates || []).map((resgate) => [
@@ -175,16 +167,6 @@ export default function ContaSheet({ mesa, onClose, onClosed }: { mesa: Mesa | n
         },
       ])
     );
-    const adPorItem = new Map<string, ItemAdicional[]>();
-    (itemAdicionais || []).forEach((row) => {
-      const cur = adPorItem.get(row.pedido_item_id) ?? [];
-      cur.push({
-        nome: row.nome || adicionalMap.get(row.adicional_id ?? "") || "Adicional",
-        quantidade: row.quantidade,
-        preco_unitario: Number(row.preco_unitario),
-      });
-      adPorItem.set(row.pedido_item_id, cur);
-    });
 
     setPedidos(pedList.map((p) => ({
       ...p,

@@ -30,8 +30,18 @@ export async function criarPagamentoPix(params: CriarPagamentoPixParams): Promis
   });
 
   if (error) {
-    const backendMessage =
-      data && typeof data === "object" && "error" in data ? String((data as { error?: unknown }).error || "") : "";
+    // Em supabase-js, quando a Edge Function responde com status != 2xx, "data" vem null —
+    // o corpo real do erro precisa ser lido de error.context (a Response bruta).
+    let backendMessage = "";
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      try {
+        const body = await context.json();
+        backendMessage = typeof body?.error === "string" ? body.error : "";
+      } catch {
+        // corpo nao era JSON — ignora e cai no fallback abaixo
+      }
+    }
     return { error: backendMessage || error.message || "Erro ao gerar cobrança Pix" };
   }
 

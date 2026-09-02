@@ -2,3 +2,7 @@ project_id = "iehcswmrufrpbvnwldkw"
 
 [functions.zapi-webhook]
 verify_jwt = false
+
+# Mercado Pago chama este endpoint sem JWT do Supabase.
+[functions.mp-pix-webhook]
+verify_jwt = false

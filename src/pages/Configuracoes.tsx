@@ -34,9 +34,10 @@ import {
   Send,
   List,
   Printer,
+  CreditCard,
 } from "lucide-react";
 import { type PrintConfig, readPrintConfig, savePrintConfig, printCashSummary } from "@/lib/print";
-import type { BairroTaxa, CarrosselSlide, Configuracao, HorarioFuncionamentoDia, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
+import type { BairroTaxa, CarrosselSlide, Configuracao, HorarioFuncionamentoDia, IntegracaoPagamento, WhatsappLog, TipoMensagemWhatsapp } from "@/types/db";
 import { getCarrosselSlides, slidesToUrls } from "@/lib/carrossel";
 import { carregarTodasPromocoes, PROMOCAO_TIPO_LABELS, type Promocao } from "@/lib/promocoes";
 import { configureWhatsappWebhook } from "@/lib/whatsapp";
@@ -292,6 +293,10 @@ export default function Configuracoes() {
   const [printSaved, setPrintSaved] = useState(false);
   const [autoPrintCash, setAutoPrintCash] = useState<boolean>(true);
 
+  // Pagamento Pix (Mercado Pago) state
+  const [integracaoPagamento, setIntegracaoPagamento] = useState<IntegracaoPagamento | null>(null);
+  const [busyPagamento, setBusyPagamento] = useState(false);
+
   // Sound settings (localStorage)
   const [soundPreset, setSoundPreset] = useState<"bell" | "beep" | "chime" | "gong" | "tritone" | "alarm" | "dingdong" | "metallic">("bell");
   const [soundVolume, setSoundVolume] = useState<number>(1);
@@ -372,6 +377,11 @@ export default function Configuracoes() {
         }
       }
     }
+    const { data: pagamento } = await supabase
+      .from("integracoes_pagamento" as any)
+      .select("*")
+      .maybeSingle();
+    setIntegracaoPagamento((pagamento as unknown as IntegracaoPagamento) || null);
     setBairros((b || []) as BairroTaxa[]);
     setProdutosOpt((prod || []) as ProdutoOpt[]);
   };
@@ -525,6 +535,39 @@ export default function Configuracoes() {
     setBusyWpp(false);
     if (error) toast.error(error.message);
     else toast.success("Configuracoes WhatsApp salvas");
+  };
+
+  // save pagamento pix (mercado pago)
+
+  const savePagamento = async () => {
+    if (!cfg?.owner_id) return;
+    setBusyPagamento(true);
+    const token = integracaoPagamento?.mercadopago_access_token?.trim() || null;
+    const ativo = !!integracaoPagamento?.ativo && !!token;
+
+    const { error: upsertError } = await supabase
+      .from("integracoes_pagamento" as any)
+      .upsert(
+        { owner_id: cfg.owner_id, mercadopago_access_token: token, ativo } as any,
+        { onConflict: "owner_id" },
+      );
+
+    if (upsertError) {
+      setBusyPagamento(false);
+      return toast.error(upsertError.message);
+    }
+
+    const { error: cfgError } = await supabase
+      .from("configuracoes")
+      .update({ pix_online_ativo: ativo } as any)
+      .eq("id", cfg.id);
+
+    setBusyPagamento(false);
+    if (cfgError) return toast.error(cfgError.message);
+
+    setCfg({ ...cfg, pix_online_ativo: ativo });
+    setIntegracaoPagamento({ owner_id: cfg.owner_id, mercadopago_access_token: token, ativo });
+    toast.success("Configuracoes de pagamento salvas");
   };
 
   const webhookEndpoint = import.meta.env.VITE_SUPABASE_URL
@@ -694,6 +737,7 @@ export default function Configuracoes() {
       <Tabs defaultValue="geral">
         <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="geral"><Settings className="w-4 h-4 mr-1.5" />Geral</TabsTrigger>
+          <TabsTrigger value="pagamentos"><CreditCard className="w-4 h-4 mr-1.5" />Pagamentos</TabsTrigger>
           <TabsTrigger value="impressao"><Printer className="w-4 h-4 mr-1.5" />Impressão</TabsTrigger>
           <TabsTrigger value="whatsapp"><MessageSquare className="w-4 h-4 mr-1.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="logs" onClick={() => { setLogsOpened(true); loadLogs(); }}><List className="w-4 h-4 mr-1.5" />Logs WhatsApp</TabsTrigger>
@@ -1131,6 +1175,74 @@ export default function Configuracoes() {
           <div className="flex justify-end">
             <Button size="lg" onClick={save} disabled={busy}>{busy ? "Salvando..." : "Salvar configuracoes"}</Button>
           </div>
+        </TabsContent>
+
+        {/* TAB: PAGAMENTOS */}
+        <TabsContent value="pagamentos" className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <h2 className="font-display text-2xl flex items-center gap-2">
+              <CreditCard className="w-6 h-6 text-emerald-500" /> Pix online no cardápio (Mercado Pago)
+            </h2>
+
+            <div className="space-y-2">
+              <Label>Access Token de produção</Label>
+              <PasswordInput
+                value={integracaoPagamento?.mercadopago_access_token ?? ""}
+                onChange={(v) =>
+                  setIntegracaoPagamento({
+                    owner_id: cfg.owner_id || "",
+                    ativo: integracaoPagamento?.ativo ?? false,
+                    ...integracaoPagamento,
+                    mercadopago_access_token: v || null,
+                  })
+                }
+                placeholder="APP_USR-..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Gere em{" "}
+                <a
+                  href="https://www.mercadopago.com.br/developers/panel/app"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline"
+                >
+                  Mercado Pago Developers
+                </a>{" "}
+                → sua aplicação → Credenciais de produção → Access Token.
+              </p>
+            </div>
+
+            {!!integracaoPagamento?.mercadopago_access_token && (
+              <div className="flex items-center gap-3 pt-2 border-t">
+                <Switch
+                  checked={!!integracaoPagamento?.ativo}
+                  onCheckedChange={(v) =>
+                    setIntegracaoPagamento({
+                      owner_id: cfg.owner_id || "",
+                      mercadopago_access_token: integracaoPagamento?.mercadopago_access_token ?? null,
+                      ...integracaoPagamento,
+                      ativo: v,
+                    })
+                  }
+                />
+                <span className="text-sm font-medium">Cobrar Pix no cardápio público</span>
+                {integracaoPagamento?.ativo && (
+                  <Badge className="bg-green-100 text-green-700 border-green-300 ml-auto">Ativo</Badge>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Enquanto essa opção estiver desativada (ou sem token), pedidos com forma "Pix" continuam
+              indo direto pro painel, sem cobrança — igual funciona hoje.
+            </p>
+
+            <div className="pt-2">
+              <Button onClick={savePagamento} disabled={busyPagamento}>
+                {busyPagamento ? "Salvando..." : "Salvar pagamento"}
+              </Button>
+            </div>
+          </Card>
         </TabsContent>
 
         {/* TAB: IMPRESSÃO */}

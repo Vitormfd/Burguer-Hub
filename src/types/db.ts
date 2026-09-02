@@ -74,6 +74,12 @@ export interface ContaPagamento {
   criado_em: string;
 }
 
+export interface IntegracaoPagamento {
+  owner_id: string;
+  mercadopago_access_token: string | null;
+  ativo: boolean;
+}
+
 export type CaixaStatus = "aberto" | "fechado";
 
 export interface Caixa {
@@ -203,6 +209,8 @@ export interface Configuracao {
   fidelidade_pedido_minimo?: number;
   frete_gratis_ativo?: boolean;
   frete_gratis_minimo?: number | null;
+  // Pagamento Pix online (Mercado Pago) — token fica em integracoes_pagamento, nunca aqui.
+  pix_online_ativo?: boolean;
   // Z-API / WhatsApp
   zapi_instance_id?: string | null;
   zapi_token?: string | null;

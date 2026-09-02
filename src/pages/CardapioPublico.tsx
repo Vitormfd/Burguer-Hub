@@ -28,6 +28,9 @@ import {
   Gift,
   Trophy,
   Sparkles,
+  QrCode,
+  Copy,
+  Loader2,
 } from "lucide-react";
 import {
   calcularTaxaEntrega,
@@ -65,6 +68,7 @@ import {
   type PromoEffect,
   type Promocao,
 } from "@/lib/promocoes";
+import { criarPagamentoPix, consultarStatusPagamentoPix, type PagamentoPixStatus } from "@/lib/mercadoPago";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
@@ -264,6 +268,15 @@ export default function CardapioPublico() {
   const [forma, setForma] = useState<Forma>("pix");
   const [troco, setTroco] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pixDialogOpen, setPixDialogOpen] = useState(false);
+  const [pixData, setPixData] = useState<{
+    pagamentoId: string;
+    qrCode: string;
+    qrCodeBase64: string | null;
+    expiraEm: string | null;
+  } | null>(null);
+  const [pixStatus, setPixStatus] = useState<PagamentoPixStatus>("pending");
+  const [pixChecking, setPixChecking] = useState(false);
   const [fidelidadeBusy, setFidelidadeBusy] = useState(false);
   const [fidelidadeBusca, setFidelidadeBusca] = useState<FidelidadeLookupResult | null>(null);
   const [telefoneBuscado, setTelefoneBuscado] = useState("");
@@ -1128,6 +1141,74 @@ export default function CardapioPublico() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const resetCheckoutAfterSuccess = (pedidoId: string) => {
+    if (tipoEntrega === "delivery") {
+      writeCheckoutProfileCache(normalizePhone(tel), {
+        nome: nome.trim(),
+        endereco: endereco.trim(),
+        numero: numero.trim(),
+        complemento: complemento.trim(),
+        bairroId,
+      });
+    }
+
+    setSucessoTipoEntrega(tipoEntrega);
+    setSucessoTempoRetirada(tempoEstimadoRetirada);
+    setSucessoNumero(pedidoId.slice(0, 8).toUpperCase());
+    setCart([]);
+    setCheckoutOpen(false);
+    setPixDialogOpen(false);
+    setPixData(null);
+    setPixStatus("pending");
+    setNome("");
+    setTel("");
+    setEndereco("");
+    setNumero("");
+    setComplemento("");
+    setBairroId("");
+    setForma("pix");
+    setTroco("");
+    setTipoEntrega("delivery");
+    setSelectedRewardId(null);
+    setFidelidadeBusca(null);
+    setTelefoneBuscado("");
+    setCupomAplicado(null);
+    setCupomCodigo("");
+    setCodigoCampanha(null);
+  };
+
+  const verificarPagamentoPix = async () => {
+    if (!pixData) return;
+
+    if (pixData.expiraEm && new Date(pixData.expiraEm).getTime() < Date.now()) {
+      setPixStatus("expired");
+      return;
+    }
+
+    try {
+      const result = await consultarStatusPagamentoPix(pixData.pagamentoId);
+      if (result.status === "approved" && result.pedido_id) {
+        setPixStatus("approved");
+        resetCheckoutAfterSuccess(result.pedido_id);
+        return;
+      }
+      if (result.status === "rejected" || result.status === "cancelled" || result.status === "expired") {
+        setPixStatus(result.status);
+      }
+    } catch {
+      // Erros transitorios de polling nao devem interromper a espera do pagamento.
+    }
+  };
+
+  useEffect(() => {
+    if (!pixDialogOpen || !pixData || pixStatus !== "pending") return;
+
+    void verificarPagamentoPix();
+    const interval = window.setInterval(() => void verificarPagamentoPix(), 3000);
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixDialogOpen, pixData?.pagamentoId, pixStatus]);
+
   const fazerPedido = async () => {
     const parsed = checkoutSchema.safeParse({
       nome,
@@ -1168,7 +1249,6 @@ export default function CardapioPublico() {
       : null;
     if (tipoEntrega === "delivery" && !bairro) return toast.error("Selecione o bairro");
 
-    const telefoneNormalizado = normalizePhone(tel);
     const descontoFidelidade = rewardBenefit.desconto;
     const itemGratis = rewardBenefit.itemGratis;
     const descontoCupomAplicado = cupomAplicado?.valor_desconto_aplicado ?? 0;
@@ -1249,9 +1329,7 @@ export default function CardapioPublico() {
       }
     }
 
-    setBusy(true);
-
-    const { data: rpcResult, error: rpcError } = await (supabase as any).rpc("create_public_delivery_order", {
+    const rpcArgs = {
       p_owner_id: ownerId,
       p_tipo_entrega: tipoEntrega,
       p_cliente_nome: nome.trim(),
@@ -1276,7 +1354,41 @@ export default function CardapioPublico() {
       p_pontos_extra_promocao: tipoEntrega === "delivery" ? (promocaoAplicada?.pontosExtra ?? 0) : 0,
       p_promocao_meta: promocaoAplicada?.meta ?? {},
       p_promo_zera_frete: Boolean(promocaoAplicada?.freteGratis) && tipoEntrega === "delivery",
-    });
+    };
+
+    setBusy(true);
+
+    if (forma === "pix" && (cfg as Configuracao & { pix_online_ativo?: boolean })?.pix_online_ativo) {
+      const pagamento = await criarPagamentoPix({
+        owner_id: ownerId,
+        valor: totalFinal,
+        cliente_nome: nome.trim(),
+        cliente_telefone: tel.trim(),
+        order_payload: rpcArgs,
+      });
+
+      if (pagamento.error) {
+        setBusy(false);
+        return toast.error(pagamento.error);
+      }
+
+      if (!pagamento.fallback && pagamento.pagamento_id && pagamento.qr_code) {
+        setBusy(false);
+        setPixData({
+          pagamentoId: pagamento.pagamento_id,
+          qrCode: pagamento.qr_code,
+          qrCodeBase64: pagamento.qr_code_base64 ?? null,
+          expiraEm: pagamento.expira_em ?? null,
+        });
+        setPixStatus("pending");
+        setCheckoutOpen(false);
+        setPixDialogOpen(true);
+        return;
+      }
+      // fallback: true (loja sem Pix online configurado) — segue o fluxo tradicional abaixo.
+    }
+
+    const { data: rpcResult, error: rpcError } = await (supabase as any).rpc("create_public_delivery_order", rpcArgs);
 
     if (rpcError || !rpcResult?.pedido_id) {
       setBusy(false);
@@ -1284,16 +1396,6 @@ export default function CardapioPublico() {
     }
 
     const pedidoId = String(rpcResult.pedido_id);
-
-    if (tipoEntrega === "delivery") {
-      writeCheckoutProfileCache(telefoneNormalizado, {
-        nome: nome.trim(),
-        endereco: endereco.trim(),
-        numero: numero.trim(),
-        complemento: complemento.trim(),
-        bairroId,
-      });
-    }
 
     if (rpcResult?.cliente_id && tipoEntrega === "delivery") {
       const { error: clienteUpdateError } = await (supabase as any)
@@ -1331,26 +1433,7 @@ export default function CardapioPublico() {
       );
     }
 
-    setSucessoTipoEntrega(tipoEntrega);
-    setSucessoTempoRetirada(tempoEstimadoRetirada);
-    setSucessoNumero(pedidoId.slice(0, 8).toUpperCase());
-    setCart([]);
-    setCheckoutOpen(false);
-    setNome("");
-    setTel("");
-    setEndereco("");
-    setNumero("");
-    setComplemento("");
-    setBairroId("");
-    setForma("pix");
-    setTroco("");
-    setTipoEntrega("delivery");
-    setSelectedRewardId(null);
-    setFidelidadeBusca(null);
-    setTelefoneBuscado("");
-    setCupomAplicado(null);
-    setCupomCodigo("");
-    setCodigoCampanha(null);
+    resetCheckoutAfterSuccess(pedidoId);
   };
 
   if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
@@ -2046,7 +2129,11 @@ export default function CardapioPublico() {
             </div>
 
             <Button className="w-full text-white hover:opacity-90 font-bold" size="lg" disabled={busy} onClick={fazerPedido}>
-              {busy ? "Enviando..." : "Finalizar pedido"}
+              {busy
+                ? "Enviando..."
+                : forma === "pix" && (cfg as Configuracao & { pix_online_ativo?: boolean })?.pix_online_ativo
+                  ? "Gerar Pix para pagar"
+                  : "Finalizar pedido"}
             </Button>
           </div>
         </SheetContent>
@@ -2056,6 +2143,125 @@ export default function CardapioPublico() {
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto p-0">
           <div className="p-4 sm:p-5">
             {renderFidelidadeBox()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pixDialogOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPixDialogOpen(false);
+            setPixData(null);
+            setPixStatus("pending");
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <div className="text-center space-y-4 py-2">
+            <QrCode className="w-10 h-10 mx-auto" style={{ color: cfg.cor_primaria }} />
+            <h2 className="text-xl font-bold">Pague com Pix para confirmar</h2>
+
+            {pixStatus === "pending" && pixData && (
+              <>
+                {pixData.qrCodeBase64 && (
+                  <img
+                    src={`data:image/png;base64,${pixData.qrCodeBase64}`}
+                    alt="QR Code Pix"
+                    className="w-48 h-48 mx-auto rounded-lg border"
+                  />
+                )}
+                <div className="space-y-2 text-left">
+                  <Label className="text-xs">Pix copia e cola</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={pixData.qrCode} className="text-xs" />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(pixData.qrCode);
+                          toast.success("Código Pix copiado");
+                        } catch {
+                          toast.error("Não foi possível copiar. Selecione o código manualmente.");
+                        }
+                      }}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Aguardando confirmação do pagamento...
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={pixChecking}
+                  onClick={() => {
+                    setPixChecking(true);
+                    void verificarPagamentoPix().finally(() => setPixChecking(false));
+                  }}
+                >
+                  {pixChecking ? "Verificando..." : "Já paguei, verificar agora"}
+                </Button>
+              </>
+            )}
+
+            {(pixStatus === "rejected" || pixStatus === "cancelled") && (
+              <>
+                <p className="text-sm text-destructive">
+                  Pagamento não aprovado. Tente novamente ou escolha outra forma de pagamento.
+                </p>
+                <Button
+                  className="w-full text-white"
+                  style={{ background: cfg.cor_primaria }}
+                  onClick={() => {
+                    setPixDialogOpen(false);
+                    setPixData(null);
+                    setPixStatus("pending");
+                    setCheckoutOpen(true);
+                  }}
+                >
+                  Voltar ao checkout
+                </Button>
+              </>
+            )}
+
+            {pixStatus === "expired" && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  O tempo para pagamento expirou. Gere um novo Pix para continuar.
+                </p>
+                <Button
+                  className="w-full text-white"
+                  style={{ background: cfg.cor_primaria }}
+                  onClick={() => {
+                    setPixDialogOpen(false);
+                    setPixData(null);
+                    setPixStatus("pending");
+                    setCheckoutOpen(true);
+                  }}
+                >
+                  Tentar novamente
+                </Button>
+              </>
+            )}
+
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setPixDialogOpen(false);
+                setPixData(null);
+                setPixStatus("pending");
+              }}
+            >
+              Cancelar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

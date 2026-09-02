@@ -113,6 +113,24 @@ Deno.serve(async (req) => {
       return json({ ok: true, status: novoStatus });
     }
 
+    // O Mercado Pago costuma mandar mais de uma notificação pro mesmo pagamento (retry,
+    // ou eventos "created"/"updated" quase simultâneos). Reivindica o pagamento com um
+    // UPDATE condicional antes de criar o pedido: só a invocação que efetivamente muda
+    // status de 'pending' pra 'approved' segue em frente — as outras (concorrentes ou
+    // reenviadas depois) encontram 0 linhas afetadas e param aqui, sem duplicar o pedido.
+    const { data: claimed, error: claimError } = await supabase
+      .from("pagamentos_pix")
+      .update({ status: "approved", atualizado_em: new Date().toISOString() })
+      .eq("id", pagamento.id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+
+    if (claimError) return json({ error: claimError.message }, 500);
+    if (!claimed) {
+      return json({ ok: true, already_processed: true });
+    }
+
     // Aprovado: cria o pedido de verdade agora, reaproveitando a mesma RPC do checkout público.
     const p = (pagamento.payload || {}) as Record<string, unknown>;
     const { data: rpcResult, error: rpcError } = await supabase.rpc("create_public_delivery_order", {
@@ -143,6 +161,12 @@ Deno.serve(async (req) => {
     });
 
     if (rpcError || !rpcResult?.pedido_id) {
+      // Devolve pro estado "pending" pra uma proxima notificação do Mercado Pago
+      // conseguir reivindicar e tentar criar o pedido de novo.
+      await supabase
+        .from("pagamentos_pix")
+        .update({ status: "pending", atualizado_em: new Date().toISOString() })
+        .eq("id", pagamento.id);
       return json({ error: rpcError?.message || "Falha ao criar pedido após pagamento aprovado" }, 500);
     }
 
@@ -150,7 +174,7 @@ Deno.serve(async (req) => {
 
     await supabase
       .from("pagamentos_pix")
-      .update({ status: "approved", pedido_id: pedidoId, atualizado_em: new Date().toISOString() })
+      .update({ pedido_id: pedidoId, atualizado_em: new Date().toISOString() })
       .eq("id", pagamento.id);
 
     // Confirmação por WhatsApp, no mesmo padrão do checkout tradicional (fire-and-forget).

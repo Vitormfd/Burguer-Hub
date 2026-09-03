@@ -120,53 +120,78 @@ export async function loadPrintAdicionaisPorItem(
 ): Promise<Map<string, PrintAdicional[]>> {
   if (!itemIds.length) return new Map();
 
-  const { data: itemAdicionais, error } = await supabase
-    .from("pedido_item_adicionais")
-    .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
-    .in("pedido_item_id", itemIds);
+  try {
+    // Preferência: inclui `nome` snapshot (migração 20260819120000).
+    // Fallback: se a coluna ainda não existir no banco, busca sem ela.
+    let rows: PedidoItemAdicionalRow[] = [];
 
-  if (error) throw error;
+    const withNome = await supabase
+      .from("pedido_item_adicionais")
+      .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
+      .in("pedido_item_id", itemIds);
 
-  const rows = (itemAdicionais || []) as PedidoItemAdicionalRow[];
-  const adicionalIds = Array.from(new Set(rows.map((row) => row.adicional_id).filter(Boolean))) as string[];
+    if (withNome.error) {
+      const withoutNome = await supabase
+        .from("pedido_item_adicionais")
+        .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
+        .in("pedido_item_id", itemIds);
 
-  const { data: adicionais } = adicionalIds.length
-    ? await supabase.from("adicionais").select("id, nome, grupo_id").in("id", adicionalIds)
-    : { data: [] as { id: string; nome: string; grupo_id: string | null }[] };
+      if (withoutNome.error) {
+        console.warn("Falha ao carregar adicionais para impressão:", withoutNome.error.message);
+        return new Map();
+      }
 
-  const grupoIds = Array.from(
-    new Set((adicionais || []).map((adicional) => adicional.grupo_id).filter(Boolean)),
-  ) as string[];
+      rows = (withoutNome.data || []).map((row) => ({
+        ...row,
+        nome: null,
+      })) as PedidoItemAdicionalRow[];
+    } else {
+      rows = (withNome.data || []) as PedidoItemAdicionalRow[];
+    }
 
-  const { data: grupos } = grupoIds.length
-    ? await supabase.from("grupos_adicionais").select("id, nome").in("id", grupoIds)
-    : { data: [] as { id: string; nome: string }[] };
+    const adicionalIds = Array.from(new Set(rows.map((row) => row.adicional_id).filter(Boolean))) as string[];
 
-  const grupoMap = new Map((grupos || []).map((grupo) => [grupo.id, grupo.nome]));
-  const adicionalMap = new Map(
-    (adicionais || []).map((adicional) => [
-      adicional.id,
-      {
-        nome: adicional.nome,
-        grupo_nome: adicional.grupo_id ? grupoMap.get(adicional.grupo_id) : undefined,
-      },
-    ]),
-  );
+    const { data: adicionais } = adicionalIds.length
+      ? await supabase.from("adicionais").select("id, nome, grupo_id").in("id", adicionalIds)
+      : { data: [] as { id: string; nome: string; grupo_id: string | null }[] };
 
-  const adPorItem = new Map<string, PrintAdicional[]>();
-  rows.forEach((row) => {
-    const meta = row.adicional_id ? adicionalMap.get(row.adicional_id) : undefined;
-    const atual = adPorItem.get(row.pedido_item_id) ?? [];
-    atual.push({
-      nome: row.nome?.trim() || meta?.nome || "Adicional",
-      quantidade: row.quantidade,
-      preco_unitario: Number(row.preco_unitario),
-      grupo_nome: meta?.grupo_nome,
+    const grupoIds = Array.from(
+      new Set((adicionais || []).map((adicional) => adicional.grupo_id).filter(Boolean)),
+    ) as string[];
+
+    const { data: grupos } = grupoIds.length
+      ? await supabase.from("grupos_adicionais").select("id, nome").in("id", grupoIds)
+      : { data: [] as { id: string; nome: string }[] };
+
+    const grupoMap = new Map((grupos || []).map((grupo) => [grupo.id, grupo.nome]));
+    const adicionalMap = new Map(
+      (adicionais || []).map((adicional) => [
+        adicional.id,
+        {
+          nome: adicional.nome,
+          grupo_nome: adicional.grupo_id ? grupoMap.get(adicional.grupo_id) : undefined,
+        },
+      ]),
+    );
+
+    const adPorItem = new Map<string, PrintAdicional[]>();
+    rows.forEach((row) => {
+      const meta = row.adicional_id ? adicionalMap.get(row.adicional_id) : undefined;
+      const atual = adPorItem.get(row.pedido_item_id) ?? [];
+      atual.push({
+        nome: row.nome?.trim() || meta?.nome || "Adicional",
+        quantidade: row.quantidade,
+        preco_unitario: Number(row.preco_unitario),
+        grupo_nome: meta?.grupo_nome,
+      });
+      adPorItem.set(row.pedido_item_id, atual);
     });
-    adPorItem.set(row.pedido_item_id, atual);
-  });
 
-  return adPorItem;
+    return adPorItem;
+  } catch (err) {
+    console.warn("Falha ao carregar adicionais para impressão:", err);
+    return new Map();
+  }
 }
 
 // ─── Helpers internos ──────────────────────────────────────────────────────────

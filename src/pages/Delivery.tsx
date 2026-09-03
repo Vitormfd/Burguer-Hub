@@ -227,58 +227,68 @@ export default function Delivery() {
   }, [load, notifyItemCancelado]);
 
   const printDeliveryCard = useCallback(async (row: DeliveryRow) => {
-    const { data: itens } = await supabase
-      .from("pedido_itens")
-      .select("id, quantidade, preco_unitario, observacao, produto_id")
-      .eq("pedido_id", row.pedido_id)
-      .eq("cancelado", false);
+    try {
+      const { data: itens, error: itensError } = await supabase
+        .from("pedido_itens")
+        .select("id, quantidade, preco_unitario, observacao, produto_id")
+        .eq("pedido_id", row.pedido_id)
+        .eq("cancelado", false);
 
-    const itensList = itens || [];
-    const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
-    const itemIds = itensList.map((i) => i.id);
+      if (itensError) {
+        toast.error(itensError.message);
+        return;
+      }
 
-    const [{ data: produtos }, { data: cfgData }] = await Promise.all([
-      prodIds.length
-        ? supabase.from("produtos").select("id, nome").in("id", prodIds)
-        : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
-      supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
-    ]);
+      const itensList = itens || [];
+      const prodIds = Array.from(new Set(itensList.map((i) => i.produto_id).filter(Boolean))) as string[];
+      const itemIds = itensList.map((i) => i.id);
 
-    const adPorItem = await loadPrintAdicionaisPorItem(itemIds);
+      const [{ data: produtos }, { data: cfgData }] = await Promise.all([
+        prodIds.length
+          ? supabase.from("produtos").select("id, nome").in("id", prodIds)
+          : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
+        supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
+      ]);
 
-    const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
+      const adPorItem = await loadPrintAdicionaisPorItem(itemIds);
 
-    const { data: entrega } = await supabase
-      .from("entregas")
-      .select("forma_pagamento, troco_para")
-      .eq("id", row.entrega_id)
-      .maybeSingle();
+      const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
 
-    printReceipt({
-      tipo: row.tipo_entrega,
-      loja_nome: (cfgData as any)?.nome_loja,
-      cliente_nome: row.cliente_nome,
-      cliente_telefone: row.cliente_telefone,
-      endereco: row.endereco,
-      numero: row.numero,
-      complemento: row.complemento,
-      bairro: row.bairro,
-      taxa_entrega: row.taxa_entrega,
-      forma_pagamento: (entrega as { forma_pagamento?: string | null } | null)?.forma_pagamento ?? null,
-      troco_para: (entrega as { troco_para?: number | null } | null)?.troco_para != null
-        ? Number((entrega as { troco_para: number }).troco_para)
-        : null,
-      itens: itensList.map((i) => ({
-        nome: i.produto_id ? prodMap.get(i.produto_id) ?? "Item" : "Item",
-        quantidade: i.quantidade,
-        preco_unitario: Number(i.preco_unitario),
-        observacao: i.observacao,
-        adicionais: adPorItem.get(i.id) ?? [],
-      })),
-      subtotal: row.itens_total,
-      total: row.itens_total + row.taxa_entrega,
-      criado_em: row.criado_em,
-    });
+      const { data: entrega } = await supabase
+        .from("entregas")
+        .select("forma_pagamento, troco_para")
+        .eq("id", row.entrega_id)
+        .maybeSingle();
+
+      printReceipt({
+        tipo: row.tipo_entrega,
+        loja_nome: (cfgData as any)?.nome_loja,
+        cliente_nome: row.cliente_nome,
+        cliente_telefone: row.cliente_telefone,
+        endereco: row.endereco,
+        numero: row.numero,
+        complemento: row.complemento,
+        bairro: row.bairro,
+        taxa_entrega: row.taxa_entrega,
+        forma_pagamento: (entrega as { forma_pagamento?: string | null } | null)?.forma_pagamento ?? null,
+        troco_para: (entrega as { troco_para?: number | null } | null)?.troco_para != null
+          ? Number((entrega as { troco_para: number }).troco_para)
+          : null,
+        itens: itensList.map((i) => ({
+          nome: i.produto_id ? prodMap.get(i.produto_id) ?? "Item" : "Item",
+          quantidade: i.quantidade,
+          preco_unitario: Number(i.preco_unitario),
+          observacao: i.observacao,
+          adicionais: adPorItem.get(i.id) ?? [],
+        })),
+        subtotal: row.itens_total,
+        total: row.itens_total + (row.tipo_entrega === "retirada" ? 0 : row.taxa_entrega),
+        criado_em: row.criado_em,
+      });
+    } catch (err) {
+      console.error("Erro ao imprimir delivery:", err);
+      toast.error(err instanceof Error ? err.message : "Erro ao imprimir notinha");
+    }
   }, []);
 
   const advancePedido = async (row: DeliveryRow) => {

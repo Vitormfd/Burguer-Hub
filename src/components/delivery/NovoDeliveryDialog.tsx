@@ -12,6 +12,7 @@ import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/Card
 import { calcularTaxaEntrega, carrinhoBloqueiaFreteGratis } from "@/lib/freteGratis";
 import { brl } from "@/lib/format";
 import { printReceipt, mapCartToPrintItems } from "@/lib/print";
+import { insertPedidoItemAdicionais, type PedidoItemAdicionalInsert } from "@/lib/pedidoItemAdicionais";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
 import type { Cliente, Configuracao, Categoria } from "@/types/db";
 
@@ -274,11 +275,15 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         quantidade: adicional.quantidade,
         preco_unitario: adicional.precoUnitario,
       }))
-    ).filter((row) => !!row.pedido_item_id);
+    ).filter((row): row is PedidoItemAdicionalInsert => !!row.pedido_item_id);
 
     if (adicionaisRows.length) {
-      const { error: eAdd } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
-      if (eAdd) { setBusy(false); return toast.error(eAdd.message); }
+      try {
+        await insertPedidoItemAdicionais(adicionaisRows);
+      } catch (err) {
+        setBusy(false);
+        return toast.error(err instanceof Error ? err.message : "Erro ao salvar adicionais");
+      }
     }
 
     // 3. Entrega

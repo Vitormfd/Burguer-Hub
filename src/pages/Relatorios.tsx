@@ -16,6 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { fetchInBatches } from "@/lib/supabaseBatch";
+import { selectPedidoItemAdicionais } from "@/lib/pedidoItemAdicionais";
 import { brl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -148,12 +149,7 @@ async function fetchRangeData(ini: string, fim: string) {
     });
 
     if (itemIds.length) {
-      const adicionais = await fetchInBatches(itemIds, (batch) =>
-        supabase
-          .from("pedido_item_adicionais")
-          .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
-          .in("pedido_item_id", batch),
-      );
+      const adicionais = await selectPedidoItemAdicionais(itemIds);
 
       const adicionaisPorItem = new Map<string, number>();
       adicionais.forEach((adicional) => {

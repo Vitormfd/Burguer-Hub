@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Cart, CartAdicionalSelecionado, CartItem } from "@/components/cardapio/cartTypes";
 import { cartSubtotal } from "@/components/cardapio/cartTypes";
+import { insertPedidoItemAdicionais, selectPedidoItemAdicionais, type PedidoItemAdicionalInsert } from "@/lib/pedidoItemAdicionais";
 import type { PedidoStatus, Produto } from "@/types/db";
 
 export const pedidoEditavel = (status: PedidoStatus) =>
@@ -20,14 +21,11 @@ export async function loadPedidoCart(pedidoId: string): Promise<Cart> {
   const itemIds = itens.map((i) => i.id);
   const produtoIds = Array.from(new Set(itens.map((i) => i.produto_id).filter(Boolean))) as string[];
 
-  const [{ data: produtos }, { data: itemAdicionais }] = await Promise.all([
+  const [{ data: produtos }, itemAdicionais] = await Promise.all([
     produtoIds.length
       ? supabase.from("produtos").select("*").in("id", produtoIds)
       : Promise.resolve({ data: [] as Produto[] }),
-    supabase
-      .from("pedido_item_adicionais")
-      .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
-      .in("pedido_item_id", itemIds),
+    selectPedidoItemAdicionais(itemIds),
   ]);
 
   const adicionalIds = Array.from(
@@ -137,13 +135,10 @@ export async function replacePedidoItens(
       quantidade: adicional.quantidade,
       preco_unitario: adicional.precoUnitario,
     }))
-  ).filter((row) => !!row.pedido_item_id);
+  ).filter((row): row is PedidoItemAdicionalInsert => !!row.pedido_item_id);
 
   if (adicionaisRows.length) {
-    const { error: adicionaisError } = await supabase
-      .from("pedido_item_adicionais")
-      .insert(adicionaisRows);
-    if (adicionaisError) throw new Error(adicionaisError.message);
+    await insertPedidoItemAdicionais(adicionaisRows);
   }
 }
 

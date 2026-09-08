@@ -7,6 +7,7 @@ import {
 import { toast } from "sonner";
 import CardapioSelector, { Cart, cartSubtotal } from "@/components/cardapio/CardapioSelector";
 import { printReceipt, mapCartToPrintItems } from "@/lib/print";
+import { insertPedidoItemAdicionais, type PedidoItemAdicionalInsert } from "@/lib/pedidoItemAdicionais";
 import type { Configuracao } from "@/types/db";
 
 interface Props {
@@ -85,11 +86,14 @@ export default function NovoPedidoDialog({
         quantidade: adicional.quantidade,
         preco_unitario: adicional.precoUnitario,
       }))
-    ).filter((row) => !!row.pedido_item_id);
+    ).filter((row): row is PedidoItemAdicionalInsert => !!row.pedido_item_id);
 
     if (adicionaisRows.length) {
-      const { error: e3 } = await supabase.from("pedido_item_adicionais").insert(adicionaisRows);
-      if (e3) return toast.error(e3.message);
+      try {
+        await insertPedidoItemAdicionais(adicionaisRows);
+      } catch (err) {
+        return toast.error(err instanceof Error ? err.message : "Erro ao salvar adicionais");
+      }
     }
 
     toast.success("Pedido registrado");

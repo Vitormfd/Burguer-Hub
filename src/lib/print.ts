@@ -1,5 +1,6 @@
 import type { Cart } from "@/components/cardapio/cartTypes";
 import { supabase } from "@/integrations/supabase/client";
+import { selectPedidoItemAdicionais } from "@/lib/pedidoItemAdicionais";
 
 export interface PrintConfig {
   largura: "58mm" | "80mm";
@@ -92,14 +93,6 @@ export interface PrintDeliveryData {
 
 export type PrintData = PrintMesaData | PrintDeliveryData;
 
-type PedidoItemAdicionalRow = {
-  pedido_item_id: string;
-  adicional_id: string | null;
-  nome: string | null;
-  quantidade: number;
-  preco_unitario: number;
-};
-
 export function mapCartToPrintItems(cart: Cart): PrintItem[] {
   return cart.map((item) => ({
     nome: item.produto.nome,
@@ -121,33 +114,7 @@ export async function loadPrintAdicionaisPorItem(
   if (!itemIds.length) return new Map();
 
   try {
-    // Preferência: inclui `nome` snapshot (migração 20260819120000).
-    // Fallback: se a coluna ainda não existir no banco, busca sem ela.
-    let rows: PedidoItemAdicionalRow[] = [];
-
-    const withNome = await supabase
-      .from("pedido_item_adicionais")
-      .select("pedido_item_id, adicional_id, nome, quantidade, preco_unitario")
-      .in("pedido_item_id", itemIds);
-
-    if (withNome.error) {
-      const withoutNome = await supabase
-        .from("pedido_item_adicionais")
-        .select("pedido_item_id, adicional_id, quantidade, preco_unitario")
-        .in("pedido_item_id", itemIds);
-
-      if (withoutNome.error) {
-        console.warn("Falha ao carregar adicionais para impressão:", withoutNome.error.message);
-        return new Map();
-      }
-
-      rows = (withoutNome.data || []).map((row) => ({
-        ...row,
-        nome: null,
-      })) as PedidoItemAdicionalRow[];
-    } else {
-      rows = (withNome.data || []) as PedidoItemAdicionalRow[];
-    }
+    const rows = await selectPedidoItemAdicionais(itemIds);
 
     const adicionalIds = Array.from(new Set(rows.map((row) => row.adicional_id).filter(Boolean))) as string[];
 

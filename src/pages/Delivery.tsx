@@ -256,7 +256,7 @@ export default function Delivery() {
 
       const { data: entrega } = await supabase
         .from("entregas")
-        .select("forma_pagamento, troco_para")
+        .select("forma_pagamento, troco_para, pago")
         .eq("id", row.entrega_id)
         .maybeSingle();
 
@@ -271,6 +271,7 @@ export default function Delivery() {
         bairro: row.bairro,
         taxa_entrega: row.taxa_entrega,
         forma_pagamento: (entrega as { forma_pagamento?: string | null } | null)?.forma_pagamento ?? null,
+        pago: (entrega as { pago?: boolean } | null)?.pago ?? false,
         troco_para: (entrega as { troco_para?: number | null } | null)?.troco_para != null
           ? Number((entrega as { troco_para: number }).troco_para)
           : null,

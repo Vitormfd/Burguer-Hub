@@ -417,6 +417,7 @@ export type Database = {
           id: string
           numero: string | null
           origem: string
+          pago: boolean
           pedido_id: string
           status: Database["public"]["Enums"]["entrega_status"]
           taxa_entrega: number
@@ -432,6 +433,7 @@ export type Database = {
           id?: string
           numero?: string | null
           origem?: string
+          pago?: boolean
           pedido_id: string
           status?: Database["public"]["Enums"]["entrega_status"]
           taxa_entrega?: number
@@ -447,6 +449,7 @@ export type Database = {
           id?: string
           numero?: string | null
           origem?: string
+          pago?: boolean
           pedido_id?: string
           status?: Database["public"]["Enums"]["entrega_status"]
           taxa_entrega?: number

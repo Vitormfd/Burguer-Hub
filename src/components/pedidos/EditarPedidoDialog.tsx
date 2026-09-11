@@ -75,6 +75,7 @@ export default function EditarPedidoDialog({
   const [bairro, setBairro] = useState("");
   const [taxa, setTaxa] = useState("0");
   const [formaPagamento, setFormaPagamento] = useState<"dinheiro" | "pix" | "cartao">("pix");
+  const [pago, setPago] = useState(false);
   const [trocoPara, setTrocoPara] = useState("");
   const [bairrosTaxas, setBairrosTaxas] = useState<BairroTaxaOption[]>([]);
 
@@ -150,6 +151,7 @@ export default function EditarPedidoDialog({
             setTaxa(String(Number(entrega.taxa_entrega || 0)));
             const forma = (entrega.forma_pagamento as "dinheiro" | "pix" | "cartao" | null) || "pix";
             setFormaPagamento(forma === "boleto" ? "pix" : forma);
+            setPago(Boolean((entrega as { pago?: boolean }).pago));
             setTrocoPara(entrega.troco_para != null ? String(Number(entrega.troco_para)) : "");
           }
         }
@@ -211,6 +213,7 @@ export default function EditarPedidoDialog({
             bairro: deliveryParsed.bairro || null,
             taxa_entrega: deliveryParsed.taxa_entrega,
             forma_pagamento: formaPagamento,
+            pago,
             troco_para: trocoNum,
           })
           .eq("id", entregaId);
@@ -251,6 +254,7 @@ export default function EditarPedidoDialog({
             bairro: deliveryParsed.bairro || null,
             taxa_entrega: deliveryParsed.taxa_entrega,
             forma_pagamento: formaPagamento,
+            pago,
             troco_para: trocoNum,
             itens: mapCartToPrintItems(cart),
             subtotal,
@@ -352,6 +356,18 @@ export default function EditarPedidoDialog({
                     <option value="pix">PIX</option>
                     <option value="dinheiro">Dinheiro</option>
                     <option value="cartao">Cartão</option>
+                  </select>
+                </div>
+                <div className="col-span-2 md:col-span-3 space-y-1">
+                  <Label htmlFor="e-pago" className="text-xs">Status do pagamento</Label>
+                  <select
+                    id="e-pago"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                    value={pago ? "pago" : "a_pagar"}
+                    onChange={(e) => setPago(e.target.value === "pago")}
+                  >
+                    <option value="a_pagar">A pagar</option>
+                    <option value="pago">Já pago</option>
                   </select>
                 </div>
                 <div className="col-span-2 md:col-span-3 space-y-1">

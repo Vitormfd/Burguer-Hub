@@ -59,6 +59,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [clienteBusca, setClienteBusca] = useState("");
   const [clienteOpen, setClienteOpen] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState<"dinheiro" | "pix" | "cartao">("pix");
+  const [pago, setPago] = useState(false);
   const [trocoPara, setTrocoPara] = useState("");
   const bairroWrapRef = useRef<HTMLDivElement>(null);
   const clienteWrapRef = useRef<HTMLDivElement>(null);
@@ -137,6 +138,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     setBairroOpen(false);
     setClienteOpen(false);
     setFormaPagamento("pix");
+    setPago(false);
     setTrocoPara("");
   };
 
@@ -300,6 +302,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
       bairro: parsed.data.bairro || null,
       taxa_entrega: parsed.data.taxa_entrega,
       forma_pagamento: formaPagamento,
+      pago,
       troco_para: trocoNum,
       status: "aguardando",
     });
@@ -333,6 +336,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         bairro: parsed.data.bairro || null,
         taxa_entrega: parsed.data.taxa_entrega,
         forma_pagamento: formaPagamento,
+        pago,
         troco_para: trocoNum,
         itens: mapCartToPrintItems(items),
         subtotal,
@@ -489,6 +493,18 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               <option value="pix">PIX</option>
               <option value="dinheiro">Dinheiro</option>
               <option value="cartao">Cartão</option>
+            </select>
+          </div>
+          <div className="col-span-2 md:col-span-3 space-y-1">
+            <Label htmlFor="d-pago" className="text-xs">Status do pagamento</Label>
+            <select
+              id="d-pago"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={pago ? "pago" : "a_pagar"}
+              onChange={(e) => setPago(e.target.value === "pago")}
+            >
+              <option value="a_pagar">A pagar</option>
+              <option value="pago">Já pago</option>
             </select>
           </div>
           <div className="col-span-2 md:col-span-3 space-y-1">

@@ -45,6 +45,7 @@ interface PedidoHistoricoRow {
   troco_para: number | null;
   pagamentos: Array<{ forma: string; valor: number }> | null;
   forma_pagamento: FormaPagamento | null;
+  pago: boolean | null;
   taxa_entrega: number;
   fechado_em: string | null;
 }
@@ -186,7 +187,7 @@ export default function HistoricoPedidos() {
     const [{ data: entregas }, { data: contas }, { data: clientes }, { data: itensResumo }] = await Promise.all([
       supabase
         .from("entregas")
-        .select("pedido_id, cliente_nome, cliente_telefone, taxa_entrega, forma_pagamento")
+        .select("pedido_id, cliente_nome, cliente_telefone, taxa_entrega, forma_pagamento, pago")
         .in("pedido_id", pedidoIds),
       contaIds.length
         ? supabase.from("contas").select("id, fechada_em, forma_pagamento, mesa_id, total, nome, modalidade_consumo, troco_para, conta_pagamentos(forma_pagamento, valor), mesas(numero)").in("id", contaIds)
@@ -255,6 +256,7 @@ export default function HistoricoPedidos() {
           ? (conta?.conta_pagamentos || []).map((p) => ({ forma: p.forma_pagamento, valor: Number(p.valor) }))
           : null,
         forma_pagamento: (entrega?.forma_pagamento || conta?.forma_pagamento || null) as FormaPagamento | null,
+        pago: entrega?.pago ?? null,
         taxa_entrega: taxa,
         fechado_em: conta?.fechada_em ?? null,
       };
@@ -390,7 +392,7 @@ export default function HistoricoPedidos() {
 
     const { data: entrega } = await supabase
       .from("entregas")
-      .select("endereco, numero, complemento, bairro, troco_para")
+      .select("endereco, numero, complemento, bairro, troco_para, pago")
       .eq("pedido_id", row.id)
       .maybeSingle();
 
@@ -405,6 +407,7 @@ export default function HistoricoPedidos() {
       bairro: entrega?.bairro,
       taxa_entrega: row.taxa_entrega,
       forma_pagamento: row.forma_pagamento,
+      pago: entrega?.pago ?? row.pago ?? false,
       troco_para: entrega?.troco_para != null ? Number(entrega.troco_para) : null,
       itens: lista.filter((i) => !i.cancelado).map((i) => ({
         nome: i.nome,

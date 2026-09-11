@@ -85,6 +85,8 @@ export interface PrintDeliveryData {
   cupom_codigo?: string | null;
   forma_pagamento?: string | null;
   troco_para?: number | null;
+  /** true = já pago; false = a pagar; null/undefined = não informar (legado) */
+  pago?: boolean | null;
   itens: PrintItem[];
   subtotal: number;
   total: number;
@@ -395,6 +397,9 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
       body += `<div class="sep-dashed"></div>`;
       body += `<div class="section-title">PAGAMENTO</div>`;
       body += `<div class="subtotal-line"><span>Forma</span><span>${esc(formaLabel[data.forma_pagamento] ?? data.forma_pagamento)}</span></div>`;
+      if (data.pago != null) {
+        body += `<div class="subtotal-line"><span>Status</span><span>${data.pago ? "PAGO" : "A PAGAR"}</span></div>`;
+      }
       if (
         data.forma_pagamento === "dinheiro" &&
         data.troco_para != null &&

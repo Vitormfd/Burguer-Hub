@@ -172,10 +172,17 @@ Deno.serve(async (req) => {
 
     const pedidoId = String(rpcResult.pedido_id);
 
-    await supabase
-      .from("pagamentos_pix")
-      .update({ pedido_id: pedidoId, atualizado_em: new Date().toISOString() })
-      .eq("id", pagamento.id);
+    await Promise.all([
+      supabase
+        .from("pagamentos_pix")
+        .update({ pedido_id: pedidoId, atualizado_em: new Date().toISOString() })
+        .eq("id", pagamento.id),
+      // Pix online só cria o pedido depois de aprovado — marca a entrega como já paga.
+      supabase
+        .from("entregas")
+        .update({ pago: true })
+        .eq("pedido_id", pedidoId),
+    ]);
 
     // Confirmação por WhatsApp, no mesmo padrão do checkout tradicional (fire-and-forget).
     const telefone = String(p.p_cliente_telefone || "").trim();

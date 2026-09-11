@@ -282,7 +282,7 @@ export default function EditarPedidoDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[95vh] w-[calc(100%-2rem)] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0 pb-2">
           <DialogTitle className="font-display text-2xl">{titulo}</DialogTitle>
         </DialogHeader>
@@ -341,7 +341,7 @@ export default function EditarPedidoDialog({
                     </div>
                   </>
                 )}
-                <div className="col-span-2 md:col-span-3 space-y-1">
+                <div className="col-span-2 md:col-span-2 space-y-1">
                   <Label htmlFor="e-forma" className="text-xs">Pagamento</Label>
                   <select
                     id="e-forma"
@@ -358,7 +358,7 @@ export default function EditarPedidoDialog({
                     <option value="cartao">Cartão</option>
                   </select>
                 </div>
-                <div className="col-span-2 md:col-span-3 space-y-1">
+                <div className="col-span-2 md:col-span-2 space-y-1">
                   <Label htmlFor="e-pago" className="text-xs">Status do pagamento</Label>
                   <select
                     id="e-pago"
@@ -370,7 +370,7 @@ export default function EditarPedidoDialog({
                     <option value="pago">Já pago</option>
                   </select>
                 </div>
-                <div className="col-span-2 md:col-span-3 space-y-1">
+                <div className="col-span-2 md:col-span-2 space-y-1">
                   <Label htmlFor="e-troco" className="text-xs">Troco para (opcional)</Label>
                   <Input
                     id="e-troco"
@@ -387,7 +387,7 @@ export default function EditarPedidoDialog({
               </div>
             )}
 
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
               <CardapioSelector
                 cart={cart}
                 onCartChange={setCart}
@@ -400,7 +400,7 @@ export default function EditarPedidoDialog({
                     </div>
                   ) : undefined
                 }
-                heightClass="h-[52vh] min-h-[280px]"
+                heightClass="h-full min-h-[240px]"
               />
             </div>
 

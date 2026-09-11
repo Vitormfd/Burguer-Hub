@@ -353,7 +353,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[92vh] flex flex-col overflow-hidden gap-3">
+      <DialogContent className="max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[92vh] w-[calc(100%-2rem)] flex flex-col overflow-hidden gap-3">
         <DialogHeader className="shrink-0 pb-2">
           <DialogTitle className="font-display text-2xl">Novo Delivery</DialogTitle>
         </DialogHeader>
@@ -478,7 +478,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               value={taxa} onChange={(e) => setTaxa(e.target.value)}
             />
           </div>
-          <div className="col-span-2 md:col-span-3 space-y-1">
+          <div className="col-span-2 md:col-span-2 space-y-1">
             <Label htmlFor="d-forma" className="text-xs">Pagamento</Label>
             <select
               id="d-forma"
@@ -495,7 +495,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               <option value="cartao">Cartão</option>
             </select>
           </div>
-          <div className="col-span-2 md:col-span-3 space-y-1">
+          <div className="col-span-2 md:col-span-2 space-y-1">
             <Label htmlFor="d-pago" className="text-xs">Status do pagamento</Label>
             <select
               id="d-pago"
@@ -507,7 +507,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               <option value="pago">Já pago</option>
             </select>
           </div>
-          <div className="col-span-2 md:col-span-3 space-y-1">
+          <div className="col-span-2 md:col-span-2 space-y-1">
             <Label htmlFor="d-troco" className="text-xs">Troco para (opcional)</Label>
             <Input
               id="d-troco"
@@ -523,19 +523,21 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
           </div>
         </div>
 
-        <CardapioSelector
-          cart={cart}
-          onCartChange={setCart}
-          extraTotal={taxaNum}
-          extraRow={
-            <div className={`flex justify-between text-xs ${taxaCalculada.freteGratis ? "text-emerald-700" : ""}`}>
-              <span>Taxa de entrega</span>
-              <span>{taxaCalculada.freteGratis ? "Grátis" : brl(taxaNum)}</span>
-            </div>
-          }
-          heightClass="h-[min(46vh,420px)] min-h-[300px]"
-          layout="list"
-        />
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col">
+          <CardapioSelector
+            cart={cart}
+            onCartChange={setCart}
+            extraTotal={taxaNum}
+            extraRow={
+              <div className={`flex justify-between text-xs ${taxaCalculada.freteGratis ? "text-emerald-700" : ""}`}>
+                <span>Taxa de entrega</span>
+                <span>{taxaCalculada.freteGratis ? "Grátis" : brl(taxaNum)}</span>
+              </div>
+            }
+            heightClass="h-full min-h-[240px]"
+            layout="list"
+          />
+        </div>
 
         <div className="shrink-0 flex items-center justify-between gap-2 pt-2">
           <label className="flex items-center gap-2 text-sm select-none cursor-pointer">

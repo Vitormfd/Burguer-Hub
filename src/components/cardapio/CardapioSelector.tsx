@@ -162,12 +162,12 @@ export default function CardapioSelector({
     <>
       <div
         className={cn(
-          "flex flex-col sm:flex-row border rounded-lg overflow-hidden bg-card",
+          "flex min-h-0 min-w-0 flex-col sm:flex-row border rounded-lg overflow-hidden bg-card",
           heightClass,
         )}
       >
-        <div className="min-h-0 flex flex-1 flex-col overflow-hidden sm:border-r">
-          <Tabs defaultValue={categorias[0]?.id} className="flex h-full flex-col overflow-hidden">
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden sm:border-r">
+          <Tabs defaultValue={categorias[0]?.id} className="flex h-full min-w-0 flex-col overflow-hidden">
             <div className="shrink-0 px-4 border-b bg-card">
               <TabsList className="my-2 flex-wrap h-auto gap-2 bg-transparent">
                 {categorias.map((c) => (
@@ -176,7 +176,7 @@ export default function CardapioSelector({
               </TabsList>
             </div>
 
-            <div className="relative flex-1 min-h-0">
+            <div className="relative flex-1 min-h-0 min-w-0">
               {categorias.map((c) => (
                 <TabsContent
                   key={c.id}
@@ -190,7 +190,7 @@ export default function CardapioSelector({
           </Tabs>
         </div>
 
-        <div className="flex w-full sm:w-[280px] shrink-0 flex-col min-h-[220px] sm:min-h-0 bg-muted/30 border-t sm:border-t-0 overflow-hidden">
+        <div className="flex w-full sm:w-[280px] sm:max-w-[40%] shrink-0 flex-col min-h-[220px] sm:min-h-0 bg-muted/30 border-t sm:border-t-0 overflow-hidden">
           <div className="shrink-0 p-3 border-b flex items-center justify-center">
             <div className="text-xs text-muted-foreground text-center">{totalItens} item(ns)</div>
           </div>

@@ -34,21 +34,15 @@ function mapToPagamentos(map: Record<string, number>) {
     }));
 }
 
-export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | null> {
-  const { data: caixa, error } = await supabase.from("caixas").select("*").eq("id", caixaId).single();
-  if (error || !caixa) return null;
-
-  const abertoEm = caixa.aberto_em as string;
-  const fechadoEm = (caixa.fechado_em as string | null) ?? new Date().toISOString();
-
+async function computePagamentosPeriodo(ini: string, fim: string): Promise<Record<string, number>> {
   const pagamentosMap: Record<string, number> = {};
 
   const { data: contas } = await supabase
     .from("contas")
     .select("id, total, forma_pagamento, conta_pagamentos(forma_pagamento, valor)")
     .eq("status", "fechada")
-    .gte("fechada_em", abertoEm)
-    .lte("fechada_em", fechadoEm);
+    .gte("fechada_em", ini)
+    .lte("fechada_em", fim);
 
   const contasList = (contas || []) as Array<{
     id: string;
@@ -72,8 +66,8 @@ export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | n
     .select("id, tipo_entrega, total, subtotal, desconto, valor_desconto")
     .eq("tipo", "delivery")
     .neq("status", "cancelado")
-    .gte("criado_em", abertoEm)
-    .lte("criado_em", fechadoEm);
+    .gte("criado_em", ini)
+    .lte("criado_em", fim);
 
   const pedidosList = (pedidos || []) as Array<{
     id: string;
@@ -123,6 +117,23 @@ export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | n
     });
   }
 
+  return pagamentosMap;
+}
+
+export async function fetchPagamentosPeriodo(ini: string, fim: string) {
+  const pagamentosMap = await computePagamentosPeriodo(ini, fim);
+  return mapToPagamentos(pagamentosMap);
+}
+
+export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | null> {
+  const { data: caixa, error } = await supabase.from("caixas").select("*").eq("id", caixaId).single();
+  if (error || !caixa) return null;
+
+  const abertoEm = caixa.aberto_em as string;
+  const fechadoEm = (caixa.fechado_em as string | null) ?? new Date().toISOString();
+
+  const pagamentosMap = await computePagamentosPeriodo(abertoEm, fechadoEm);
+
   const faturamento = await fetchFaturamentoPeriodo(abertoEm, fechadoEm);
   const vendasMesas = faturamento.mesas.total;
   const deliveryCount = faturamento.delivery.quantidade + faturamento.retirada.quantidade;
@@ -164,14 +175,14 @@ export async function buildCaixaResumo(caixaId: string): Promise<CashSummary | n
     },
     vendas_mesas: {
       total: Number(vendasMesas.toFixed(2)),
-      quantidade: contasList.length,
+      quantidade: faturamento.mesas.quantidade,
     },
     vendas_delivery: {
       total: Number(vendasDelivery.toFixed(2)),
       quantidade: deliveryCount,
     },
     total_vendas: Number((vendasMesas + vendasDelivery).toFixed(2)),
-    contas_count: contasList.length,
+    contas_count: faturamento.mesas.quantidade,
     delivery_count: deliveryCount,
     pagamentos: mapToPagamentos(pagamentosMap),
     movimentacoes: { retirada, suprimento },

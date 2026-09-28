@@ -69,6 +69,7 @@ import {
   type Promocao,
 } from "@/lib/promocoes";
 import { criarPagamentoPix, consultarStatusPagamentoPix, type PagamentoPixStatus } from "@/lib/mercadoPago";
+import { ETAPA_VISITA, registrarEtapaCardapio } from "@/lib/visitasCardapio";
 
 type Forma = "dinheiro" | "pix" | "cartao";
 
@@ -352,6 +353,20 @@ export default function CardapioPublico() {
       setTopSellers(new Set(top));
     })();
   }, [referencia]);
+
+  const visitaOwnerId = (cfg as (Configuracao & { owner_id?: string | null }) | null)?.owner_id ?? null;
+
+  useEffect(() => {
+    if (visitaOwnerId) registrarEtapaCardapio(visitaOwnerId, ETAPA_VISITA.abriu);
+  }, [visitaOwnerId]);
+
+  useEffect(() => {
+    if (visitaOwnerId && cart.length > 0) registrarEtapaCardapio(visitaOwnerId, ETAPA_VISITA.carrinho);
+  }, [visitaOwnerId, cart.length]);
+
+  useEffect(() => {
+    if (visitaOwnerId && checkoutOpen) registrarEtapaCardapio(visitaOwnerId, ETAPA_VISITA.checkout);
+  }, [visitaOwnerId, checkoutOpen]);
 
   useEffect(() => {
     if (!cfg) return;
@@ -1142,6 +1157,7 @@ export default function CardapioPublico() {
   }, []);
 
   const resetCheckoutAfterSuccess = (pedidoId: string) => {
+    if (visitaOwnerId) registrarEtapaCardapio(visitaOwnerId, ETAPA_VISITA.pedido);
     if (tipoEntrega === "delivery") {
       writeCheckoutProfileCache(normalizePhone(tel), {
         nome: nome.trim(),

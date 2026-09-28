@@ -3,7 +3,7 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   BarChart3, TrendingUp, TrendingDown, Info, ChevronRight,
-  Utensils, Truck, ShoppingBag, Calendar as CalendarIcon, Wallet,
+  Utensils, Truck, ShoppingBag, Calendar as CalendarIcon, Wallet, Eye,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { fetchPagamentosPeriodo } from "@/lib/caixaResumo";
+import { fetchVisitasCardapio, type VisitasCardapioResumo } from "@/lib/visitasCardapio";
 import { fetchInBatches } from "@/lib/supabaseBatch";
 import { selectPedidoItemAdicionais } from "@/lib/pedidoItemAdicionais";
 import { brl } from "@/lib/format";
@@ -43,6 +44,7 @@ interface RangeKpi {
   mesa: number;
   vendasPorProduto: { nome: string; quantidade: number; receita: number }[];
   pagamentos: { forma: string; valor: number }[];
+  visitas: VisitasCardapioResumo;
 }
 
 interface CancelamentoDetalhe {
@@ -72,6 +74,7 @@ const emptyRange: RangeKpi = {
   faturamento: 0, pedidos: 0, ticket: 0,
   faturamentoPrev: 0, pedidosPrev: 0, ticketPrev: 0,
   delivery: 0, retirada: 0, mesa: 0, vendasPorProduto: [], pagamentos: [],
+  visitas: { visitas: 0, carrinho: 0, checkout: 0, pedidos: 0 },
 };
 
 const emptyCancelamentos: CancelamentosHojeKpi = {
@@ -311,10 +314,11 @@ export default function Relatorios() {
     const fimPrev = endOfDay(subDays(now, r)).toISOString();
 
     try {
-      const [cur, prev, pagamentos] = await Promise.all([
+      const [cur, prev, pagamentos, visitas] = await Promise.all([
         fetchRangeData(ini, fim),
         fetchRangeData(iniPrev, fimPrev),
         fetchPagamentosPeriodo(ini, fim),
+        fetchVisitasCardapio(ini, fim).catch(() => emptyRange.visitas),
       ]);
 
       const vendasPorProduto = await buildVendasPorProduto(cur.acc);
@@ -323,7 +327,7 @@ export default function Relatorios() {
         faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
         faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
         delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-        vendasPorProduto, pagamentos,
+        vendasPorProduto, pagamentos, visitas,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao carregar relatório");
@@ -452,10 +456,11 @@ export default function Relatorios() {
     const fimPrev = endOfDay(new Date(dateStart.getTime() - 86400000)).toISOString();
 
     try {
-      const [cur, prev, pagamentos] = await Promise.all([
+      const [cur, prev, pagamentos, visitas] = await Promise.all([
         fetchRangeData(ini, fim),
         fetchRangeData(iniPrev, fimPrev),
         fetchPagamentosPeriodo(ini, fim),
+        fetchVisitasCardapio(ini, fim).catch(() => emptyRange.visitas),
       ]);
 
       const vendasPorProduto = await buildVendasPorProduto(cur.acc);
@@ -464,7 +469,7 @@ export default function Relatorios() {
         faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
         faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
         delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-        vendasPorProduto, pagamentos,
+        vendasPorProduto, pagamentos, visitas,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao carregar relatório");
@@ -699,6 +704,73 @@ export default function Relatorios() {
           </div>
         </Card>
       </div>
+
+      <Card className="shadow-card">
+        <div className="p-5 border-b flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-primary shrink-0" />
+            <div>
+              <h2 className="font-display text-2xl">Visitas ao cardápio online</h2>
+              <p className="text-sm text-muted-foreground">
+                Sessões no cardápio público e até onde cada uma chegou. Conta a partir da ativação do rastreio.
+              </p>
+            </div>
+          </div>
+          {!loading && (
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Conversão</div>
+              <div className="font-display text-2xl text-primary">
+                {data.visitas.visitas > 0
+                  ? `${((data.visitas.pedidos / data.visitas.visitas) * 100).toFixed(1)}%`
+                  : "—"}
+              </div>
+            </div>
+          )}
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground">Calculando...</div>
+        ) : data.visitas.visitas === 0 ? (
+          <div className="p-12 text-center text-muted-foreground">Nenhuma visita registrada no período.</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Etapa</TableHead>
+                <TableHead className="w-[35%]">Do total de visitas</TableHead>
+                <TableHead className="text-right w-24">Sessões</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[
+                { label: "Abriram o cardápio", value: data.visitas.visitas },
+                { label: "Adicionaram ao carrinho", value: data.visitas.carrinho },
+                { label: "Chegaram ao checkout", value: data.visitas.checkout },
+                { label: "Finalizaram o pedido", value: data.visitas.pedidos },
+              ].map((etapa) => (
+                <TableRow key={etapa.label}>
+                  <TableCell className="font-medium">{etapa.label}</TableCell>
+                  <TableCell>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-primary"
+                        style={{ width: `${(etapa.value / data.visitas.visitas) * 100}%` }}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">{etapa.value}</TableCell>
+                </TableRow>
+              ))}
+              <TableRow>
+                <TableCell className="font-medium text-destructive">Entraram e não pediram</TableCell>
+                <TableCell />
+                <TableCell className="text-right font-semibold text-destructive">
+                  {data.visitas.visitas - data.visitas.pedidos}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        )}
+      </Card>
 
       <Card className="shadow-card">
         <div className="p-5 border-b flex items-center gap-2">

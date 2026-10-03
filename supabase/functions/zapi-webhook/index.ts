@@ -1,4 +1,5 @@
-import { createServiceClient, findLojaByInstance } from "./db.ts";
+import { parseEvolutionWebhook, type EvolutionWebhookPayload } from "../_shared/evolution.ts";
+import { createServiceClient, findLojaByEvolutionInstance, findLojaByInstance } from "./db.ts";
 import { handleIncomingMessage } from "./flow.ts";
 import type { ZapiIncomingMessage } from "./format.ts";
 
@@ -39,6 +40,51 @@ function extractMessage(payload: ZapiIncomingMessage): {
   return { text, selectedId: null };
 }
 
+async function handleEvolution(req: Request, url: URL): Promise<Response> {
+  const expected = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+  if (!expected || url.searchParams.get("secret") !== expected) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  let payload: EvolutionWebhookPayload;
+  try {
+    payload = await req.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+
+  const parsed = parseEvolutionWebhook(payload);
+  if (typeof parsed === "string") {
+    if (parsed === "no_phone_jid" || parsed === "no_content") {
+      console.warn("evolution-webhook skipped:", parsed, JSON.stringify(payload).slice(0, 500));
+    }
+    return json({ ok: true, skipped: parsed });
+  }
+
+  const supabase = createServiceClient();
+  const loja = await findLojaByEvolutionInstance(supabase, parsed.instance);
+  if (!loja) {
+    return json({ ok: true, skipped: "loja_not_found_or_inactive" });
+  }
+
+  try {
+    await handleIncomingMessage(
+      supabase,
+      loja,
+      parsed.phone,
+      parsed.text,
+      parsed.selectedId,
+      parsed.messageId,
+      parsed.senderName,
+    );
+  } catch (err) {
+    console.error("evolution-webhook error:", err);
+    return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+
+  return json({ ok: true });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -50,6 +96,11 @@ Deno.serve(async (req) => {
 
   if (req.method !== "POST") {
     return json({ error: "Method not allowed" }, 405);
+  }
+
+  const url = new URL(req.url);
+  if (url.searchParams.get("provider") === "evolution") {
+    return handleEvolution(req, url);
   }
 
   let payload: ZapiIncomingMessage;

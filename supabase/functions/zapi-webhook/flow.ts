@@ -22,6 +22,7 @@ import {
   formatBoasVindas,
   formatCardapioLinkMsg,
   formatCart,
+  formatOptionListAsText,
   formatPagamento,
   calcularTaxaEntregaWhatsapp,
   formatResumoConfirmacao,
@@ -96,13 +97,9 @@ function listMsg(
   buttonLabel: string,
   options: { id: string; title: string; description: string }[],
 ): OutboundMessage {
-  if (options.length <= 10) {
-    return { text, optionList: { title, buttonLabel, options } };
-  }
-  const numbered = options
-    .map((o, i) => `*${i + 1}.* ${o.title}${o.description ? ` — ${o.description}` : ""}`)
-    .join("\n");
-  return { text: `${text}\n\n${numbered}\n\n_Digite o número da opção._` };
+  const msg: OutboundMessage = { text, optionList: { title, buttonLabel, options } };
+  if (options.length <= 10) return msg;
+  return { text: formatOptionListAsText(msg) };
 }
 
 async function showCategorias(
@@ -974,12 +971,22 @@ export async function handleIncomingMessage(
   senderName?: string,
 ): Promise<void> {
   const { getSession } = await import("./db.ts");
-  const { sendZapiMessage } = await import("./zapi.ts");
+  const { sendWhatsappMessage } = await import("./sender.ts");
+  const isEvolution = cfg.whatsapp_provider === "evolution";
 
   const session = await getSession(supabase, cfg.owner_id, telefone);
 
   if (messageId && session?.ultimo_message_id === messageId) {
     return;
+  }
+
+  // Evolution envia listas como texto numerado: traduz "2" para o id da 2ª opção.
+  const opcoes = session?.dados.opcoes_numeradas;
+  if (isEvolution && !selectedId && opcoes?.length) {
+    const n = Number(rawText.trim());
+    if (Number.isInteger(n) && n >= 1 && n <= opcoes.length) {
+      selectedId = opcoes[n - 1];
+    }
   }
 
   const result = await processMessage(
@@ -999,6 +1006,11 @@ export async function handleIncomingMessage(
     return;
   }
 
+  if (isEvolution) {
+    const lista = [...result.messages].reverse().find((m) => m.optionList?.options.length);
+    result.dados = { ...result.dados, opcoes_numeradas: lista?.optionList?.options.map((o) => o.id) };
+  }
+
   if (result.clearSession) {
     await deleteSession(supabase, cfg.owner_id, telefone);
   } else {
@@ -1013,7 +1025,7 @@ export async function handleIncomingMessage(
   }
 
   for (const msg of result.messages) {
-    await sendZapiMessage(cfg, telefone, msg);
+    await sendWhatsappMessage(cfg, telefone, msg);
     await new Promise((r) => setTimeout(r, 800));
   }
 }

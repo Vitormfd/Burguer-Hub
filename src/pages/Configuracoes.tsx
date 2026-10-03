@@ -41,6 +41,7 @@ import type { BairroTaxa, CarrosselSlide, Configuracao, HorarioFuncionamentoDia,
 import { getCarrosselSlides, slidesToUrls } from "@/lib/carrossel";
 import { carregarTodasPromocoes, PROMOCAO_TIPO_LABELS, type Promocao } from "@/lib/promocoes";
 import { configureWhatsappWebhook } from "@/lib/whatsapp";
+import { EvolutionConnect } from "@/components/whatsapp/EvolutionConnect";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { buildCardapioUrl, getPublicAppUrl, resolveSiteUrl } from "@/lib/publicAppUrl";
@@ -203,7 +204,7 @@ function TestMsgModal({
         };
         toast.error(reasonMap[data.reason] || "Envio não realizado");
       } else if (data?.status === "erro") {
-        toast.error(data?.error || "Falha no envio via Z-API");
+        toast.error(data?.error || "Falha no envio pelo WhatsApp");
       } else {
         toast.success("Mensagem de teste enviada!");
       }
@@ -517,6 +518,7 @@ export default function Configuracoes() {
         zapi_token: cfg.zapi_token ?? null,
         zapi_client_token: cfg.zapi_client_token ?? null,
         zapi_ativo: cfg.zapi_ativo ?? false,
+        whatsapp_provider: cfg.whatsapp_provider ?? "zapi",
         whatsapp_pedido_ativo: cfg.whatsapp_pedido_ativo ?? false,
         site_url: cfg.site_url?.trim() || getPublicAppUrl() || null,
         whatsapp_msg_boas_vindas: cfg.whatsapp_msg_boas_vindas,
@@ -716,7 +718,10 @@ export default function Configuracoes() {
     }
   };
 
-  const hasCredentials = !!(cfg?.zapi_instance_id && cfg?.zapi_token && cfg?.zapi_client_token);
+  const isEvolution = cfg?.whatsapp_provider === "evolution";
+  const hasCredentials = isEvolution
+    ? !!cfg?.evolution_instance
+    : !!(cfg?.zapi_instance_id && cfg?.zapi_token && cfg?.zapi_client_token);
 
   if (!cfg) return <div className="text-muted-foreground">Carregando...</div>;
 
@@ -1426,8 +1431,44 @@ export default function Configuracoes() {
         <TabsContent value="whatsapp" className="space-y-6">
           <Card className="p-6 space-y-4">
             <h2 className="font-display text-2xl flex items-center gap-2">
-              <MessageSquare className="w-6 h-6 text-green-500" /> Integracao WhatsApp (Z-API)
+              <MessageSquare className="w-6 h-6 text-green-500" /> Integracao WhatsApp
             </h2>
+
+            <div className="space-y-2">
+              <Label>Provedor</Label>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {([
+                  { value: "zapi", title: "Z-API", desc: "Credenciais do seu plano Z-API" },
+                  { value: "evolution", title: "Evolution API", desc: "Servidor proprio — conecta por QR Code" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setCfg({ ...cfg, whatsapp_provider: opt.value })}
+                    className={cn(
+                      "rounded-lg border p-3 text-left transition-colors",
+                      (cfg.whatsapp_provider ?? "zapi") === opt.value
+                        ? "border-primary bg-primary/5"
+                        : "hover:bg-muted/50",
+                    )}
+                  >
+                    <p className="font-medium text-sm">{opt.title}</p>
+                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {isEvolution ? (
+              <EvolutionConnect
+                configuracaoId={cfg.id}
+                instance={cfg.evolution_instance}
+                onConnected={(instance) =>
+                  setCfg((cur) => (cur ? { ...cur, whatsapp_provider: "evolution", evolution_instance: instance } : cur))
+                }
+              />
+            ) : (
+            <>
             <p className="text-sm text-muted-foreground">
               As credenciais sao usadas exclusivamente pela Edge Function no servidor - nunca expostas ao frontend.
             </p>
@@ -1482,6 +1523,8 @@ export default function Configuracoes() {
                 </div>
               )}
             </div>
+            </>
+            )}
 
             {hasCredentials && (
               <div className="flex items-center gap-3 pt-2 border-t">
@@ -1563,7 +1606,7 @@ export default function Configuracoes() {
               </p>
             </div>
 
-            {webhookEndpoint && (
+            {webhookEndpoint && !isEvolution && (
               <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
                 <p className="text-sm font-medium">Webhook de recebimento (Z-API)</p>
                 <code className="block text-xs break-all bg-background p-2 rounded border">

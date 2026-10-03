@@ -1,4 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  evolutionConnect,
+  evolutionCreateInstance,
+  evolutionInstanceInfo,
+  evolutionInstanceName,
+  evolutionLogout,
+  evolutionSendText,
+  evolutionSetWebhook,
+} from "../_shared/evolution.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +22,13 @@ type TipoMensagem =
   | "retirada_pronto";
 
 interface SendPayload {
-  action?: "send" | "test_connection" | "configure_webhook";
+  action?:
+    | "send"
+    | "test_connection"
+    | "configure_webhook"
+    | "evolution_connect"
+    | "evolution_status"
+    | "evolution_disconnect";
   configuracao_id?: string;
   pedido_id: string;
   tipo_mensagem: TipoMensagem;
@@ -112,6 +127,7 @@ Deno.serve(async (req) => {
     .from("configuracoes")
     .select(
       "id, owner_id, zapi_instance_id, zapi_token, zapi_client_token, zapi_ativo, " +
+      "whatsapp_provider, evolution_instance, " +
       "whatsapp_msg_confirmado, whatsapp_msg_em_preparo, whatsapp_msg_saiu_entrega, " +
       "whatsapp_msg_entregue, whatsapp_msg_retirada_pronto, " +
       "whatsapp_msg_confirmado_ativo, whatsapp_msg_em_preparo_ativo, whatsapp_msg_saiu_entrega_ativo, " +
@@ -124,9 +140,10 @@ Deno.serve(async (req) => {
     cfgQuery = cfgQuery
       .eq("owner_id", ownerIdFromPedido)
       .eq("zapi_ativo", true)
-      .not("zapi_instance_id", "is", null)
-      .not("zapi_token", "is", null)
-      .not("zapi_client_token", "is", null);
+      .or(
+        "and(whatsapp_provider.eq.zapi,zapi_instance_id.not.is.null,zapi_token.not.is.null,zapi_client_token.not.is.null)," +
+        "and(whatsapp_provider.eq.evolution,evolution_instance.not.is.null)",
+      );
   }
 
   const { data: cfg, error: cfgErr } = await cfgQuery.limit(1).maybeSingle();
@@ -156,8 +173,70 @@ Deno.serve(async (req) => {
   }
 
   const { zapi_instance_id, zapi_token, zapi_client_token } = cfg as Record<string, string | null | boolean>;
+  const provider = cfg as unknown as { id: string; whatsapp_provider?: string; evolution_instance?: string | null };
+  const isEvolution = provider.whatsapp_provider === "evolution";
+  const evolutionInstance = provider.evolution_instance ?? null;
+
+  // Ações da Evolution (conectar via QR, status, desconectar) — só o dono da loja.
+  if (action === "evolution_connect" || action === "evolution_status" || action === "evolution_disconnect") {
+    const ownerId = (cfg as { owner_id?: string | null }).owner_id;
+    const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    const { data: userData } = await supabase.auth.getUser(jwt);
+    if (!userData?.user || userData.user.id !== ownerId) {
+      return json({ ok: false, error: "Não autorizado" }, 403);
+    }
+
+    try {
+      if (action === "evolution_status") {
+        if (!evolutionInstance) return json({ ok: true, state: "close", phone: "" });
+        const info = await evolutionInstanceInfo(evolutionInstance);
+        return json({ ok: true, state: info?.state ?? "close", phone: info?.phone ?? "" });
+      }
+
+      if (action === "evolution_disconnect") {
+        if (evolutionInstance) await evolutionLogout(evolutionInstance);
+        return json({ ok: true, state: "close" });
+      }
+
+      // evolution_connect: cria a instância se preciso, garante o webhook e devolve o QR Code.
+      const instance = evolutionInstance || evolutionInstanceName(provider.id);
+      let info = await evolutionInstanceInfo(instance);
+      if (!info) {
+        await evolutionCreateInstance(instance);
+        info = await evolutionInstanceInfo(instance);
+      } else {
+        await evolutionSetWebhook(instance);
+      }
+
+      const { error: updErr } = await supabase
+        .from("configuracoes")
+        .update({ whatsapp_provider: "evolution", evolution_instance: instance })
+        .eq("id", provider.id);
+      if (updErr) return json({ ok: false, error: updErr.message }, 200);
+
+      if (info?.state === "open") {
+        return json({ ok: true, instance, state: "open", phone: info.phone });
+      }
+      const qr = await evolutionConnect(instance);
+      return json({ ok: true, instance, state: qr ? "connecting" : info?.state ?? "close", qr });
+    } catch (err) {
+      return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
+    }
+  }
 
   // Configure Z-API received webhook for WhatsApp orders bot
+  if (action === "configure_webhook" && isEvolution) {
+    if (!evolutionInstance) {
+      return json({ ok: false, error: "Conecte o WhatsApp (Evolution) primeiro" }, 200);
+    }
+    try {
+      await evolutionSetWebhook(evolutionInstance);
+      return json({ ok: true }, 200);
+    } catch (err) {
+      return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
+    }
+  }
+
   if (action === "configure_webhook") {
     if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
       return json({ ok: false, error: "Credenciais Z-API ausentes em configuracoes" }, 200);
@@ -205,6 +284,21 @@ Deno.serve(async (req) => {
   }
 
   // Connection test always runs through backend to avoid exposing credentials in frontend
+  if (action === "test_connection" && isEvolution) {
+    if (!evolutionInstance) {
+      return json({ ok: false, error: "Nenhuma instância Evolution conectada" }, 200);
+    }
+    try {
+      const info = await evolutionInstanceInfo(evolutionInstance);
+      if (info?.state !== "open") {
+        return json({ ok: false, error: "WhatsApp desconectado. Leia o QR Code novamente." }, 200);
+      }
+      return json({ ok: true, phone: info.phone }, 200);
+    } catch (err) {
+      return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
+    }
+  }
+
   if (action === "test_connection") {
     if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
       return json({ ok: false, error: "Credenciais Z-API ausentes em configuracoes" }, 200);
@@ -235,7 +329,7 @@ Deno.serve(async (req) => {
     return json({ skipped: true, reason: "zapi_inactive" });
   }
 
-  if (!zapi_instance_id || !zapi_token || !zapi_client_token) {
+  if (isEvolution ? !evolutionInstance : !zapi_instance_id || !zapi_token || !zapi_client_token) {
     return json({ skipped: true, reason: "credentials_missing" });
   }
 
@@ -302,32 +396,41 @@ Deno.serve(async (req) => {
 
   const mensagem = formatMessage(template, varsMap);
 
-  // Call Z-API
-  const zapiUrl = `https://api.z-api.io/instances/${zapi_instance_id}/token/${zapi_token}/send-text`;
   let zapiStatus: "enviado" | "erro" = "enviado";
   let erroDetalhe: string | null = null;
 
-  try {
-    const zapiRes = await fetch(zapiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Client-Token": zapi_client_token as string,
-      },
-      body: JSON.stringify({
-        phone: formattedPhone,
-        message: mensagem,
-      }),
-    });
-
-    if (!zapiRes.ok) {
-      const errBody = await zapiRes.text().catch(() => zapiRes.statusText);
+  if (isEvolution) {
+    try {
+      await evolutionSendText(evolutionInstance as string, formattedPhone, mensagem);
+    } catch (err) {
       zapiStatus = "erro";
-      erroDetalhe = `HTTP ${zapiRes.status}: ${errBody}`;
+      erroDetalhe = err instanceof Error ? err.message : String(err);
     }
-  } catch (err) {
-    zapiStatus = "erro";
-    erroDetalhe = err instanceof Error ? err.message : String(err);
+  } else {
+    try {
+      // Call Z-API
+      const zapiUrl = `https://api.z-api.io/instances/${zapi_instance_id}/token/${zapi_token}/send-text`;
+      const zapiRes = await fetch(zapiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Client-Token": zapi_client_token as string,
+        },
+        body: JSON.stringify({
+          phone: formattedPhone,
+          message: mensagem,
+        }),
+      });
+
+      if (!zapiRes.ok) {
+        const errBody = await zapiRes.text().catch(() => zapiRes.statusText);
+        zapiStatus = "erro";
+        erroDetalhe = `HTTP ${zapiRes.status}: ${errBody}`;
+      }
+    } catch (err) {
+      zapiStatus = "erro";
+      erroDetalhe = err instanceof Error ? err.message : String(err);
+    }
   }
 
   // Log result — always, regardless of outcome

@@ -16,6 +16,12 @@ export function createServiceClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+const LOJA_CONFIG_COLUMNS =
+  "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
+  "zapi_ativo, whatsapp_provider, evolution_instance, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
+  "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
+  "frete_gratis_ativo, frete_gratis_minimo";
+
 export async function findLojaByInstance(
   supabase: SupabaseClient,
   instanceId: string,
@@ -24,13 +30,9 @@ export async function findLojaByInstance(
 
   const { data, error } = await supabase
     .from("configuracoes")
-    .select(
-      "id, owner_id, nome_loja, referencia, site_url, ativo, zapi_instance_id, zapi_token, zapi_client_token, " +
-      "zapi_ativo, whatsapp_pedido_ativo, whatsapp_msg_boas_vindas, tempo_entrega_min, " +
-      "retirada_ativa, hora_abertura, hora_fechamento, horario_funcionamento, endereco_estabelecimento, " +
-      "frete_gratis_ativo, frete_gratis_minimo",
-    )
+    .select(LOJA_CONFIG_COLUMNS)
     .ilike("zapi_instance_id", normalizedId)
+    .eq("whatsapp_provider", "zapi")
     .eq("whatsapp_pedido_ativo", true)
     .not("zapi_token", "is", null)
     .not("zapi_client_token", "is", null)
@@ -61,6 +63,27 @@ export async function findLojaByInstance(
     }
   }
 
+  return data as LojaConfig | null;
+}
+
+export async function findLojaByEvolutionInstance(
+  supabase: SupabaseClient,
+  instance: string,
+): Promise<LojaConfig | null> {
+  const { data, error } = await supabase
+    .from("configuracoes")
+    .select(LOJA_CONFIG_COLUMNS)
+    .eq("evolution_instance", instance.trim())
+    .eq("whatsapp_provider", "evolution")
+    .eq("whatsapp_pedido_ativo", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("findLojaByEvolutionInstance DB error:", error.message);
+    return null;
+  }
+  if (!data) console.warn("Loja Evolution nao encontrada ou bot inativo:", instance);
   return data as LojaConfig | null;
 }
 

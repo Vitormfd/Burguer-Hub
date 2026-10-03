@@ -216,6 +216,9 @@ export interface Configuracao {
   zapi_token?: string | null;
   zapi_client_token?: string | null;
   zapi_ativo?: boolean;
+  // Provedor por loja: Z-API (credenciais acima) ou Evolution API (servidor próprio)
+  whatsapp_provider?: "zapi" | "evolution";
+  evolution_instance?: string | null;
   whatsapp_pedido_ativo?: boolean;
   site_url?: string | null;
   whatsapp_msg_boas_vindas?: string;

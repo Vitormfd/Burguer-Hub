@@ -79,6 +79,8 @@ export interface SessionDados {
   categoria_id?: string;
   categoria_nome?: string;
   pagina_produtos?: number;
+  /** Evolution: ids da última lista enviada como texto numerado (resposta "2" → ids[1]). */
+  opcoes_numeradas?: string[];
 }
 
 export interface WhatsappSession {
@@ -102,6 +104,8 @@ export interface LojaConfig {
   zapi_token: string;
   zapi_client_token: string;
   zapi_ativo: boolean;
+  whatsapp_provider?: "zapi" | "evolution";
+  evolution_instance?: string | null;
   whatsapp_pedido_ativo: boolean;
   whatsapp_msg_boas_vindas: string;
   tempo_entrega_min?: string;
@@ -171,6 +175,16 @@ export interface OutboundMessage {
     options: { id: string; title: string; description: string }[];
   };
 }
+
+/** Lista de opções como texto numerado (Evolution / listas grandes). */
+export const formatOptionListAsText = (message: OutboundMessage): string => {
+  const options = message.optionList?.options ?? [];
+  if (!options.length) return message.text;
+  const numbered = options
+    .map((o, i) => `*${i + 1}.* ${o.title}${o.description ? ` — ${o.description}` : ""}`)
+    .join("\n");
+  return `${message.text}\n\n${numbered}\n\n_Digite o número da opção._`;
+};
 
 export const brl = (value: number): string =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);

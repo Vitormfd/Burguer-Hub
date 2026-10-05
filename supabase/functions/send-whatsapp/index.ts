@@ -8,6 +8,7 @@ import {
   evolutionSendText,
   evolutionSetWebhook,
 } from "../_shared/evolution.ts";
+import { publicBaseUrl } from "../_shared/whatsappText.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -394,7 +395,29 @@ Deno.serve(async (req) => {
     tempo_estimado: dados_pedido?.tempo_estimado ?? (cfg as Record<string, string>).tempo_entrega_min ?? "30-45 min",
   };
 
-  const mensagem = formatMessage(template, varsMap);
+  // Links da página pública do pedido (acompanhamento + avaliação).
+  // Consulta separada e tolerante a erro: se as colunas novas não existirem, segue sem link.
+  let linksCfg: { acompanhamento_link_ativo?: boolean; avaliacao_ativa?: boolean; site_url?: string | null } = {};
+  if (!isTestPedido && (tipo_mensagem === "confirmado" || tipo_mensagem === "entregue")) {
+    const { data: extra, error: extraErr } = await supabase
+      .from("configuracoes")
+      .select("acompanhamento_link_ativo, avaliacao_ativa, site_url")
+      .eq("id", provider.id)
+      .maybeSingle();
+    if (!extraErr && extra) linksCfg = extra as typeof linksCfg;
+  }
+  const pedidoUrl = `${publicBaseUrl(linksCfg.site_url)}/pedido/${pedido_id}`;
+  varsMap.link_acompanhamento = pedidoUrl;
+  varsMap.link_avaliacao = pedidoUrl;
+
+  let mensagem = formatMessage(template, varsMap);
+
+  if (tipo_mensagem === "confirmado" && linksCfg.acompanhamento_link_ativo === true && !template.includes("{{link_acompanhamento}}")) {
+    mensagem += `\n\n📍 Acompanhe seu pedido em tempo real:\n${pedidoUrl}`;
+  }
+  if (tipo_mensagem === "entregue" && linksCfg.avaliacao_ativa === true && !template.includes("{{link_avaliacao}}")) {
+    mensagem += `\n\n⭐ Como foi seu pedido? Avalie em 10 segundos:\n${pedidoUrl}`;
+  }
 
   let zapiStatus: "enviado" | "erro" = "enviado";
   let erroDetalhe: string | null = null;

@@ -103,13 +103,19 @@ export async function getSession(
   if (!data) return null;
 
   const session = data as WhatsappSession;
+  const stored = session.dados as SessionDados;
   const age = Date.now() - new Date(session.atualizado_em).getTime();
   if (age > 45 * 60 * 1000) {
-    await deleteSession(supabase, ownerId, phone);
-    return null;
+    // Pedido parado expira, mas lembra quando a boas-vindas foi enviada.
+    session.etapa = "inicio";
+    session.dados = {
+      carrinho: [],
+      sender_name: stored?.sender_name,
+      boas_vindas_em: stored?.boas_vindas_em,
+    };
+    return session;
   }
 
-  const stored = session.dados as SessionDados;
   session.dados = {
     ...stored,
     carrinho: stored?.carrinho || [],

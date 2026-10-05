@@ -283,6 +283,7 @@ export default function CardapioPublico() {
   const [telefoneBuscado, setTelefoneBuscado] = useState("");
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [sucessoNumero, setSucessoNumero] = useState<string | null>(null);
+  const [sucessoPedidoId, setSucessoPedidoId] = useState<string | null>(null);
   const [cupomCodigo, setCupomCodigo] = useState("");
   const [cupomBusy, setCupomBusy] = useState(false);
   const [cupomAplicado, setCupomAplicado] = useState<CupomAplicado | null>(null);
@@ -1170,6 +1171,7 @@ export default function CardapioPublico() {
 
     setSucessoTipoEntrega(tipoEntrega);
     setSucessoTempoRetirada(tempoEstimadoRetirada);
+    setSucessoPedidoId(pedidoId);
     setSucessoNumero(pedidoId.slice(0, 8).toUpperCase());
     setCart([]);
     setCheckoutOpen(false);
@@ -2294,7 +2296,17 @@ export default function CardapioPublico() {
             )}
             <div className="text-xs text-muted-foreground">Numero do pedido</div>
             <div className="text-2xl font-bold tracking-wider">#{sucessoNumero}</div>
-            <Button onClick={() => setSucessoNumero(null)} className="w-full text-white" style={{ background: cfg.cor_primaria }}>
+            {sucessoPedidoId && (
+              <Button asChild className="w-full text-white" style={{ background: cfg.cor_primaria }}>
+                <a href={`/pedido/${sucessoPedidoId}`}>Acompanhar pedido</a>
+              </Button>
+            )}
+            <Button
+              onClick={() => setSucessoNumero(null)}
+              variant={sucessoPedidoId ? "outline" : "default"}
+              className={sucessoPedidoId ? "w-full" : "w-full text-white"}
+              style={sucessoPedidoId ? undefined : { background: cfg.cor_primaria }}
+            >
               Fechar
             </Button>
           </div>

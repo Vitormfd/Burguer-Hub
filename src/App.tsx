@@ -19,6 +19,9 @@ import PromocoesAdmin from "./pages/PromocoesAdmin";
 import Financeiro from "./pages/Financeiro";
 import Clientes from "./pages/Clientes";
 import HistoricoPedidos from "./pages/HistoricoPedidos";
+import EstoqueAdmin from "./pages/EstoqueAdmin";
+import MarketingAdmin from "./pages/MarketingAdmin";
+import AcompanharPedido from "./pages/AcompanharPedido";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +36,7 @@ const App = () => (
           <Routes>
             <Route path="/:referencia/cardapio" element={<CardapioPublico />} />
             <Route path="/cardapio" element={<CardapioPublico />} />
+            <Route path="/pedido/:pedidoId" element={<AcompanharPedido />} />
             <Route path="/auth" element={<Auth />} />
             <Route element={<AppLayout />}>
               <Route path="/" element={<Navigate to="/mesas" replace />} />
@@ -45,6 +49,8 @@ const App = () => (
               <Route path="/admin/cupons" element={<CuponsAdmin />} />
               <Route path="/admin/promocoes" element={<PromocoesAdmin />} />
               <Route path="/admin/financeiro" element={<Financeiro />} />
+              <Route path="/admin/estoque" element={<EstoqueAdmin />} />
+              <Route path="/admin/marketing" element={<MarketingAdmin />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>

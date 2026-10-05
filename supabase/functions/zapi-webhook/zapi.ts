@@ -15,6 +15,7 @@ export async function sendZapiMessage(
   message: OutboundMessage,
 ): Promise<void> {
   const formattedPhone = formatPhoneZapi(phone);
+  const text = [message.text, message.footer].filter(Boolean).join("\n\n");
 
   if (message.optionList && message.optionList.options.length > 0) {
     const url = `${zapiBase(cfg)}/send-option-list`;
@@ -23,7 +24,7 @@ export async function sendZapiMessage(
       headers: zapiHeaders(cfg),
       body: JSON.stringify({
         phone: formattedPhone,
-        message: message.text,
+        message: text,
         optionList: message.optionList,
       }),
     });

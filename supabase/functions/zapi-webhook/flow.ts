@@ -1,7 +1,6 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   createWhatsappOrder,
-  deleteSession,
   isLojaAberta,
   loadBairros,
   carrinhoBloqueiaFreteGratis,
@@ -32,11 +31,15 @@ import type {
   CartAdicionalWa,
   CartItemWa,
   Etapa,
+  GrupoAdicionalWa,
   LojaConfig,
   OutboundMessage,
+  ProdutoTempWa,
   SessionDados,
   WhatsappSession,
 } from "./format.ts";
+import { iaDisponivel, interpretarPedido, loadCardapioIa, pareceTextoLivre } from "./ia.ts";
+import type { PedidoInterpretado } from "./ia.ts";
 
 const PRODUTOS_POR_PAGINA = 8;
 
@@ -47,18 +50,59 @@ interface FlowResult {
   clearSession?: boolean;
   /** Não envia resposta — deixa a conversa livre para atendimento humano */
   noReply?: boolean;
+  /** Resposta não reconhecida (conta para MAX_TENTATIVAS_INVALIDAS) */
+  invalid?: boolean;
 }
 
 const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
+
+const MENU_PRINCIPAL = "*1* — Fazer pedido\n*2* — Ver cardápio online\n*3* — Falar com um atendente";
+/** Boas-vindas no máximo uma vez nesse intervalo por cliente. */
+const BOAS_VINDAS_INTERVALO_MS = 12 * 60 * 60 * 1000;
+/** Depois de N respostas inválidas seguidas o bot sai e deixa a conversa para o atendente. */
+const MAX_TENTATIVAS_INVALIDAS = 3;
+
+const FORMAS_PAGAMENTO = [
+  { id: "pix", title: "PIX", description: "" },
+  { id: "cartao", title: "Cartão", description: "Débito ou crédito" },
+  { id: "dinheiro", title: "Dinheiro", description: "" },
+];
+
+function showMenuPrincipal(dados: SessionDados, intro?: string): FlowResult {
+  return {
+    messages: [textMsg(intro ? `${intro}\n\n${MENU_PRINCIPAL}` : MENU_PRINCIPAL)],
+    etapa: "menu_principal",
+    dados: { ...dados, bot_ativo: false },
+  };
+}
+
+function invalidInput(etapa: Etapa, dados: SessionDados, hint: string): FlowResult {
+  const invalidas = (dados.invalidas || 0) + 1;
+  if (invalidas >= MAX_TENTATIVAS_INVALIDAS) return silentExit(dados);
+  return { messages: [textMsg(hint)], etapa, dados: { ...dados, invalidas }, invalid: true };
+}
+
+function pagamentoMsg(): OutboundMessage {
+  return listMsg("💳 Forma de pagamento:", "Pagamento", "Escolher", FORMAS_PAGAMENTO);
+}
+
+function observacaoMsg(nome: string): OutboundMessage {
+  return textMsg(`Alguma observação para *${nome}*? (ex: sem cebola)\n\nDigite a observação ou *0* para seguir sem observação.`);
+}
+
+/** Escolha por id (lista do WhatsApp) ou pelo número digitado. */
+function pickOption<T extends { id: string }>(options: T[], selected: string): T | undefined {
+  return options.find((o) => o.id === selected) || options[parseInt(selected, 10) - 1];
+}
 
 function isBotFlowActive(etapa: Etapa, dados: SessionDados): boolean {
   if (dados.bot_ativo) return true;
   if (dados.carrinho.length > 0) return true;
   if (dados.produto_temp) return true;
   const midFlow: Etapa[] = [
-    "menu_categoria", "menu_produto",
+    "menu_principal", "menu_categoria", "menu_produto",
     "produto_quantidade", "produto_adicional", "produto_observacao",
-    "carrinho", "tipo_entrega", "cliente_nome", "cliente_endereco",
+    "carrinho", "tipo_entrega", "cliente_nome", "endereco_salvo", "cliente_endereco",
     "cliente_numero", "cliente_complemento", "cliente_bairro",
     "forma_pagamento", "troco", "confirmacao",
   ];
@@ -96,8 +140,9 @@ function listMsg(
   title: string,
   buttonLabel: string,
   options: { id: string; title: string; description: string }[],
+  footer?: string,
 ): OutboundMessage {
-  const msg: OutboundMessage = { text, optionList: { title, buttonLabel, options } };
+  const msg: OutboundMessage = { text, footer, optionList: { title, buttonLabel, options } };
   if (options.length <= 10) return msg;
   return { text: formatOptionListAsText(msg) };
 }
@@ -119,12 +164,18 @@ async function showCategorias(
   const options = categorias.map((c) => ({
     id: c.id,
     title: `${c.emoji ? c.emoji + " " : ""}${c.nome}`.trim(),
-    description: "Ver produtos",
+    description: "",
   }));
 
   return {
     messages: [
-      listMsg("🍔 *Cardápio* — Escolha uma categoria:", "Categorias", "Ver categorias", options),
+      listMsg(
+        "🍔 *Cardápio* — Escolha uma categoria:",
+        "Categorias",
+        "Ver categorias",
+        options,
+        "*0* — Voltar ao início",
+      ),
     ],
     etapa: "menu_categoria",
     dados: { ...dados, bot_ativo: true },
@@ -142,7 +193,7 @@ async function showProdutos(
   const produtos = await loadProdutos(supabase, cfg.owner_id, categoriaId);
   if (!produtos.length) {
     return {
-      messages: [textMsg("Nenhum produto disponível nesta categoria. Digite *menu* para voltar.")],
+      messages: [textMsg("Nenhum produto disponível nesta categoria. Escolha outra categoria ou digite *0* para voltar.")],
       etapa: "menu_categoria",
       dados,
     };
@@ -156,21 +207,20 @@ async function showProdutos(
   }));
 
   const hasMore = produtos.length > (pagina + 1) * PRODUTOS_POR_PAGINA;
-  const msgs: OutboundMessage[] = [
-    listMsg(
-      `📋 *${categoriaNome}* — Escolha um produto:`,
-      categoriaNome,
-      "Ver produtos",
-      options,
-    ),
-  ];
-
-  if (hasMore) {
-    msgs.push(textMsg(`_Há mais produtos. Digite *mais* para ver a próxima página._`));
-  }
+  const footer = hasMore
+    ? "*9* — Ver mais produtos\n*0* — Voltar às categorias"
+    : "*0* — Voltar às categorias";
 
   return {
-    messages: msgs,
+    messages: [
+      listMsg(
+        `📋 *${categoriaNome}* — Escolha um produto:`,
+        categoriaNome,
+        "Ver produtos",
+        options,
+        footer,
+      ),
+    ],
     etapa: "menu_produto",
     dados: { ...dados, categoria_id: categoriaId, categoria_nome: categoriaNome, pagina_produtos: pagina },
   };
@@ -186,7 +236,7 @@ async function startProdutoConfig(
   const produto = produtos.find((p) => p.id === produtoId);
   if (!produto) {
     return {
-      messages: [textMsg("Produto não encontrado. Digite *menu* para recomeçar.")],
+      messages: [textMsg("Produto não encontrado. Escolha outro ou digite *0* para voltar.")],
       etapa: "menu_produto",
       dados,
     };
@@ -213,7 +263,7 @@ async function startProdutoConfig(
   return {
     messages: [
       textMsg(
-        `✅ *${produto.nome}* — ${brl(preco)}\n\nQuantas unidades? (digite um número de 1 a 9)`,
+        `✅ *${produto.nome}* — ${brl(preco)}\n\nQuantas unidades? Digite de *1* a *9*.\n*0* — Voltar aos produtos`,
       ),
     ],
     etapa: "produto_quantidade",
@@ -226,12 +276,9 @@ function showAdicionalGrupo(dados: SessionDados): FlowResult {
   const grupo = temp.grupos[temp.grupo_index];
 
   if (!grupo) {
+    if (temp.ia) return addToCart(dados, temp.observacao_ia);
     return {
-      messages: [
-        textMsg(
-          `Alguma observação para *${temp.nome}*?\n\nDigite a observação ou *pular* para continuar.`,
-        ),
-      ],
+      messages: [observacaoMsg(temp.nome)],
       etapa: "produto_observacao",
       dados,
     };
@@ -241,17 +288,19 @@ function showAdicionalGrupo(dados: SessionDados): FlowResult {
   const max = grupo.max_escolhas;
   const lines = [
     `🧀 *${grupo.nome}*`,
-    obrig ? `_Escolha ${grupo.min_escolhas || 1} a ${max} opção(ões):_` : `_Opcional — escolha até ${max} ou digite *pular*:_`,
+    obrig ? `_Escolha ${grupo.min_escolhas || 1} a ${max} opção(ões):_` : `_Opcional — escolha até ${max}:_`,
     "",
   ];
 
   grupo.adicionais.forEach((a, i) => {
     const preco = a.preco > 0 ? ` (+${brl(a.preco)})` : "";
-    lines.push(`*${i + 1}.* ${a.nome}${preco}`);
+    lines.push(`*${i + 1}* — ${a.nome}${preco}`);
   });
 
-  if (!obrig) lines.push("\n_Digite *pular* para não adicionar nada._");
-  lines.push("\n_Digite o(s) número(s) separados por vírgula._");
+  if (!obrig) lines.push("*0* — Não quero");
+  lines.push(max > 1
+    ? "\n_Digite o número (para escolher vários, separe por vírgula: 1,3)._"
+    : "\n_Digite o número da opção._");
 
   return {
     messages: [textMsg(lines.join("\n"))],
@@ -275,6 +324,16 @@ function addToCart(dados: SessionDados, observacao?: string): FlowResult {
   const carrinho = [...dados.carrinho, item];
   delete dados.produto_temp;
 
+  const proximo = dados.ia_pendentes?.shift();
+  if (!dados.ia_pendentes?.length) delete dados.ia_pendentes;
+  if (proximo) {
+    const next = showAdicionalGrupo({ ...dados, carrinho, produto_temp: proximo });
+    return {
+      ...next,
+      messages: [textMsg(`✅ *${temp.nome}* adicionado! Agora o próximo item:`), ...next.messages],
+    };
+  }
+
   return {
     messages: [
       textMsg(`✅ *${temp.nome}* adicionado ao carrinho!\n\n${formatCart(carrinho)}\n\n*1* — Adicionar mais itens\n*2* — Finalizar pedido\n*3* — Limpar carrinho`),
@@ -282,6 +341,123 @@ function addToCart(dados: SessionDados, observacao?: string): FlowResult {
     etapa: "carrinho",
     dados: { ...dados, carrinho },
   };
+}
+
+/** Lê o liga/desliga da IA à parte: se a coluna não existir, a IA fica desligada. */
+async function iaAtivaNaLoja(supabase: SupabaseClient, cfg: LojaConfig): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("configuracoes")
+    .select("whatsapp_ia_ativa")
+    .eq("id", cfg.id)
+    .maybeSingle();
+  return !error && data?.whatsapp_ia_ativa === true;
+}
+
+/**
+ * Tenta entender um pedido em texto livre. Retorna null quando a IA está desligada,
+ * a mensagem não é um pedido ou nada foi reconhecido — o fluxo normal segue.
+ */
+async function tentarPedidoIa(
+  supabase: SupabaseClient,
+  cfg: LojaConfig,
+  dados: SessionDados,
+  rawText: string,
+  saudacao?: string,
+): Promise<FlowResult | null> {
+  if (!iaDisponivel() || !pareceTextoLivre(rawText)) return null;
+  if (!(await iaAtivaNaLoja(supabase, cfg))) return null;
+
+  const cardapio = await loadCardapioIa(supabase, cfg.owner_id);
+  const pedido = await interpretarPedido(cardapio, rawText);
+  if (!pedido) return null;
+  return aplicarPedidoIa(supabase, dados, pedido, saudacao);
+}
+
+/** Separa as escolhas da IA válidas por grupo e os grupos obrigatórios que ficaram sem escolha. */
+function adicionaisEscolhidos(grupos: GrupoAdicionalWa[], ids: string[]) {
+  const escolhidos: CartAdicionalWa[] = [];
+  const pendentes: GrupoAdicionalWa[] = [];
+  for (const g of grupos) {
+    const sel = g.adicionais.filter((a) => ids.includes(a.id)).slice(0, Math.max(g.max_escolhas, 1));
+    const minimo = g.obrigatorio || g.min_escolhas > 0 ? Math.max(g.min_escolhas, 1) : 0;
+    if (sel.length < minimo) {
+      pendentes.push(g);
+      continue;
+    }
+    for (const a of sel) {
+      escolhidos.push({ adicional_id: a.id, nome: a.nome, quantidade: 1, preco_unitario: a.preco });
+    }
+  }
+  return { escolhidos, pendentes };
+}
+
+async function aplicarPedidoIa(
+  supabase: SupabaseClient,
+  dados: SessionDados,
+  pedido: PedidoInterpretado,
+  saudacao?: string,
+): Promise<FlowResult> {
+  const carrinho = [...dados.carrinho];
+  const pendentes: ProdutoTempWa[] = [];
+  const adicionadosTxt: string[] = [];
+
+  for (const it of pedido.itens) {
+    const fallback = isHamburger(it.produto.categoria_nome, it.produto.nome);
+    const grupos = await loadGruposProduto(supabase, it.produto.id, fallback);
+    const { escolhidos, pendentes: gruposPendentes } = adicionaisEscolhidos(grupos, it.adicional_ids);
+
+    if (!gruposPendentes.length) {
+      carrinho.push({
+        id: crypto.randomUUID(),
+        produto_id: it.produto.id,
+        produto_nome: it.produto.nome,
+        quantidade: it.quantidade,
+        preco_unitario: it.produto.preco,
+        observacao: it.observacao,
+        adicionais: escolhidos,
+      });
+      adicionadosTxt.push(`${it.quantidade}x ${it.produto.nome}`);
+      continue;
+    }
+
+    pendentes.push({
+      produto_id: it.produto.id,
+      nome: it.produto.nome,
+      preco: it.produto.preco,
+      quantidade: it.quantidade,
+      adicionais: escolhidos,
+      grupo_index: 0,
+      grupos: gruposPendentes,
+      categoria_id: it.produto.categoria_id,
+      categoria_nome: it.produto.categoria_nome,
+      fallback_all_groups: fallback,
+      ia: true,
+      observacao_ia: it.observacao,
+    });
+  }
+
+  const intro: string[] = [];
+  if (saudacao) intro.push(saudacao);
+  intro.push("🤖 Entendi seu pedido!");
+  if (pedido.nao_encontrados.length) {
+    intro.push(`⚠️ Não encontrei no cardápio: ${pedido.nao_encontrados.join(", ")}.`);
+  }
+
+  const base: SessionDados = { ...dados, carrinho, bot_ativo: true };
+  delete base.produto_temp;
+  delete base.ia_pendentes;
+  delete base.invalidas;
+
+  if (pendentes.length) {
+    const [primeiro, ...resto] = pendentes;
+    if (resto.length) base.ia_pendentes = resto;
+    if (adicionadosTxt.length) intro.push(`Já coloquei no carrinho: ${adicionadosTxt.join(", ")}.`);
+    intro.push(`Falta escolher algumas opções de *${primeiro.quantidade}x ${primeiro.nome}*:`);
+    const next = showAdicionalGrupo({ ...base, produto_temp: primeiro });
+    return { ...next, messages: [textMsg(intro.join("\n")), ...next.messages] };
+  }
+
+  return showCarrinho(base, intro.join("\n"));
 }
 
 export async function processMessage(
@@ -305,13 +481,11 @@ export async function processMessage(
     return { messages: [textMsg(AJUDA_TEXTO)], etapa, dados };
   }
 
-  if (["cancelar", "sair", "desistir"].includes(text)) {
-    return {
-      messages: [textMsg("Pedido cancelado. Quando quiser, é só mandar *menu*! 👋")],
-      etapa: "inicio",
-      dados: emptyDados(senderName),
-      clearSession: true,
-    };
+  if (["cancelar", "sair", "desistir"].includes(text) && isBotFlowActive(etapa, dados)) {
+    return showMenuPrincipal(
+      { ...emptyDados(senderName), boas_vindas_em: dados.boas_vindas_em },
+      "Pedido cancelado. 👋 Posso ajudar em algo mais?",
+    );
   }
 
   if (BOT_START_COMMANDS.includes(text)) {
@@ -330,33 +504,33 @@ export async function processMessage(
   if (["carrinho", "ver carrinho"].includes(text)) {
     if (!dados.carrinho.length) {
       return {
-        messages: [textMsg("Você não tem pedido em andamento. Digite *menu* para começar.")],
+        messages: [textMsg("Você não tem pedido em andamento.")],
         etapa: "inicio",
         dados,
       };
     }
-    return {
-      messages: [
-        textMsg(
-          `${formatCart(dados.carrinho)}\n\n*1* — Adicionar mais\n*2* — Finalizar\n*3* — Limpar`,
-        ),
-      ],
-      etapa: "carrinho",
-      dados: { ...dados, bot_ativo: true },
-    };
+    return showCarrinho(dados);
   }
 
-  // Primeira mensagem do cliente → boas-vindas (qualquer texto)
-  if (!session && !isBotFlowActive(etapa, dados)) {
-    return {
-      messages: [textMsg(formatBoasVindas(cfg))],
-      etapa: "inicio",
-      dados,
-    };
-  }
-
-  // Mensagem livre fora do fluxo do bot → não responde (atendimento humano)
   if (!isBotFlowActive(etapa, dados)) {
+    // Boas-vindas + menu numerado só no primeiro contato (ou depois de muitas horas).
+    const ultima = dados.boas_vindas_em ? Date.parse(dados.boas_vindas_em) : 0;
+    if (Date.now() - ultima > BOAS_VINDAS_INTERVALO_MS) {
+      // Primeiro contato já com o pedido escrito: a IA monta o carrinho direto.
+      const ia = await tentarPedidoIa(
+        supabase,
+        cfg,
+        { ...dados, boas_vindas_em: new Date().toISOString() },
+        rawText,
+        `Olá! 👋 Aqui é o atendimento do *${cfg.nome_loja}*.`,
+      );
+      if (ia) return ia;
+      return showMenuPrincipal(
+        { ...dados, boas_vindas_em: new Date().toISOString() },
+        formatBoasVindas(cfg),
+      );
+    }
+    // Conversa livre → não responde (atendimento humano)
     return { messages: [], etapa: "inicio", dados, noReply: true };
   }
 
@@ -366,65 +540,89 @@ export async function processMessage(
       return { messages: [], etapa: "inicio", dados, noReply: true };
     }
 
+    case "menu_principal": {
+      if (selected === "1") return showCategorias(supabase, cfg, dados);
+      if (selected === "2") {
+        return {
+          messages: [textMsg(`${formatCardapioLinkMsg(cfg)}\n\nOu digite *1* para pedir por aqui.`)],
+          etapa: "menu_principal",
+          dados,
+        };
+      }
+      if (selected === "3") {
+        return {
+          messages: [textMsg("👍 Certo! Um atendente vai te responder por aqui em instantes.")],
+          etapa: "inicio",
+          dados: { ...dados, bot_ativo: false },
+        };
+      }
+      // Pedido escrito por extenso: a IA tenta entender antes de sair do bot.
+      const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+      if (ia) return ia;
+      // Qualquer outra mensagem: conversa livre com o atendente, sem insistir.
+      return silentExit(dados);
+    }
+
     case "menu_categoria": {
+      if (text === "0") return showMenuPrincipal(dados);
       const categorias = await loadCategorias(supabase, cfg.owner_id);
-      const cat = categorias.find((c) => c.id === selected) ||
-        categorias[parseInt(selected, 10) - 1];
+      const cat = pickOption(categorias, selected);
       if (!cat) {
-        return silentExit(dados);
+        const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+        if (ia) return ia;
+        return invalidInput(etapa, dados, "Não encontrei essa opção. Digite o *número* da categoria ou *0* para voltar.");
       }
       return showProdutos(supabase, cfg, dados, cat.id, cat.nome);
     }
 
     case "menu_produto": {
-      if (text === "mais" && dados.pagina_produtos != null) {
+      if (text === "0") return showCategorias(supabase, cfg, dados);
+
+      const pagina = dados.pagina_produtos || 0;
+      const produtos = await loadProdutos(supabase, cfg.owner_id, dados.categoria_id!);
+      const hasMore = produtos.length > (pagina + 1) * PRODUTOS_POR_PAGINA;
+      if ((text === "9" || text === "mais") && hasMore) {
         return showProdutos(
           supabase,
           cfg,
           dados,
           dados.categoria_id!,
           dados.categoria_nome || "Produtos",
-          dados.pagina_produtos + 1,
+          pagina + 1,
         );
       }
 
-      const produtos = await loadProdutos(supabase, cfg.owner_id, dados.categoria_id!);
-      const slice = produtos.slice(
-        (dados.pagina_produtos || 0) * PRODUTOS_POR_PAGINA,
-        ((dados.pagina_produtos || 0) + 1) * PRODUTOS_POR_PAGINA,
-      );
+      const slice = produtos.slice(pagina * PRODUTOS_POR_PAGINA, (pagina + 1) * PRODUTOS_POR_PAGINA);
       const produto = produtos.find((p) => p.id === selected) ||
         slice[parseInt(selected, 10) - 1];
       if (!produto) {
-        if (!selectedId && isNaN(parseInt(selected, 10))) {
-          return silentExit(dados);
-        }
-        return {
-          messages: [textMsg("Produto inválido. Escolha um da lista ou digite *menu*.")],
-          etapa,
-          dados,
-        };
+        const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+        if (ia) return ia;
+        return invalidInput(etapa, dados, "Não encontrei esse produto. Digite o *número* do produto ou *0* para voltar.");
       }
       return startProdutoConfig(supabase, cfg, dados, produto.id);
     }
 
     case "produto_quantidade": {
+      if (text === "0") {
+        delete dados.produto_temp;
+        return showProdutos(
+          supabase,
+          cfg,
+          dados,
+          dados.categoria_id!,
+          dados.categoria_nome || "Produtos",
+          dados.pagina_produtos || 0,
+        );
+      }
       const qty = parseInt(text, 10);
       if (isNaN(qty) || qty < 1 || qty > 9) {
-        return {
-          messages: [textMsg("Digite um número de *1* a *9*.")],
-          etapa,
-          dados,
-        };
+        return invalidInput(etapa, dados, "Digite a quantidade de *1* a *9*, ou *0* para voltar.");
       }
       dados.produto_temp!.quantidade = qty;
       if (dados.produto_temp!.grupos.length === 0) {
         return {
-          messages: [
-            textMsg(
-              `Alguma observação para *${dados.produto_temp!.nome}*?\n\nDigite ou *pular*.`,
-            ),
-          ],
+          messages: [observacaoMsg(dados.produto_temp!.nome)],
           etapa: "produto_observacao",
           dados,
         };
@@ -438,31 +636,19 @@ export async function processMessage(
 
       if (text === "pular" || text === "0") {
         if (grupo.obrigatorio || grupo.min_escolhas > 0) {
-          return {
-            messages: [textMsg(`Este grupo é obrigatório. Escolha pelo menos ${grupo.min_escolhas || 1} opção.`)],
-            etapa,
-            dados,
-          };
+          return invalidInput(etapa, dados, `Este item é obrigatório. Escolha pelo menos ${grupo.min_escolhas || 1} opção.`);
         }
       } else {
         const nums = parseNumbers(text);
         if (!nums.length) {
-          return {
-            messages: [textMsg("Digite o(s) número(s) da lista ou *pular*.")],
-            etapa,
-            dados,
-          };
+          return invalidInput(etapa, dados, "Digite o *número* da opção (ou vários separados por vírgula).");
         }
 
         const selecionados: CartAdicionalWa[] = [];
         for (const n of nums) {
           const ad = grupo.adicionais[n - 1];
           if (!ad) {
-            return {
-              messages: [textMsg(`Opção *${n}* inválida. Tente novamente.`)],
-              etapa,
-              dados,
-            };
+            return invalidInput(etapa, dados, `A opção *${n}* não existe. Tente novamente.`);
           }
           selecionados.push({
             adicional_id: ad.id,
@@ -473,41 +659,29 @@ export async function processMessage(
         }
 
         if (selecionados.length > grupo.max_escolhas) {
-          return {
-            messages: [textMsg(`Máximo de *${grupo.max_escolhas}* opção(ões) neste grupo.`)],
-            etapa,
-            dados,
-          };
+          return invalidInput(etapa, dados, `Você pode escolher no máximo *${grupo.max_escolhas}* opção(ões) aqui.`);
         }
         if (selecionados.length < (grupo.min_escolhas || (grupo.obrigatorio ? 1 : 0))) {
-          return {
-            messages: [textMsg(`Escolha pelo menos *${grupo.min_escolhas || 1}* opção(ões).`)],
-            etapa,
-            dados,
-          };
+          return invalidInput(etapa, dados, `Escolha pelo menos *${grupo.min_escolhas || 1}* opção(ões).`);
         }
 
         temp.adicionais.push(...selecionados);
       }
 
       temp.grupo_index += 1;
-      if (temp.grupo_index < temp.grupos.length) {
+      if (temp.grupo_index < temp.grupos.length || temp.ia) {
         return showAdicionalGrupo(dados);
       }
 
       return {
-        messages: [
-          textMsg(
-            `Alguma observação para *${temp.nome}*?\n\nDigite ou *pular*.`,
-          ),
-        ],
+        messages: [observacaoMsg(temp.nome)],
         etapa: "produto_observacao",
         dados,
       };
     }
 
     case "produto_observacao": {
-      const obs = text === "pular" ? undefined : rawText.trim();
+      const obs = text === "pular" || text === "0" ? undefined : rawText.trim();
       return addToCart(dados, obs);
     }
 
@@ -516,19 +690,11 @@ export async function processMessage(
         return showCategorias(supabase, cfg, dados);
       }
       if (selected === "3" || text === "3") {
-        return {
-          messages: [textMsg("Carrinho limpo. Digite *menu* para adicionar itens.")],
-          etapa: "inicio",
-          dados: { ...dados, carrinho: [] },
-        };
+        return showMenuPrincipal({ ...dados, carrinho: [] }, "🗑️ Carrinho limpo.");
       }
       if (selected === "2" || text === "2" || text === "finalizar") {
         if (!dados.carrinho.length) {
-          return {
-            messages: [textMsg("Seu carrinho está vazio. Digite *menu* para adicionar itens.")],
-            etapa: "inicio",
-            dados,
-          };
+          return showMenuPrincipal(dados, "Seu carrinho está vazio.");
         }
 
         if (!isLojaAberta(cfg)) {
@@ -539,37 +705,29 @@ export async function processMessage(
           };
         }
 
-        const opcoes = cfg.retirada_ativa === false
-          ? [{ id: "delivery", title: "🛵 Delivery", description: "Entrega no endereço" }]
-          : [
-            { id: "delivery", title: "🛵 Delivery", description: "Entrega no endereço" },
-            { id: "retirada", title: "🏪 Retirada", description: "Buscar no balcão" },
-          ];
-
         return {
           messages: [
-            listMsg("Como deseja receber?", "Tipo de entrega", "Escolher", opcoes),
+            listMsg("Como deseja receber?", "Tipo de entrega", "Escolher", opcoesEntrega(cfg)),
           ],
           etapa: "tipo_entrega",
           dados,
         };
       }
-      return {
-        messages: [textMsg("Digite *1*, *2* ou *3*, ou use os comandos *menu* / *cancelar*.")],
-        etapa,
-        dados,
-      };
+      const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+      if (ia) return ia;
+      return invalidInput(etapa, dados, "Digite *1* para adicionar mais itens, *2* para finalizar ou *3* para limpar o carrinho.");
     }
 
     case "tipo_entrega": {
-      if (!["delivery", "retirada"].includes(selected)) {
-        return {
-          messages: [textMsg("Escolha *Delivery* ou *Retirada* na lista.")],
-          etapa,
-          dados,
-        };
+      const opcoes = opcoesEntrega(cfg);
+      const escolha = pickOption(opcoes, selected);
+      if (!escolha) {
+        const hint = opcoes.length > 1
+          ? "Digite *1* para Delivery ou *2* para Retirada."
+          : "Digite *1* para Delivery.";
+        return invalidInput(etapa, dados, hint);
       }
-      dados.tipo_entrega = selected as "delivery" | "retirada";
+      dados.tipo_entrega = escolha.id as "delivery" | "retirada";
 
       const cliente = await loadClienteByPhone(supabase, telefone, cfg.owner_id);
       if (cliente) {
@@ -587,7 +745,7 @@ export async function processMessage(
         messages: [
           textMsg(
             nomeSug
-              ? `Qual seu nome?\n\n_Sugestão: ${nomeSug} — digite *ok* para confirmar_`
+              ? `Qual seu nome?\n\n*1* — ${nomeSug}\n\nOu digite seu nome.`
               : "Qual seu nome completo?",
           ),
         ],
@@ -597,69 +755,75 @@ export async function processMessage(
     }
 
     case "cliente_nome": {
-      const nome = text === "ok" && dados.cliente?.nome
-        ? dados.cliente.nome
-        : rawText.trim();
+      const nomeSug = dados.cliente?.nome || dados.sender_name || "";
+      const nome = (text === "1" || text === "ok") && nomeSug ? nomeSug : rawText.trim();
       if (nome.length < 2) {
-        return { messages: [textMsg("Informe seu nome (mínimo 2 caracteres).")], etapa, dados };
+        return { messages: [textMsg("Informe seu nome (mínimo 2 letras).")], etapa, dados };
       }
       dados.cliente = { ...dados.cliente, nome };
 
       if (dados.tipo_entrega === "retirada") {
+        return { messages: [pagamentoMsg()], etapa: "forma_pagamento", dados };
+      }
+
+      const c = dados.cliente;
+      if (c.endereco && c.numero && c.bairro_nome) {
+        const endereco = `${c.endereco}, ${c.numero}${c.complemento ? ` — ${c.complemento}` : ""} — ${c.bairro_nome}`;
         return {
           messages: [
-            listMsg("Forma de pagamento:", "Pagamento", "Escolher", [
-              { id: "pix", title: "PIX", description: "" },
-              { id: "cartao", title: "Cartão", description: "Débito ou crédito" },
-              { id: "dinheiro", title: "Dinheiro", description: "" },
-            ]),
+            textMsg(`📍 Entregar no mesmo endereço da última vez?\n${endereco}\n\n*1* — Sim\n*2* — Outro endereço`),
           ],
-          etapa: "forma_pagamento",
+          etapa: "endereco_salvo",
           dados,
         };
       }
 
-      const endSug = dados.cliente?.endereco;
       return {
-        messages: [
-          textMsg(
-            endSug
-              ? `Qual o endereço (rua/avenida)?\n\n_Sugestão: ${endSug} — digite *ok* para confirmar_`
-              : "Qual o endereço (rua/avenida)?",
-          ),
-        ],
+        messages: [textMsg("Qual o endereço (rua/avenida)?")],
         etapa: "cliente_endereco",
         dados,
       };
     }
 
+    case "endereco_salvo": {
+      if (text === "1") {
+        const bairros = await loadBairros(supabase, cfg.owner_id);
+        const nomeBairro = normalizeText(dados.cliente?.bairro_nome || "");
+        const bairro = bairros.find((b) => normalizeText(b.nome) === nomeBairro);
+        if (bairro) {
+          dados.cliente = { ...dados.cliente, bairro_id: bairro.id, bairro_nome: bairro.nome };
+          return { messages: [pagamentoMsg()], etapa: "forma_pagamento", dados };
+        }
+        // Bairro antigo não existe mais: mantém rua/número e pede só o bairro.
+        return showBairros(supabase, cfg, dados, "Não encontrei seu bairro na lista atual.");
+      }
+      if (text === "2") {
+        dados.cliente = { nome: dados.cliente?.nome };
+        return {
+          messages: [textMsg("Qual o endereço (rua/avenida)?")],
+          etapa: "cliente_endereco",
+          dados,
+        };
+      }
+      return invalidInput(etapa, dados, "Digite *1* para usar o mesmo endereço ou *2* para informar outro.");
+    }
+
     case "cliente_endereco": {
-      const endereco = text === "ok" && dados.cliente?.endereco
-        ? dados.cliente.endereco
-        : rawText.trim();
+      const endereco = rawText.trim();
       if (endereco.length < 3) {
         return { messages: [textMsg("Informe o endereço completo.")], etapa, dados };
       }
       dados.cliente = { ...dados.cliente, endereco };
 
-      const numSug = dados.cliente?.numero;
       return {
-        messages: [
-          textMsg(
-            numSug
-              ? `Qual o número?\n\n_Sugestão: ${numSug} — digite *ok*_`
-              : "Qual o número?",
-          ),
-        ],
+        messages: [textMsg("Qual o número da casa/prédio?")],
         etapa: "cliente_numero",
         dados,
       };
     }
 
     case "cliente_numero": {
-      const numero = text === "ok" && dados.cliente?.numero
-        ? dados.cliente.numero
-        : rawText.trim();
+      const numero = rawText.trim();
       if (!numero) {
         return { messages: [textMsg("Informe o número do endereço.")], etapa, dados };
       }
@@ -667,7 +831,7 @@ export async function processMessage(
 
       return {
         messages: [
-          textMsg("Tem complemento? (apto, bloco...)\n\nDigite ou *pular*."),
+          textMsg("Tem complemento? (apto, bloco, referência...)\n\nDigite o complemento ou *0* se não tiver."),
         ],
         etapa: "cliente_complemento",
         dados,
@@ -675,65 +839,31 @@ export async function processMessage(
     }
 
     case "cliente_complemento": {
-      if (text !== "pular") {
-        dados.cliente = { ...dados.cliente, complemento: rawText.trim() };
-      }
-
-      const bairros = await loadBairros(supabase, cfg.owner_id);
-      if (!bairros.length) {
-        return {
-          messages: [textMsg("Nenhum bairro cadastrado. Entre em contato com a loja.")],
-          etapa: "carrinho",
-          dados,
-        };
-      }
-
-      const options = bairros.map((b) => ({
-        id: b.id,
-        title: b.nome,
-        description: Number(b.taxa) > 0 ? `Taxa: ${brl(Number(b.taxa))}` : "Sem taxa",
-      }));
-
-      return {
-        messages: [
-          listMsg("Selecione seu bairro:", "Bairros", "Ver bairros", options),
-        ],
-        etapa: "cliente_bairro",
-        dados,
-      };
+      const semComplemento = text === "0" || text === "pular" || text === "nao" || text === "não";
+      dados.cliente = { ...dados.cliente, complemento: semComplemento ? undefined : rawText.trim() };
+      return showBairros(supabase, cfg, dados);
     }
 
     case "cliente_bairro": {
       const bairros = await loadBairros(supabase, cfg.owner_id);
-      const bairro = bairros.find((b) => b.id === selected) ||
-        bairros[parseInt(selected, 10) - 1];
+      const bairro = pickOption(bairros, selected);
       if (!bairro) {
-        return { messages: [textMsg("Bairro inválido. Escolha da lista.")], etapa, dados };
+        return invalidInput(etapa, dados, "Não encontrei esse bairro. Digite o *número* do bairro na lista.");
       }
       dados.cliente = { ...dados.cliente, bairro_id: bairro.id, bairro_nome: bairro.nome };
-
-      return {
-        messages: [
-          listMsg("Forma de pagamento:", "Pagamento", "Escolher", [
-            { id: "pix", title: "PIX", description: "" },
-            { id: "cartao", title: "Cartão", description: "Débito ou crédito" },
-            { id: "dinheiro", title: "Dinheiro", description: "" },
-          ]),
-        ],
-        etapa: "forma_pagamento",
-        dados,
-      };
+      return { messages: [pagamentoMsg()], etapa: "forma_pagamento", dados };
     }
 
     case "forma_pagamento": {
-      if (!["pix", "cartao", "dinheiro"].includes(selected)) {
-        return { messages: [textMsg("Escolha uma forma de pagamento da lista.")], etapa, dados };
+      const forma = pickOption(FORMAS_PAGAMENTO, selected);
+      if (!forma) {
+        return invalidInput(etapa, dados, "Digite *1* para PIX, *2* para Cartão ou *3* para Dinheiro.");
       }
-      dados.forma_pagamento = selected;
+      dados.forma_pagamento = forma.id;
 
-      if (selected === "dinheiro") {
+      if (forma.id === "dinheiro") {
         return {
-          messages: [textMsg("Precisa de troco? Digite o valor (ex: 50) ou *nao*.")],
+          messages: [textMsg("Precisa de troco? Digite para quanto (ex: *50*).\n*0* — Não preciso de troco")],
           etapa: "troco",
           dados,
         };
@@ -743,12 +873,12 @@ export async function processMessage(
     }
 
     case "troco": {
-      if (text === "nao" || text === "não" || text === "n") {
+      if (["0", "nao", "não", "n"].includes(text)) {
         dados.troco_para = undefined;
       } else {
-        const val = parseFloat(text.replace(",", "."));
+        const val = parseFloat(text.replace(/[^\d,.]/g, "").replace(",", "."));
         if (isNaN(val) || val <= 0) {
-          return { messages: [textMsg("Valor inválido. Digite o valor ou *nao*.")], etapa, dados };
+          return invalidInput(etapa, dados, "Digite o valor para o troco (ex: *50*) ou *0* se não precisar.");
         }
         dados.troco_para = val;
       }
@@ -756,21 +886,13 @@ export async function processMessage(
     }
 
     case "confirmacao": {
-      if (["sim", "s", "confirmar", "ok", "1"].includes(text)) {
+      if (["1", "sim", "s", "confirmar", "ok"].includes(text)) {
         return finalizeOrder(supabase, cfg, dados, telefone);
       }
-      if (["nao", "não", "n", "2", "voltar"].includes(text)) {
-        return {
-          messages: [textMsg("Pedido não confirmado. Digite *carrinho* para revisar ou *menu* para adicionar itens.")],
-          etapa: "carrinho",
-          dados,
-        };
+      if (["2", "nao", "não", "n", "voltar"].includes(text)) {
+        return showCarrinho(dados, "Sem problemas, o pedido ainda não foi enviado.");
       }
-      return {
-        messages: [textMsg("Responda *sim* para confirmar ou *não* para voltar.")],
-        etapa,
-        dados,
-      };
+      return invalidInput(etapa, dados, "Digite *1* para confirmar o pedido ou *2* para voltar ao carrinho.");
     }
 
     case "finalizado": {
@@ -785,6 +907,50 @@ export async function processMessage(
     default:
       return showCategorias(supabase, cfg, dados);
   }
+}
+
+function showCarrinho(dados: SessionDados, intro?: string): FlowResult {
+  const cart = `${formatCart(dados.carrinho)}\n\n*1* — Adicionar mais itens\n*2* — Finalizar pedido\n*3* — Limpar carrinho`;
+  return {
+    messages: [textMsg(intro ? `${intro}\n\n${cart}` : cart)],
+    etapa: "carrinho",
+    dados: { ...dados, bot_ativo: true },
+  };
+}
+
+function opcoesEntrega(cfg: LojaConfig) {
+  const delivery = { id: "delivery", title: "🛵 Delivery", description: "Entrega no endereço" };
+  if (cfg.retirada_ativa === false) return [delivery];
+  return [delivery, { id: "retirada", title: "🏪 Retirada", description: "Buscar no balcão" }];
+}
+
+async function showBairros(
+  supabase: SupabaseClient,
+  cfg: LojaConfig,
+  dados: SessionDados,
+  intro?: string,
+): Promise<FlowResult> {
+  const bairros = await loadBairros(supabase, cfg.owner_id);
+  if (!bairros.length) {
+    return {
+      messages: [textMsg("Nenhum bairro cadastrado. Entre em contato com a loja.")],
+      etapa: "carrinho",
+      dados,
+    };
+  }
+
+  const options = bairros.map((b) => ({
+    id: b.id,
+    title: b.nome,
+    description: Number(b.taxa) > 0 ? `Taxa: ${brl(Number(b.taxa))}` : "Sem taxa",
+  }));
+  const text = intro ? `${intro}\n\nSelecione seu bairro:` : "Selecione seu bairro:";
+
+  return {
+    messages: [listMsg(text, "Bairros", "Ver bairros", options)],
+    etapa: "cliente_bairro",
+    dados,
+  };
 }
 
 async function buildConfirmacao(
@@ -819,7 +985,7 @@ async function buildConfirmacao(
   return {
     messages: [
       textMsg(
-        `${formatResumoConfirmacao(dados, taxa, total)}\n\n✅ Confirma o pedido?\n*sim* ou *não*`,
+        `${formatResumoConfirmacao(dados, taxa, total)}\n\n✅ Confirma o pedido?\n*1* — Confirmar\n*2* — Voltar ao carrinho`,
       ),
     ],
     etapa: "confirmacao",
@@ -940,19 +1106,18 @@ async function finalizeOrder(
     if (dados.tipo_entrega === "retirada" && cfg.endereco_estabelecimento) {
       messages.push(textMsg(`📍 Retire em: ${cfg.endereco_estabelecimento}`));
     }
-    messages.push(textMsg("Digite *menu* para fazer outro pedido."));
+    messages.push(textMsg("Obrigado! 😊 Para fazer outro pedido, é só digitar *1*."));
 
     return {
       messages,
-      etapa: "finalizado",
+      etapa: "menu_principal",
       dados: emptyDados(dados.sender_name),
-      clearSession: true,
     };
   } catch (err) {
     return {
       messages: [
         textMsg(
-          `❌ Não foi possível criar o pedido: ${err instanceof Error ? err.message : "erro desconhecido"}\n\nTente novamente ou digite *carrinho*.`,
+          `❌ Não foi possível criar o pedido: ${err instanceof Error ? err.message : "erro desconhecido"}\n\nDigite *1* para tentar de novo ou *2* para voltar ao carrinho.`,
         ),
       ],
       etapa: "confirmacao",
@@ -999,30 +1164,24 @@ export async function handleIncomingMessage(
     senderName,
   );
 
-  if (result.noReply) {
-    if (result.clearSession) {
-      await deleteSession(supabase, cfg.owner_id, telefone);
-    }
-    return;
+  let etapa = result.etapa;
+  let dados: SessionDados = { ...result.dados };
+  if (result.clearSession) {
+    etapa = "inicio";
+    dados = { carrinho: [], sender_name: dados.sender_name ?? session?.dados.sender_name };
   }
+  // A sessão nunca é apagada: guarda quando a boas-vindas foi enviada para não repetir.
+  dados.boas_vindas_em ??= session?.dados.boas_vindas_em;
+  if (!result.invalid) delete dados.invalidas;
 
   if (isEvolution) {
     const lista = [...result.messages].reverse().find((m) => m.optionList?.options.length);
-    result.dados = { ...result.dados, opcoes_numeradas: lista?.optionList?.options.map((o) => o.id) };
+    dados.opcoes_numeradas = lista?.optionList?.options.map((o) => o.id);
   }
 
-  if (result.clearSession) {
-    await deleteSession(supabase, cfg.owner_id, telefone);
-  } else {
-    await upsertSession(
-      supabase,
-      cfg.owner_id,
-      telefone,
-      result.etapa,
-      result.dados,
-      messageId,
-    );
-  }
+  await upsertSession(supabase, cfg.owner_id, telefone, etapa, dados, messageId);
+
+  if (result.noReply) return;
 
   for (const msg of result.messages) {
     await sendWhatsappMessage(cfg, telefone, msg);

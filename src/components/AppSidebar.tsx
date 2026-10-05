@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone } from "lucide-react";
+import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone, Boxes, Send } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -29,7 +29,9 @@ const items = [
   { title: "Fidelidade", url: "/admin/fidelidade", icon: Trophy },
   { title: "Cupons", url: "/admin/cupons", icon: TicketPercent },
   { title: "Criar promoções", url: "/admin/promocoes", icon: Megaphone },
+  { title: "Marketing automático", url: "/admin/marketing", icon: Send },
   { title: "Financeiro", url: "/admin/financeiro", icon: Wallet },
+  { title: "Estoque & Lucro", url: "/admin/estoque", icon: Boxes },
   { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
   { title: "Configurações", url: "/configuracoes", icon: Settings },
 ];

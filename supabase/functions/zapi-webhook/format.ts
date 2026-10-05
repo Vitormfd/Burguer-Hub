@@ -2,6 +2,7 @@
 
 export type Etapa =
   | "inicio"
+  | "menu_principal"
   | "menu_categoria"
   | "menu_produto"
   | "produto_quantidade"
@@ -10,6 +11,7 @@ export type Etapa =
   | "carrinho"
   | "tipo_entrega"
   | "cliente_nome"
+  | "endereco_salvo"
   | "cliente_endereco"
   | "cliente_numero"
   | "cliente_complemento"
@@ -56,6 +58,9 @@ export interface ProdutoTempWa {
   categoria_id: string;
   categoria_nome: string;
   fallback_all_groups: boolean;
+  /** Item montado pela IA: só faltam grupos obrigatórios; a observação já veio do texto. */
+  ia?: boolean;
+  observacao_ia?: string;
 }
 
 export interface ClienteTempWa {
@@ -81,6 +86,12 @@ export interface SessionDados {
   pagina_produtos?: number;
   /** Evolution: ids da última lista enviada como texto numerado (resposta "2" → ids[1]). */
   opcoes_numeradas?: string[];
+  /** Quando a boas-vindas foi enviada — evita repetir a cada mensagem. */
+  boas_vindas_em?: string;
+  /** Respostas inválidas seguidas; no limite o bot sai e deixa para o atendente. */
+  invalidas?: number;
+  /** Itens entendidos pela IA que ainda precisam de escolhas obrigatórias (um por vez). */
+  ia_pendentes?: ProdutoTempWa[];
 }
 
 export interface WhatsappSession {
@@ -169,6 +180,8 @@ export interface ZapiIncomingMessage {
 
 export interface OutboundMessage {
   text: string;
+  /** Linhas exibidas depois da lista (ex: "*0* — Voltar"). */
+  footer?: string;
   optionList?: {
     title: string;
     buttonLabel: string;
@@ -179,11 +192,12 @@ export interface OutboundMessage {
 /** Lista de opções como texto numerado (Evolution / listas grandes). */
 export const formatOptionListAsText = (message: OutboundMessage): string => {
   const options = message.optionList?.options ?? [];
-  if (!options.length) return message.text;
+  if (!options.length) return [message.text, message.footer].filter(Boolean).join("\n\n");
   const numbered = options
-    .map((o, i) => `*${i + 1}.* ${o.title}${o.description ? ` — ${o.description}` : ""}`)
+    .map((o, i) => `*${i + 1}* — ${o.title}${o.description ? ` (${o.description})` : ""}`)
     .join("\n");
-  return `${message.text}\n\n${numbered}\n\n_Digite o número da opção._`;
+  const footer = message.footer ? `\n${message.footer}` : "";
+  return `${message.text}\n\n${numbered}${footer}\n\n_Responda com o número da opção._`;
 };
 
 export const brl = (value: number): string =>
@@ -269,15 +283,21 @@ export const formatBoasVindas = (cfg: LojaConfig): string => {
   const cardapioUrl = buildCardapioUrl(cfg);
   let msg = cfg.whatsapp_msg_boas_vindas.replaceAll("{{loja}}", cfg.nome_loja);
   msg = msg.replaceAll("{{cardapio}}", cardapioUrl || "(configure a URL do site em Configurações)");
-  return msg;
+  // O template antigo listava comandos por palavra; o menu numerado agora vem do bot.
+  return msg
+    .split("\n")
+    .filter((line) => !/^\s*digite \*(menu|carrinho|link|cancelar|ajuda)\*/i.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 };
 
 export const formatCardapioLinkMsg = (cfg: LojaConfig): string => {
   const url = buildCardapioUrl(cfg);
   if (!url) {
-    return "🌐 O cardápio online ainda não está configurado. Digite *menu* para pedir por aqui.";
+    return "🌐 O cardápio online ainda não está configurado.";
   }
-  return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo, ou digite *menu* para pedir por aqui._`;
+  return `🌐 *Cardápio online:*\n${url}\n\n_Peça pelo site com fotos e checkout completo._`;
 };
 
 export const encodeKdsObservation = (produtoNome: string, observacao?: string): string => {
@@ -337,12 +357,12 @@ export const formatPagamento = (forma?: string): string => {
   return map[forma || ""] || forma || "—";
 };
 
-export const AJUDA_TEXTO = `ℹ️ *Comandos do pedido automático:*
+export const AJUDA_TEXTO = `ℹ️ *Como usar o pedido automático:*
 
-*menu* — Iniciar pedido pelo WhatsApp
-*link* — Link do cardápio online
-*carrinho* — Ver pedido em andamento
-*cancelar* — Sair do pedido automático
-*ajuda* — Ver esta mensagem
+Responda sempre com o *número* da opção que aparece na mensagem.
+*0* — Voltar para a etapa anterior
 
-_For a qualquer outra coisa, é só escrever — um atendente pode responder._`;
+Também funcionam:
+*menu* — Recomeçar o pedido
+*carrinho* — Ver seu pedido
+*cancelar* — Cancelar o pedido`;

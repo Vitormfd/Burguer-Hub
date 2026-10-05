@@ -15,6 +15,7 @@ import {
 import {
   AJUDA_TEXTO,
   brl,
+  buildCardapioUrl,
   cartSubtotal,
   encodeKdsObservation,
   formatPhoneZapi,
@@ -38,8 +39,8 @@ import type {
   SessionDados,
   WhatsappSession,
 } from "./format.ts";
-import { iaDisponivel, interpretarPedido, loadCardapioIa, pareceTextoLivre } from "./ia.ts";
-import type { PedidoInterpretado } from "./ia.ts";
+import { iaDisponivel, interpretarMensagem, loadCardapioIa, pareceTextoLivre } from "./ia.ts";
+import type { CardapioIa, PedidoInterpretado, ProdutoIa } from "./ia.ts";
 
 const PRODUTOS_POR_PAGINA = 8;
 
@@ -353,24 +354,88 @@ async function iaAtivaNaLoja(supabase: SupabaseClient, cfg: LojaConfig): Promise
   return !error && data?.whatsapp_ia_ativa === true;
 }
 
+/** IA pronta para esta loja: chave configurada e ligada no painel. */
+async function iaLigada(supabase: SupabaseClient, cfg: LojaConfig): Promise<boolean> {
+  return iaDisponivel() && await iaAtivaNaLoja(supabase, cfg);
+}
+
+interface OpcoesIa {
+  saudacao?: string;
+  /** Etapa em que a conversa fica depois de responder uma pergunta sobre o cardápio. */
+  etapa: Etapa;
+  /** Texto após a resposta de uma pergunta (opções da etapa atual). */
+  rodape?: string;
+  /** Cardápio já carregado com a IA já verificada (primeiro contato). */
+  cardapio?: CardapioIa;
+}
+
 /**
- * Tenta entender um pedido em texto livre. Retorna null quando a IA está desligada,
- * a mensagem não é um pedido ou nada foi reconhecido — o fluxo normal segue.
+ * Tenta entender texto livre: monta o pedido ou responde dúvidas sobre o cardápio.
+ * Retorna null quando a IA está desligada, é outro assunto ou nada foi reconhecido —
+ * o fluxo normal segue.
  */
-async function tentarPedidoIa(
+async function tentarIa(
   supabase: SupabaseClient,
   cfg: LojaConfig,
   dados: SessionDados,
   rawText: string,
-  saudacao?: string,
+  opts: OpcoesIa,
 ): Promise<FlowResult | null> {
-  if (!iaDisponivel() || !pareceTextoLivre(rawText)) return null;
-  if (!(await iaAtivaNaLoja(supabase, cfg))) return null;
+  if (!pareceTextoLivre(rawText)) return null;
+  let cardapio = opts.cardapio;
+  if (!cardapio) {
+    if (!(await iaLigada(supabase, cfg))) return null;
+    cardapio = await loadCardapioIa(supabase, cfg.owner_id);
+  }
 
-  const cardapio = await loadCardapioIa(supabase, cfg.owner_id);
-  const pedido = await interpretarPedido(cardapio, rawText);
-  if (!pedido) return null;
-  return aplicarPedidoIa(supabase, dados, pedido, saudacao);
+  const interpretada = await interpretarMensagem(cardapio, rawText);
+  if (!interpretada) return null;
+  if (interpretada.tipo === "pergunta") return responderPerguntaCardapio(cfg, dados, interpretada.produtos, opts);
+  return aplicarPedidoIa(supabase, dados, interpretada, opts.saudacao);
+}
+
+const MAX_ITENS_RESPOSTA = 15;
+
+/** Exemplo de pedido com produtos reais da loja (ex.: "2 Pastel de Carne e 1 Coca-Cola"). */
+function exemploPedido(cardapio: CardapioIa): string {
+  const [primeiro] = cardapio.produtos;
+  if (!primeiro) return "";
+  const outros = cardapio.produtos.filter((p) => p.categoria_id !== primeiro.categoria_id);
+  const segundo = outros.find((p) => /bebida|refri|suco|drink/i.test(p.categoria_nome)) || outros[0];
+  return segundo ? `2 ${primeiro.nome} e 1 ${segundo.nome}` : `2 ${primeiro.nome}`;
+}
+
+function responderPerguntaCardapio(
+  cfg: LojaConfig,
+  dados: SessionDados,
+  produtos: ProdutoIa[],
+  opts: OpcoesIa,
+): FlowResult {
+  const url = buildCardapioUrl(cfg);
+  const linhas: string[] = [];
+  if (opts.saudacao) linhas.push(opts.saudacao, "");
+
+  if (!produtos.length) {
+    linhas.push("😕 Não encontrei isso no nosso cardápio no momento.");
+    if (url) linhas.push(`Veja tudo o que temos: ${url}`);
+  } else {
+    linhas.push("📋 Olha o que temos:", "");
+    for (const p of produtos.slice(0, MAX_ITENS_RESPOSTA)) {
+      linhas.push(`• *${p.nome}* — ${brl(p.preco)}`);
+      if (p.descricao) linhas.push(`   _${p.descricao}_`);
+    }
+    if (produtos.length > MAX_ITENS_RESPOSTA) {
+      linhas.push("", `…e mais ${produtos.length - MAX_ITENS_RESPOSTA} opções${url ? `: ${url}` : "."}`);
+    }
+    linhas.push("", `✍️ Pra pedir, é só escrever. Ex: _1 ${produtos[0].nome}_`);
+  }
+
+  if (opts.rodape) linhas.push("", opts.rodape);
+  return {
+    messages: [textMsg(linhas.join("\n"))],
+    etapa: opts.etapa,
+    dados: { ...dados, bot_ativo: true },
+  };
 }
 
 /** Separa as escolhas da IA válidas por grupo e os grupos obrigatórios que ficaram sem escolha. */
@@ -516,19 +581,29 @@ export async function processMessage(
     // Boas-vindas + menu numerado só no primeiro contato (ou depois de muitas horas).
     const ultima = dados.boas_vindas_em ? Date.parse(dados.boas_vindas_em) : 0;
     if (Date.now() - ultima > BOAS_VINDAS_INTERVALO_MS) {
-      // Primeiro contato já com o pedido escrito: a IA monta o carrinho direto.
-      const ia = await tentarPedidoIa(
-        supabase,
-        cfg,
-        { ...dados, boas_vindas_em: new Date().toISOString() },
-        rawText,
-        `Olá! 👋 Aqui é o atendimento do *${cfg.nome_loja}*.`,
-      );
-      if (ia) return ia;
-      return showMenuPrincipal(
-        { ...dados, boas_vindas_em: new Date().toISOString() },
-        formatBoasVindas(cfg),
-      );
+      const dadosBoasVindas = { ...dados, boas_vindas_em: new Date().toISOString() };
+      const cardapioIa = (await iaLigada(supabase, cfg)) ? await loadCardapioIa(supabase, cfg.owner_id) : null;
+
+      // Primeiro contato já com o pedido (ou uma dúvida do cardápio): a IA resolve direto.
+      if (cardapioIa) {
+        const ia = await tentarIa(supabase, cfg, dadosBoasVindas, rawText, {
+          saudacao: `Olá! 👋 Aqui é o atendimento do *${cfg.nome_loja}*.`,
+          etapa: "menu_principal",
+          rodape: `Ou escolha uma opção:\n${MENU_PRINCIPAL}`,
+          cardapio: cardapioIa,
+        });
+        if (ia) return ia;
+      }
+
+      let boasVindas = formatBoasVindas(cfg);
+      if (cardapioIa?.produtos.length) {
+        // Avisa que dá para escrever o pedido livremente (só com a IA ligada).
+        const exemplo = exemploPedido(cardapioIa);
+        boasVindas += `\n\n✍️ Se preferir, é só escrever seu pedido do jeito que quiser${exemplo ? `. Ex: _${exemplo}_` : "."}`;
+        const url = buildCardapioUrl(cfg);
+        if (url && !boasVindas.includes(url)) boasVindas += `\n📋 Cardápio: ${url}`;
+      }
+      return showMenuPrincipal(dadosBoasVindas, boasVindas);
     }
     // Conversa livre → não responde (atendimento humano)
     return { messages: [], etapa: "inicio", dados, noReply: true };
@@ -556,8 +631,11 @@ export async function processMessage(
           dados: { ...dados, bot_ativo: false },
         };
       }
-      // Pedido escrito por extenso: a IA tenta entender antes de sair do bot.
-      const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+      // Pedido ou dúvida escritos por extenso: a IA tenta entender antes de sair do bot.
+      const ia = await tentarIa(supabase, cfg, dados, rawText, {
+        etapa: "menu_principal",
+        rodape: `Ou escolha uma opção:\n${MENU_PRINCIPAL}`,
+      });
       if (ia) return ia;
       // Qualquer outra mensagem: conversa livre com o atendente, sem insistir.
       return silentExit(dados);
@@ -568,7 +646,10 @@ export async function processMessage(
       const categorias = await loadCategorias(supabase, cfg.owner_id);
       const cat = pickOption(categorias, selected);
       if (!cat) {
-        const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+        const ia = await tentarIa(supabase, cfg, dados, rawText, {
+          etapa: "menu_categoria",
+          rodape: "Ou digite o *número* de uma categoria (*0* volta ao início).",
+        });
         if (ia) return ia;
         return invalidInput(etapa, dados, "Não encontrei essa opção. Digite o *número* da categoria ou *0* para voltar.");
       }
@@ -596,7 +677,10 @@ export async function processMessage(
       const produto = produtos.find((p) => p.id === selected) ||
         slice[parseInt(selected, 10) - 1];
       if (!produto) {
-        const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+        const ia = await tentarIa(supabase, cfg, dados, rawText, {
+          etapa: "menu_produto",
+          rodape: "Ou digite o *número* de um produto da lista (*0* volta às categorias).",
+        });
         if (ia) return ia;
         return invalidInput(etapa, dados, "Não encontrei esse produto. Digite o *número* do produto ou *0* para voltar.");
       }
@@ -713,7 +797,10 @@ export async function processMessage(
           dados,
         };
       }
-      const ia = await tentarPedidoIa(supabase, cfg, dados, rawText);
+      const ia = await tentarIa(supabase, cfg, dados, rawText, {
+        etapa: "carrinho",
+        rodape: "*1* — Adicionar mais itens\n*2* — Finalizar pedido\n*3* — Limpar carrinho",
+      });
       if (ia) return ia;
       return invalidInput(etapa, dados, "Digite *1* para adicionar mais itens, *2* para finalizar ou *3* para limpar o carrinho.");
     }

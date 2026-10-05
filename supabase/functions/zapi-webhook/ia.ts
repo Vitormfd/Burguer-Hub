@@ -42,9 +42,18 @@ export interface ItemInterpretado {
 }
 
 export interface PedidoInterpretado {
+  tipo: "pedido";
   itens: ItemInterpretado[];
   nao_encontrados: string[];
 }
+
+/** Pergunta sobre o cardápio: a IA só escolhe os produtos; nomes e preços vêm do banco. */
+export interface PerguntaInterpretada {
+  tipo: "pergunta";
+  produtos: ProdutoIa[];
+}
+
+export type MensagemInterpretada = PedidoInterpretado | PerguntaInterpretada;
 
 export function iaDisponivel(): boolean {
   return Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
@@ -117,7 +126,12 @@ export async function loadCardapioIa(supabase: SupabaseClient, ownerId: string):
 const INSTRUCOES = `Você interpreta mensagens de clientes de um restaurante no WhatsApp e converte pedidos em itens do cardápio abaixo.
 
 Regras:
-- eh_pedido = true somente se a mensagem pede um ou mais itens para comprar. Saudações, perguntas (horário, endereço, preço, "tem X?"), reclamações ou conversas → eh_pedido = false e itens vazio.
+- intencao:
+  - "pedido": a mensagem pede um ou mais itens para comprar ("quero", "me vê", "manda 2...").
+  - "pergunta_cardapio": pergunta sobre o que tem no cardápio, sabores, opções, preços ou se existe um item ("quais sabores de pastel?", "quanto é o x-bacon?", "tem açaí?", "o que vocês recomendam?").
+  - "outro": saudações sem pedido, horário, endereço, entrega, pagamento, reclamações, conversa.
+- produtos_relacionados (só para pergunta_cardapio): refs dos produtos que respondem a pergunta — todos os da categoria/sabor perguntado, ou o item específico. Para "o que recomendam", até 5 itens variados. Vazio se o que foi perguntado não existe no cardápio.
+- Para intencao diferente de "pedido", itens fica vazio.
 - Use apenas refs que existem no cardápio. Associe nomes aproximados, apelidos, abreviações e erros de digitação ao item mais provável ("xbacon", "x bacon", "coca lata" → o item correspondente). Se houver dúvida real entre itens diferentes, não escolha: coloque o trecho em nao_encontrados.
 - quantidade: inteiro de 1 a 20; padrão 1. "dois", "2x", "um par" etc. viram número.
 - adicionais: refs de ADICIONAIS que o cliente pediu explicitamente para aquele item ("com bacon extra", "ponto da carne mal passado", "sabor laranja"). Não invente.
@@ -128,9 +142,9 @@ Regras:
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["eh_pedido", "itens", "nao_encontrados"],
+  required: ["intencao", "itens", "nao_encontrados", "produtos_relacionados"],
   properties: {
-    eh_pedido: { type: "boolean" },
+    intencao: { type: "string", enum: ["pedido", "pergunta_cardapio", "outro"] },
     itens: {
       type: "array",
       items: {
@@ -146,19 +160,21 @@ const SCHEMA = {
       },
     },
     nao_encontrados: { type: "array", items: { type: "string" } },
+    produtos_relacionados: { type: "array", items: { type: "string" } },
   },
 } as const;
 
 interface RespostaIa {
-  eh_pedido: boolean;
+  intencao: "pedido" | "pergunta_cardapio" | "outro";
+  produtos_relacionados: string[];
   itens: { produto_ref: string; quantidade: number; adicionais_refs: string[]; observacao: string }[];
   nao_encontrados: string[];
 }
 
 let client: Anthropic | null = null;
 
-/** Retorna null quando não é pedido, quando nada foi reconhecido ou se a IA falhar. */
-export async function interpretarPedido(cardapio: CardapioIa, mensagem: string): Promise<PedidoInterpretado | null> {
+/** Retorna null para "outro assunto", quando nada foi reconhecido ou se a IA falhar. */
+export async function interpretarMensagem(cardapio: CardapioIa, mensagem: string): Promise<MensagemInterpretada | null> {
   if (!iaDisponivel() || !cardapio.produtos.length) return null;
   client ??= new Anthropic({ timeout: TIMEOUT_MS, maxRetries: 1 });
 
@@ -191,9 +207,18 @@ export async function interpretarPedido(cardapio: CardapioIa, mensagem: string):
     if (!texto) return null;
 
     const parsed = JSON.parse(texto) as RespostaIa;
-    if (!parsed.eh_pedido || !Array.isArray(parsed.itens)) return null;
-
     const porRefP = new Map(cardapio.produtos.map((p) => [p.ref, p]));
+
+    if (parsed.intencao === "pergunta_cardapio") {
+      const produtos: ProdutoIa[] = [];
+      for (const ref of parsed.produtos_relacionados || []) {
+        const p = porRefP.get(String(ref).trim());
+        if (p && !produtos.includes(p)) produtos.push(p);
+      }
+      return { tipo: "pergunta", produtos };
+    }
+    if (parsed.intencao !== "pedido" || !Array.isArray(parsed.itens)) return null;
+
     const porRefA = new Map(cardapio.adicionais.map((a) => [a.ref, a]));
     const itens: ItemInterpretado[] = [];
     for (const it of parsed.itens) {
@@ -208,7 +233,7 @@ export async function interpretarPedido(cardapio: CardapioIa, mensagem: string):
     }
 
     if (!itens.length) return null;
-    return { itens, nao_encontrados: (parsed.nao_encontrados || []).map(String).slice(0, 5) };
+    return { tipo: "pedido", itens, nao_encontrados: (parsed.nao_encontrados || []).map(String).slice(0, 5) };
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
       console.error(`IA WhatsApp: API ${err.status}: ${err.message}`);

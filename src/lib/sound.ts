@@ -513,7 +513,10 @@ export const notifyNewDeliveryOrder = (message = "Novo pedido de delivery") => {
   showNewOrderDesktopNotification(message);
 };
 
-export const showNewOrderDesktopNotification = (message = "Novo pedido chegou") => {
+export const showNewOrderDesktopNotification = (
+  message = "Novo pedido chegou",
+  tag = "easy-food-hub-new-order",
+) => {
   if (typeof window === "undefined" || !("Notification" in window)) return;
 
   const show = () => {
@@ -524,7 +527,7 @@ export const showNewOrderDesktopNotification = (message = "Novo pedido chegou") 
     try {
       new Notification("Easy Food Hub", {
         body: message,
-        tag: "easy-food-hub-new-order",
+        tag,
         renotify: true,
         silent: false,
         icon: "/favicon.svg",

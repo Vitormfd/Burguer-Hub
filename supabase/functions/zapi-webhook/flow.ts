@@ -10,6 +10,7 @@ import {
   loadProdutos,
   produtoPreco,
   isHamburger,
+  registrarPedidoAtendente,
   upsertSession,
 } from "./db.ts";
 import {
@@ -625,6 +626,7 @@ export async function processMessage(
         };
       }
       if (selected === "3") {
+        await registrarPedidoAtendente(supabase, cfg.owner_id, telefone, dados.sender_name);
         return {
           messages: [textMsg("👍 Certo! Um atendente vai te responder por aqui em instantes.")],
           etapa: "inicio",

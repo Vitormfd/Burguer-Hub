@@ -145,6 +145,34 @@ export async function upsertSession(
   );
 }
 
+/** Cliente pediu atendente: cria (ou renova) o aviso pendente que aparece no painel. */
+export async function registrarPedidoAtendente(
+  supabase: SupabaseClient,
+  ownerId: string,
+  telefone: string,
+  clienteNome?: string,
+): Promise<void> {
+  const phone = normalizePhone(telefone);
+  const { data: pendente } = await supabase
+    .from("atendimento_solicitacoes")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .eq("telefone", phone)
+    .eq("status", "pendente")
+    .maybeSingle();
+
+  const { error } = pendente
+    ? await supabase
+      .from("atendimento_solicitacoes")
+      .update({ criado_em: new Date().toISOString(), cliente_nome: clienteNome ?? null })
+      .eq("id", pendente.id)
+    : await supabase
+      .from("atendimento_solicitacoes")
+      .insert({ owner_id: ownerId, telefone: phone, cliente_nome: clienteNome ?? null });
+
+  if (error) console.error("registrarPedidoAtendente:", error.message);
+}
+
 export async function deleteSession(
   supabase: SupabaseClient,
   ownerId: string,

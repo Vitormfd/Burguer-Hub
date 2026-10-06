@@ -1,6 +1,7 @@
 import { Outlet, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
+import { AtendimentoBell } from "./AtendimentoBell";
 import { useAuth } from "@/hooks/useAuth";
 import { useDeliveryOrderAlerts } from "@/hooks/useDeliveryOrderAlerts";
 
@@ -25,6 +26,9 @@ export default function AppLayout() {
         <div className="flex-1 flex flex-col">
           <header className="h-14 flex items-center border-b bg-card px-4 shadow-soft">
             <SidebarTrigger />
+            <div className="ml-auto">
+              <AtendimentoBell />
+            </div>
           </header>
           <main className="flex-1 p-6 md:p-8">
             <Outlet />

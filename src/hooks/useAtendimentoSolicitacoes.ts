@@ -7,6 +7,9 @@ import { playNewOrderAlert, showNewOrderDesktopNotification } from "@/lib/sound"
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
 
+/** Intervalo do som de lembrete enquanto houver cliente esperando. */
+const REPETIR_SOM_MS = 30_000;
+
 export interface AtendimentoSolicitacao {
   id: string;
   telefone: string;
@@ -57,12 +60,6 @@ export function useAtendimentoSolicitacoes(enabled: boolean) {
             const quem = row.cliente_nome || formatTelefone(row.telefone ?? "");
             void playNewOrderAlert(true);
             showNewOrderDesktopNotification(`${quem} quer falar com um atendente no WhatsApp`, "easy-food-hub-atendimento");
-            toast.info(`💬 ${quem} quer falar com um atendente`, {
-              duration: 15000,
-              action: row.telefone
-                ? { label: "Abrir WhatsApp", onClick: () => window.open(whatsappChatUrl(row.telefone!), "_blank") }
-                : undefined,
-            });
           }
           void load();
         },
@@ -73,6 +70,25 @@ export function useAtendimentoSolicitacoes(enabled: boolean) {
       supabase.removeChannel(channel);
     };
   }, [enabled, load]);
+
+  const total = pendentes.length;
+
+  // Enquanto alguém espera: som repetindo e contador no título da aba.
+  useEffect(() => {
+    if (!enabled || total === 0) return;
+    const original = document.title;
+    let piscar = false;
+    const titulo = window.setInterval(() => {
+      piscar = !piscar;
+      document.title = piscar ? `(${total}) 💬 Cliente esperando` : original;
+    }, 1500);
+    const som = window.setInterval(() => void playNewOrderAlert(true), REPETIR_SOM_MS);
+    return () => {
+      window.clearInterval(titulo);
+      window.clearInterval(som);
+      document.title = original;
+    };
+  }, [enabled, total]);
 
   const marcarAtendido = useCallback(async (id: string) => {
     setPendentes((cur) => cur.filter((p) => p.id !== id));

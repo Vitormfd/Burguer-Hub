@@ -1,13 +1,15 @@
 import { Outlet, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
-import { AtendimentoBell } from "./AtendimentoBell";
+import { AtendimentoBanner, AtendimentoBell } from "./AtendimentoBell";
 import { useAuth } from "@/hooks/useAuth";
 import { useDeliveryOrderAlerts } from "@/hooks/useDeliveryOrderAlerts";
+import { useAtendimentoSolicitacoes } from "@/hooks/useAtendimentoSolicitacoes";
 
 export default function AppLayout() {
   const { session, loading } = useAuth();
   useDeliveryOrderAlerts(!!session);
+  const atendimento = useAtendimentoSolicitacoes(!!session);
 
   if (loading) {
     return (
@@ -27,9 +29,12 @@ export default function AppLayout() {
           <header className="h-14 flex items-center border-b bg-card px-4 shadow-soft">
             <SidebarTrigger />
             <div className="ml-auto">
-              <AtendimentoBell />
+              <AtendimentoBell {...atendimento} />
             </div>
           </header>
+          <div className="sticky top-0 z-30">
+            <AtendimentoBanner {...atendimento} />
+          </div>
           <main className="flex-1 p-6 md:p-8">
             <Outlet />
           </main>

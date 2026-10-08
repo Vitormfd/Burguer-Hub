@@ -10,6 +10,7 @@ import {
   loadProdutos,
   produtoPreco,
   isHamburger,
+  lojaFalouComCliente,
   registrarPedidoAtendente,
   upsertSession,
 } from "./db.ts";
@@ -582,6 +583,17 @@ export async function processMessage(
     // Boas-vindas + menu numerado só no primeiro contato (ou depois de muitas horas).
     const ultima = dados.boas_vindas_em ? Date.parse(dados.boas_vindas_em) : 0;
     if (Date.now() - ultima > BOAS_VINDAS_INTERVALO_MS) {
+      // Loja mandou confirmação/status/marketing há pouco: é resposta a isso, não primeiro contato.
+      if (await lojaFalouComCliente(supabase, cfg.owner_id, telefone, BOAS_VINDAS_INTERVALO_MS)) {
+        return {
+          messages: [],
+          etapa: "inicio",
+          // Lembra para não consultar de novo a cada mensagem dessa conversa.
+          dados: { ...dados, boas_vindas_em: new Date().toISOString() },
+          noReply: true,
+        };
+      }
+
       const dadosBoasVindas = { ...dados, boas_vindas_em: new Date().toISOString() };
       const cardapioIa = (await iaLigada(supabase, cfg)) ? await loadCardapioIa(supabase, cfg.owner_id) : null;
 

@@ -1,5 +1,14 @@
-import { parseEvolutionWebhook, type EvolutionWebhookPayload } from "../_shared/evolution.ts";
-import { createServiceClient, findLojaByEvolutionInstance, findLojaByInstance } from "./db.ts";
+import {
+  parseEvolutionFromMe,
+  parseEvolutionWebhook,
+  type EvolutionWebhookPayload,
+} from "../_shared/evolution.ts";
+import {
+  createServiceClient,
+  findLojaByEvolutionInstance,
+  findLojaByInstance,
+  marcarConversaDaLoja,
+} from "./db.ts";
 import { handleIncomingMessage } from "./flow.ts";
 import type { ZapiIncomingMessage } from "./format.ts";
 
@@ -51,6 +60,15 @@ async function handleEvolution(req: Request, url: URL): Promise<Response> {
     payload = await req.json();
   } catch {
     return json({ error: "Invalid JSON" }, 400);
+  }
+
+  // Loja mandou mensagem (dono pelo celular ou o próprio robô): lembra que a conversa está ativa.
+  const enviada = parseEvolutionFromMe(payload);
+  if (enviada) {
+    const supabase = createServiceClient();
+    const loja = await findLojaByEvolutionInstance(supabase, enviada.instance);
+    if (loja) await marcarConversaDaLoja(supabase, loja.owner_id, enviada.phone);
+    return json({ ok: true, skipped: "from_me" });
   }
 
   const parsed = parseEvolutionWebhook(payload);

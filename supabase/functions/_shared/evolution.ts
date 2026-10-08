@@ -163,28 +163,44 @@ export interface ParsedEvolutionMessage {
   selectedId: string | null;
 }
 
+type EvolutionKey = NonNullable<NonNullable<EvolutionWebhookPayload["data"]>["key"]>;
+
+const isUpsert = (payload: EvolutionWebhookPayload) =>
+  (payload.event || "").toLowerCase().replace(/_/g, ".") === "messages.upsert";
+
+const isGroupOrBroadcast = (remote: string) =>
+  remote.endsWith("@g.us") || remote === "status@broadcast" || remote.endsWith("@newsletter");
+
+/** Número do contato (contatos com endereçamento LID trazem o número em remoteJidAlt/senderPn). */
+const contactPhone = (key: EvolutionKey): string | null => {
+  const jid = [key.remoteJid, key.remoteJidAlt, key.senderPn].find((j) => j?.endsWith("@s.whatsapp.net"));
+  return jid ? jid.split("@")[0].replace(/\D/g, "") : null;
+};
+
+/** Mensagem enviada pelo WhatsApp da loja (robô ou o dono pelo celular) para um cliente. */
+export function parseEvolutionFromMe(payload: EvolutionWebhookPayload): { instance: string; phone: string } | null {
+  const key = payload.data?.key;
+  if (!isUpsert(payload) || !payload.instance || !key?.fromMe) return null;
+  if (isGroupOrBroadcast(key.remoteJid || "")) return null;
+  const phone = contactPhone(key);
+  return phone ? { instance: payload.instance, phone } : null;
+}
+
 /**
  * Normaliza um messages.upsert da Evolution. Retorna string com o motivo quando a mensagem
  * deve ser ignorada (enviada por nós, grupo, status, sem texto...).
  */
 export function parseEvolutionWebhook(payload: EvolutionWebhookPayload): ParsedEvolutionMessage | string {
-  const event = (payload.event || "").toLowerCase().replace(/_/g, ".");
-  if (event !== "messages.upsert") return "event_ignored";
+  if (!isUpsert(payload)) return "event_ignored";
 
   const instance = payload.instance;
   const key = payload.data?.key;
   if (!instance || !key) return "no_instance_or_key";
   if (key.fromMe) return "from_me";
+  if (isGroupOrBroadcast(key.remoteJid || "")) return "group_or_broadcast";
 
-  const remote = key.remoteJid || "";
-  if (remote.endsWith("@g.us") || remote === "status@broadcast" || remote.endsWith("@newsletter")) {
-    return "group_or_broadcast";
-  }
-
-  // Contatos com endereçamento LID trazem o número real em remoteJidAlt/senderPn.
-  const jid = [remote, key.remoteJidAlt, key.senderPn].find((j) => j?.endsWith("@s.whatsapp.net"));
-  if (!jid) return "no_phone_jid";
-  const phone = jid.split("@")[0].replace(/\D/g, "");
+  const phone = contactPhone(key);
+  if (!phone) return "no_phone_jid";
 
   const msg = payload.data?.message ?? {};
   let selectedId: string | null = null;

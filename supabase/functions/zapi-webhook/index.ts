@@ -7,7 +7,7 @@ import {
   createServiceClient,
   findLojaByEvolutionInstance,
   findLojaByInstance,
-  marcarConversaDaLoja,
+  registrarMensagemDaLoja,
 } from "./db.ts";
 import { handleIncomingMessage } from "./flow.ts";
 import type { ZapiIncomingMessage } from "./format.ts";
@@ -62,13 +62,15 @@ async function handleEvolution(req: Request, url: URL): Promise<Response> {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  // Loja mandou mensagem (dono pelo celular ou o próprio robô): lembra que a conversa está ativa.
+  // Mensagem saiu do WhatsApp da loja: se foi o dono digitando, o robô sai da conversa.
   const enviada = parseEvolutionFromMe(payload);
   if (enviada) {
     const supabase = createServiceClient();
     const loja = await findLojaByEvolutionInstance(supabase, enviada.instance);
-    if (loja) await marcarConversaDaLoja(supabase, loja.owner_id, enviada.phone);
-    return json({ ok: true, skipped: "from_me" });
+    const origem = loja
+      ? await registrarMensagemDaLoja(supabase, loja.owner_id, enviada.phone, enviada.text)
+      : null;
+    return json({ ok: true, skipped: "from_me", origem });
   }
 
   const parsed = parseEvolutionWebhook(payload);

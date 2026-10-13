@@ -7,7 +7,7 @@ import type {
   SessionDados,
   WhatsappSession,
 } from "./format.ts";
-import { normalizeBrazilMobile, normalizePhone } from "./format.ts";
+import { botTextoKey, normalizeBrazilMobile, normalizePhone } from "./format.ts";
 
 export function createServiceClient(): SupabaseClient {
   const url = Deno.env.get("SUPABASE_URL");
@@ -171,23 +171,71 @@ export async function lojaFalouComCliente(
   return !!(logs.data?.length || marketing.data?.length);
 }
 
-/**
- * Mensagem saiu do WhatsApp da loja (dono pelo celular): marca a conversa como ativa para o
- * robô não mandar boas-vindas na resposta do cliente.
- */
-export async function marcarConversaDaLoja(
+/** A mensagem que saiu do WhatsApp da loja é uma notificação automática (status/marketing)? */
+async function ehMensagemAutomatica(
   supabase: SupabaseClient,
   ownerId: string,
   telefone: string,
-): Promise<void> {
+  chave: string,
+): Promise<boolean> {
+  if (!chave) return false;
+  const phone = normalizeBrazilMobile(telefone)?.formatted ?? telefone.replace(/\D/g, "");
+  const desde = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const recentes = (tabela: string, coluna: string) =>
+    supabase
+      .from(tabela)
+      .select(coluna)
+      .eq("owner_id", ownerId)
+      .eq("telefone", phone)
+      .gte("enviado_em", desde)
+      .limit(10);
+
+  const [logs, marketing] = await Promise.all([
+    recentes("whatsapp_logs", "mensagem_enviada"),
+    recentes("marketing_envios", "mensagem"),
+  ]);
+  const textos = [
+    ...((logs.data ?? []) as unknown as { mensagem_enviada: string }[]).map((l) => l.mensagem_enviada),
+    ...((marketing.data ?? []) as unknown as { mensagem: string }[]).map((m) => m.mensagem),
+  ];
+  return textos.some((t) => botTextoKey(t || "") === chave);
+}
+
+/**
+ * Uma mensagem saiu do WhatsApp da loja. Se não foi o robô nem uma notificação automática,
+ * foi o dono digitando: ele assumiu a conversa, então o robô sai do pedido em andamento e
+ * fica em silêncio (sem boas-vindas na próxima resposta do cliente).
+ */
+export async function registrarMensagemDaLoja(
+  supabase: SupabaseClient,
+  ownerId: string,
+  telefone: string,
+  texto: string,
+): Promise<"robo" | "automatica" | "dono"> {
   const phone = normalizePhone(telefone);
+  const chave = botTextoKey(texto);
+  const lerSessao = () =>
+    supabase
+      .from("whatsapp_pedido_sessions")
+      .select("id, etapa, dados")
+      .eq("owner_id", ownerId)
+      .eq("telefone", phone)
+      .maybeSingle();
+
+  const { data: antes } = await lerSessao();
+  if (chave && (antes?.dados as SessionDados | undefined)?.bot_textos?.includes(chave)) return "robo";
+
+  // O log da notificação é gravado logo depois do envio; espera um instante antes de consultar.
+  await new Promise((r) => setTimeout(r, 1500));
+  const automatica = await ehMensagemAutomatica(supabase, ownerId, telefone, chave);
+
+  const { data } = await lerSessao();
+  const dados = (data?.dados ?? { carrinho: [] }) as SessionDados;
+  if (chave && dados.bot_textos?.includes(chave)) return "robo";
+
   const agora = new Date().toISOString();
-  const { data } = await supabase
-    .from("whatsapp_pedido_sessions")
-    .select("id, dados")
-    .eq("owner_id", ownerId)
-    .eq("telefone", phone)
-    .maybeSingle();
+  const ultima = dados.boas_vindas_em ? Date.parse(dados.boas_vindas_em) : 0;
+  const marcadoHaPouco = Date.now() - ultima < 60 * 60 * 1000;
 
   if (!data) {
     await supabase.from("whatsapp_pedido_sessions").insert({
@@ -196,19 +244,62 @@ export async function marcarConversaDaLoja(
       etapa: "inicio",
       dados: { carrinho: [], boas_vindas_em: agora },
     });
-    return;
+    return automatica ? "automatica" : "dono";
   }
 
-  const dados = (data.dados ?? {}) as SessionDados;
-  // Marcado há pouco (inclui as próprias respostas do robô): não reescreve a sessão,
-  // para não disputar com o fluxo que está em andamento.
-  const ultima = dados.boas_vindas_em ? Date.parse(dados.boas_vindas_em) : 0;
-  if (Date.now() - ultima < 60 * 60 * 1000) return;
+  if (automatica) {
+    // Só lembra que a loja falou com o cliente; não mexe no pedido em andamento.
+    if (!marcadoHaPouco) {
+      await supabase
+        .from("whatsapp_pedido_sessions")
+        .update({ dados: { ...dados, boas_vindas_em: agora } })
+        .eq("id", data.id);
+    }
+    return "automatica";
+  }
 
-  await supabase
+  const emAtendimentoLivre = data.etapa === "inicio" && !dados.bot_ativo && !dados.carrinho?.length;
+  if (!emAtendimentoLivre || !marcadoHaPouco) {
+    await supabase
+      .from("whatsapp_pedido_sessions")
+      .update({
+        etapa: "inicio",
+        dados: {
+          carrinho: [],
+          sender_name: dados.sender_name,
+          boas_vindas_em: agora,
+          bot_textos: dados.bot_textos,
+        },
+        atualizado_em: agora,
+      })
+      .eq("id", data.id);
+  }
+  return "dono";
+}
+
+/**
+ * Grava a sessão só se ninguém a alterou desde a leitura. Evita respostas repetidas quando
+ * o cliente manda várias mensagens seguidas e elas são processadas ao mesmo tempo.
+ */
+export async function atualizarSessaoSeInalterada(
+  supabase: SupabaseClient,
+  session: WhatsappSession,
+  etapa: Etapa,
+  dados: SessionDados,
+  messageId?: string,
+): Promise<boolean> {
+  const { data } = await supabase
     .from("whatsapp_pedido_sessions")
-    .update({ dados: { ...dados, boas_vindas_em: agora } })
-    .eq("id", data.id);
+    .update({
+      etapa,
+      dados,
+      ultimo_message_id: messageId ?? null,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq("id", session.id)
+    .eq("atualizado_em", session.atualizado_em)
+    .select("id");
+  return (data?.length ?? 0) > 0;
 }
 
 /** Cliente pediu atendente: cria (ou renova) o aviso pendente que aparece no painel. */

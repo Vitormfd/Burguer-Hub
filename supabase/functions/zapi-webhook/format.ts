@@ -90,6 +90,8 @@ export interface SessionDados {
   boas_vindas_em?: string;
   /** Respostas inválidas seguidas; no limite o bot sai e deixa para o atendente. */
   invalidas?: number;
+  /** Evolution: início das últimas mensagens que o robô enviou (ver botTextoKey). */
+  bot_textos?: string[];
   /** Itens entendidos pela IA que ainda precisam de escolhas obrigatórias (um por vez). */
   ia_pendentes?: ProdutoTempWa[];
 }
@@ -188,6 +190,12 @@ export interface OutboundMessage {
     options: { id: string; title: string; description: string }[];
   };
 }
+
+/**
+ * Chave curta de uma mensagem enviada. Serve para reconhecer, entre as mensagens que saem do
+ * WhatsApp da loja, quais foram do robô/sistema e quais o dono digitou no celular.
+ */
+export const botTextoKey = (text: string): string => text.trim().slice(0, 48);
 
 /** Lista de opções como texto numerado (Evolution / listas grandes). */
 export const formatOptionListAsText = (message: OutboundMessage): string => {

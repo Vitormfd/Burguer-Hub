@@ -178,12 +178,18 @@ const contactPhone = (key: EvolutionKey): string | null => {
 };
 
 /** Mensagem enviada pelo WhatsApp da loja (robô ou o dono pelo celular) para um cliente. */
-export function parseEvolutionFromMe(payload: EvolutionWebhookPayload): { instance: string; phone: string } | null {
+export function parseEvolutionFromMe(
+  payload: EvolutionWebhookPayload,
+): { instance: string; phone: string; text: string } | null {
   const key = payload.data?.key;
   if (!isUpsert(payload) || !payload.instance || !key?.fromMe) return null;
   if (isGroupOrBroadcast(key.remoteJid || "")) return null;
   const phone = contactPhone(key);
-  return phone ? { instance: payload.instance, phone } : null;
+  if (!phone) return null;
+  const msg = payload.data?.message;
+  // Vazio para mídia (foto, áudio...) — o robô só envia texto.
+  const text = msg?.conversation || msg?.extendedTextMessage?.text || "";
+  return { instance: payload.instance, phone, text };
 }
 
 /**

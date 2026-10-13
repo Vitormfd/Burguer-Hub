@@ -1,5 +1,6 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  atualizarSessaoSeInalterada,
   createWhatsappOrder,
   isLojaAberta,
   loadBairros,
@@ -16,6 +17,7 @@ import {
 } from "./db.ts";
 import {
   AJUDA_TEXTO,
+  botTextoKey,
   brl,
   buildCardapioUrl,
   cartSubtotal,
@@ -55,6 +57,8 @@ interface FlowResult {
   noReply?: boolean;
   /** Resposta não reconhecida (conta para MAX_TENTATIVAS_INVALIDAS) */
   invalid?: boolean;
+  /** Robô desistiu do pedido automático: avisa o dono no painel */
+  handoff?: boolean;
 }
 
 const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
@@ -63,7 +67,9 @@ const MENU_PRINCIPAL = "*1* — Fazer pedido\n*2* — Ver cardápio online\n*3* 
 /** Boas-vindas no máximo uma vez nesse intervalo por cliente. */
 const BOAS_VINDAS_INTERVALO_MS = 12 * 60 * 60 * 1000;
 /** Depois de N respostas inválidas seguidas o bot sai e deixa a conversa para o atendente. */
-const MAX_TENTATIVAS_INVALIDAS = 3;
+const MAX_TENTATIVAS_INVALIDAS = 2;
+/** Quantas mensagens enviadas o robô lembra por cliente (ver botTextoKey). */
+const BOT_TEXTOS_LEMBRADOS = 12;
 
 const FORMAS_PAGAMENTO = [
   { id: "pix", title: "PIX", description: "" },
@@ -81,7 +87,20 @@ function showMenuPrincipal(dados: SessionDados, intro?: string): FlowResult {
 
 function invalidInput(etapa: Etapa, dados: SessionDados, hint: string): FlowResult {
   const invalidas = (dados.invalidas || 0) + 1;
-  if (invalidas >= MAX_TENTATIVAS_INVALIDAS) return silentExit(dados);
+  if (invalidas >= MAX_TENTATIVAS_INVALIDAS) {
+    // Cliente está conversando, não escolhendo opção: uma última mensagem e o robô se cala.
+    return {
+      messages: [
+        textMsg(
+          "Tudo bem! Pausei o pedido automático e avisei a loja — um atendente continua com você por aqui. 🙂\n\nPara voltar ao pedido automático, digite *menu*.",
+        ),
+      ],
+      etapa: "inicio",
+      dados: emptyDados(dados.sender_name),
+      clearSession: true,
+      handoff: true,
+    };
+  }
   return { messages: [textMsg(hint)], etapa, dados: { ...dados, invalidas }, invalid: true };
 }
 
@@ -1273,14 +1292,31 @@ export async function handleIncomingMessage(
   }
   // A sessão nunca é apagada: guarda quando a boas-vindas foi enviada para não repetir.
   dados.boas_vindas_em ??= session?.dados.boas_vindas_em;
+  // Qualquer resposta do robô conta como conversa ativa (nada de boas-vindas logo depois).
+  if (!result.noReply && result.messages.length) dados.boas_vindas_em = new Date().toISOString();
   if (!result.invalid) delete dados.invalidas;
 
   if (isEvolution) {
     const lista = [...result.messages].reverse().find((m) => m.optionList?.options.length);
     dados.opcoes_numeradas = lista?.optionList?.options.map((o) => o.id);
+    // Para reconhecer depois que essas mensagens saíram do robô, e não do dono no celular.
+    dados.bot_textos = [
+      ...(session?.dados.bot_textos ?? []),
+      ...result.messages.map((m) => botTextoKey(formatOptionListAsText(m))),
+    ].slice(-BOT_TEXTOS_LEMBRADOS);
   }
 
-  await upsertSession(supabase, cfg.owner_id, telefone, etapa, dados, messageId);
+  if (session && (result.invalid || result.handoff)) {
+    // Mensagens seguidas processadas ao mesmo tempo: só uma delas responde.
+    const gravou = await atualizarSessaoSeInalterada(supabase, session, etapa, dados, messageId);
+    if (!gravou) return;
+  } else {
+    await upsertSession(supabase, cfg.owner_id, telefone, etapa, dados, messageId);
+  }
+
+  if (result.handoff) {
+    await registrarPedidoAtendente(supabase, cfg.owner_id, telefone, dados.sender_name);
+  }
 
   if (result.noReply) return;
 

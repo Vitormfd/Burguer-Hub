@@ -14,7 +14,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { fetchFaturamentoPeriodo } from "@/lib/faturamento";
 import { brl } from "@/lib/format";
-import { printReceipt, loadPrintAdicionaisPorItem } from "@/lib/print";
+import { printReceipt, loadPrintAdicionaisPorItem, loadPrintDescontoPedido } from "@/lib/print";
 import { toast } from "sonner";
 import type { FormaPagamento, PedidoStatus, PedidoTipo, TipoEntrega } from "@/types/db";
 import { Badge } from "@/components/ui/badge";
@@ -390,11 +390,14 @@ export default function HistoricoPedidos() {
       return;
     }
 
-    const { data: entrega } = await supabase
-      .from("entregas")
-      .select("endereco, numero, complemento, bairro, troco_para, pago")
-      .eq("pedido_id", row.id)
-      .maybeSingle();
+    const [{ data: entrega }, descontoPedido] = await Promise.all([
+      supabase
+        .from("entregas")
+        .select("endereco, numero, complemento, bairro, troco_para, pago")
+        .eq("pedido_id", row.id)
+        .maybeSingle(),
+      loadPrintDescontoPedido(row.id),
+    ]);
 
     printReceipt({
       tipo: row.tipo_entrega === "retirada" ? "retirada" : "delivery",
@@ -406,6 +409,8 @@ export default function HistoricoPedidos() {
       complemento: entrega?.complemento,
       bairro: entrega?.bairro,
       taxa_entrega: row.taxa_entrega,
+      desconto: descontoPedido.desconto,
+      cupom_codigo: descontoPedido.cupom_codigo,
       forma_pagamento: row.forma_pagamento,
       pago: entrega?.pago ?? row.pago ?? false,
       troco_para: entrega?.troco_para != null ? Number(entrega.troco_para) : null,

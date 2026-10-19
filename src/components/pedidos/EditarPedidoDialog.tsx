@@ -19,7 +19,7 @@ import {
   updateDeliveryPedidoTotals,
 } from "@/lib/pedidoEdit";
 import { brl } from "@/lib/format";
-import { printReceipt, mapCartToPrintItems } from "@/lib/print";
+import { printReceipt, mapCartToPrintItems, loadPrintDescontoPedido } from "@/lib/print";
 import type { Configuracao } from "@/types/db";
 
 const deliverySchema = z.object({
@@ -243,6 +243,8 @@ export default function EditarPedidoDialog({
           const trocoNum = formaPagamento === "dinheiro"
             ? (Number(String(trocoPara).replace(",", ".")) || null)
             : null;
+          const descontoPedido = await loadPrintDescontoPedido(pedidoId);
+          const taxaPrint = tipoEntrega === "retirada" ? 0 : deliveryParsed.taxa_entrega;
           printReceipt({
             tipo: tipoEntrega,
             loja_nome: cfg?.nome_loja,
@@ -253,12 +255,14 @@ export default function EditarPedidoDialog({
             complemento: deliveryParsed.complemento || null,
             bairro: deliveryParsed.bairro || null,
             taxa_entrega: deliveryParsed.taxa_entrega,
+            desconto: descontoPedido.desconto,
+            cupom_codigo: descontoPedido.cupom_codigo,
             forma_pagamento: formaPagamento,
             pago,
             troco_para: trocoNum,
             itens: mapCartToPrintItems(cart),
             subtotal,
-            total: subtotal + deliveryParsed.taxa_entrega,
+            total: Math.max(subtotal + taxaPrint - descontoPedido.desconto, 0),
             criado_em: new Date().toISOString(),
           });
         }

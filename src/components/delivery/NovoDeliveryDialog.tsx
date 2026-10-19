@@ -14,6 +14,9 @@ import { brl } from "@/lib/format";
 import { printReceipt, mapCartToPrintItems } from "@/lib/print";
 import { insertPedidoItemAdicionais, type PedidoItemAdicionalInsert } from "@/lib/pedidoItemAdicionais";
 import { buildWhatsappPedidoDados, sendWhatsapp } from "@/lib/whatsapp";
+import {
+  calcularDescontoCupom, registrarUsoCupomBalcao, validarCupomBalcao, type CupomBalcao,
+} from "@/lib/cupomBalcao";
 import type { Cliente, Configuracao, Categoria } from "@/types/db";
 
 const deliverySchema = z.object({
@@ -61,6 +64,9 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
   const [formaPagamento, setFormaPagamento] = useState<"dinheiro" | "pix" | "cartao">("pix");
   const [pago, setPago] = useState(false);
   const [trocoPara, setTrocoPara] = useState("");
+  const [cupomCodigo, setCupomCodigo] = useState("");
+  const [cupomAplicado, setCupomAplicado] = useState<CupomBalcao | null>(null);
+  const [cupomBusy, setCupomBusy] = useState(false);
   const bairroWrapRef = useRef<HTMLDivElement>(null);
   const clienteWrapRef = useRef<HTMLDivElement>(null);
 
@@ -140,6 +146,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     setFormaPagamento("pix");
     setPago(false);
     setTrocoPara("");
+    setCupomCodigo("");
+    setCupomAplicado(null);
   };
 
   const handleSelectCliente = (cliente: Cliente) => {
@@ -234,6 +242,29 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     [taxaBairro, subtotal, cfg, bairroSelecionado, bloqueiaFreteGratis],
   );
   const taxaNum = taxaCalculada.taxaEfetiva;
+  const descontoCupom = cupomAplicado ? calcularDescontoCupom(cupomAplicado, subtotal, taxaNum) : 0;
+  const totalPedido = Math.max(subtotal + taxaNum - descontoCupom, 0);
+
+  const aplicarCupom = async () => {
+    if (!cart.length) return toast.error("Adicione os itens antes do cupom");
+    setCupomBusy(true);
+    try {
+      const cupom = await validarCupomBalcao({ codigo: cupomCodigo, telefone: tel, subtotal, cart });
+      setCupomAplicado(cupom);
+      setCupomCodigo(cupom.codigo);
+      toast.success(`Cupom ${cupom.codigo} aplicado`);
+    } catch (err) {
+      setCupomAplicado(null);
+      toast.error(err instanceof Error ? err.message : "Cupom inválido ou inexistente");
+    } finally {
+      setCupomBusy(false);
+    }
+  };
+
+  const removerCupom = () => {
+    setCupomAplicado(null);
+    setCupomCodigo("");
+  };
 
   const handleConfirm = async () => {
     const items = cart;
@@ -250,13 +281,47 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
     });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
 
+    // Carrinho pode ter mudado depois de aplicar o cupom: revalida as regras.
+    let cupom: CupomBalcao | null = null;
+    if (cupomAplicado) {
+      try {
+        cupom = await validarCupomBalcao({ codigo: cupomAplicado.codigo, telefone: tel, subtotal, cart: items });
+      } catch (err) {
+        return toast.error(err instanceof Error ? err.message : "Cupom inválido ou inexistente");
+      }
+    }
+    const desconto = cupom ? calcularDescontoCupom(cupom, subtotal, taxaNum) : 0;
+    const total = Math.max(subtotal + taxaNum - desconto, 0);
+
     setBusy(true);
     // 1. Pedido
     const { data: pedido, error: e1 } = await supabase
       .from("pedidos")
-      .insert({ conta_id: null, tipo: "delivery", status: "pendente" })
+      .insert({
+        conta_id: null,
+        tipo: "delivery",
+        status: "pendente",
+        cupom_id: cupom?.id ?? null,
+        valor_desconto: desconto,
+      })
       .select().single();
     if (e1 || !pedido) { setBusy(false); return toast.error(e1?.message || "Erro"); }
+
+    if (cupom) {
+      try {
+        await registrarUsoCupomBalcao({
+          cupomId: cupom.id,
+          pedidoId: pedido.id,
+          telefone: parsed.data.cliente_telefone,
+          clienteId: clienteSelecionado || null,
+          valorDesconto: desconto,
+        });
+      } catch (err) {
+        await supabase.from("pedidos").delete().eq("id", pedido.id);
+        setBusy(false);
+        return toast.error(err instanceof Error ? err.message : "Não foi possível usar o cupom");
+      }
+    }
 
     // 2. Itens
     const rows = items.map((i) => ({
@@ -317,7 +382,8 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         buildWhatsappPedidoDados(items, {
           nome: parsed.data.cliente_nome,
           taxaEntrega: parsed.data.taxa_entrega,
-          total: brl(subtotal + parsed.data.taxa_entrega),
+          desconto,
+          total: brl(total),
         })
       );
     }
@@ -335,12 +401,14 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
         complemento: parsed.data.complemento || null,
         bairro: parsed.data.bairro || null,
         taxa_entrega: parsed.data.taxa_entrega,
+        desconto,
+        cupom_codigo: cupom?.codigo ?? null,
         forma_pagamento: formaPagamento,
         pago,
         troco_para: trocoNum,
         itens: mapCartToPrintItems(items),
         subtotal,
-        total: subtotal + taxaNum,
+        total,
         criado_em: new Date().toISOString(),
       });
     }
@@ -521,18 +589,62 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
               disabled={formaPagamento !== "dinheiro"}
             />
           </div>
+          <div className="col-span-2 md:col-span-3 space-y-1">
+            <Label htmlFor="d-cupom" className="text-xs">Cupom (opcional)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="d-cupom"
+                className="h-9 uppercase"
+                value={cupomCodigo}
+                onChange={(e) => setCupomCodigo(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !cupomAplicado) {
+                    e.preventDefault();
+                    void aplicarCupom();
+                  }
+                }}
+                placeholder="Código do cupom"
+                maxLength={40}
+                disabled={!!cupomAplicado}
+                autoComplete="off"
+              />
+              {cupomAplicado ? (
+                <Button type="button" variant="outline" className="h-9" onClick={removerCupom}>
+                  Remover
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => void aplicarCupom()}
+                  disabled={cupomBusy || !cupomCodigo.trim()}
+                >
+                  {cupomBusy ? "Validando..." : "Aplicar"}
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col">
           <CardapioSelector
             cart={cart}
             onCartChange={setCart}
-            extraTotal={taxaNum}
+            extraTotal={taxaNum - descontoCupom}
             extraRow={
-              <div className={`flex justify-between text-xs ${taxaCalculada.freteGratis ? "text-emerald-700" : ""}`}>
-                <span>Taxa de entrega</span>
-                <span>{taxaCalculada.freteGratis ? "Grátis" : brl(taxaNum)}</span>
-              </div>
+              <>
+                <div className={`flex justify-between text-xs ${taxaCalculada.freteGratis ? "text-emerald-700" : ""}`}>
+                  <span>Taxa de entrega</span>
+                  <span>{taxaCalculada.freteGratis ? "Grátis" : brl(taxaNum)}</span>
+                </div>
+                {cupomAplicado && (
+                  <div className="flex justify-between text-xs text-emerald-700">
+                    <span>Cupom {cupomAplicado.codigo}</span>
+                    <span>- {brl(descontoCupom)}</span>
+                  </div>
+                )}
+              </>
             }
             heightClass="h-full min-h-[240px]"
             layout="list"
@@ -552,7 +664,7 @@ export default function NovoDeliveryDialog({ open, onClose, onCreated }: Props) 
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleClose} disabled={busy}>Cancelar</Button>
             <Button onClick={handleConfirm} disabled={busy} size="lg">
-              {busy ? "Enviando..." : `Confirmar pedido — ${brl(subtotal + taxaNum)}`}
+              {busy ? "Enviando..." : `Confirmar pedido — ${brl(totalPedido)}`}
             </Button>
           </div>
         </div>

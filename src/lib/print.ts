@@ -110,6 +110,33 @@ export function mapCartToPrintItems(cart: Cart): PrintItem[] {
   }));
 }
 
+export interface PrintDescontoPedido {
+  /** Soma de fidelidade + cupom + promoção. */
+  desconto: number;
+  cupom_codigo: string | null;
+}
+
+/** Descontos gravados no pedido (fidelidade, cupom e promoção) para a notinha. */
+export async function loadPrintDescontoPedido(pedidoId: string): Promise<PrintDescontoPedido> {
+  const { data } = await (supabase as any)
+    .from("pedidos")
+    .select("desconto, valor_desconto, valor_desconto_promocao, cupons(codigo)")
+    .eq("id", pedidoId)
+    .maybeSingle();
+
+  if (!data) return { desconto: 0, cupom_codigo: null };
+
+  const desconto =
+    Number(data.desconto || 0) +
+    Number(data.valor_desconto || 0) +
+    Number(data.valor_desconto_promocao || 0);
+
+  return {
+    desconto,
+    cupom_codigo: (data.cupons as { codigo?: string } | null)?.codigo ?? null,
+  };
+}
+
 export async function loadPrintAdicionaisPorItem(
   itemIds: string[],
 ): Promise<Map<string, PrintAdicional[]>> {
@@ -385,6 +412,9 @@ export function printReceipt(data: PrintData, config?: PrintConfig): void {
     body += `<div class="subtotal-line"><span>${data.tipo === "retirada" ? "Taxa" : "Taxa de entrega"}</span><span>${brlPrint(data.taxa_entrega)}</span></div>`;
     if (data.desconto && data.desconto > 0) {
       body += `<div class="subtotal-line"><span>Desconto${data.cupom_codigo ? ` (${esc(data.cupom_codigo)})` : ""}</span><span>- ${brlPrint(data.desconto)}</span></div>`;
+    } else if (data.cupom_codigo) {
+      // Cupom sem valor em dinheiro (ex.: frete grátis) — ainda avisa a loja.
+      body += `<div class="subtotal-line"><span>Cupom</span><span>${esc(data.cupom_codigo)}</span></div>`;
     }
     body += `<div class="total-line"><span>TOTAL</span><span>${brlPrint(data.total)}</span></div>`;
     if (data.forma_pagamento) {

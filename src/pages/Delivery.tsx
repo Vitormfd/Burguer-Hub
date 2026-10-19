@@ -31,7 +31,7 @@ import {
   pedidoCancelavel,
   type MotivoCancelamento,
 } from "@/lib/pedidoCancelamento";
-import { printReceipt, loadPrintAdicionaisPorItem } from "@/lib/print";
+import { printReceipt, loadPrintAdicionaisPorItem, loadPrintDescontoPedido } from "@/lib/print";
 import { sendWhatsapp } from "@/lib/whatsapp";
 import { loadPedidosDeliveryBoard } from "@/lib/deliveryBoard";
 import type { PedidoStatus } from "@/types/db";
@@ -250,7 +250,10 @@ export default function Delivery() {
         supabase.from("configuracoes").select("*").limit(1).maybeSingle(),
       ]);
 
-      const adPorItem = await loadPrintAdicionaisPorItem(itemIds);
+      const [adPorItem, descontoPedido] = await Promise.all([
+        loadPrintAdicionaisPorItem(itemIds),
+        loadPrintDescontoPedido(row.pedido_id),
+      ]);
 
       const prodMap = new Map((produtos || []).map((p) => [p.id, p.nome as string]));
 
@@ -270,6 +273,8 @@ export default function Delivery() {
         complemento: row.complemento,
         bairro: row.bairro,
         taxa_entrega: row.taxa_entrega,
+        desconto: descontoPedido.desconto,
+        cupom_codigo: descontoPedido.cupom_codigo,
         forma_pagamento: (entrega as { forma_pagamento?: string | null } | null)?.forma_pagamento ?? null,
         pago: (entrega as { pago?: boolean } | null)?.pago ?? false,
         troco_para: (entrega as { troco_para?: number | null } | null)?.troco_para != null
@@ -283,7 +288,10 @@ export default function Delivery() {
           adicionais: adPorItem.get(i.id) ?? [],
         })),
         subtotal: row.itens_total,
-        total: row.itens_total + (row.tipo_entrega === "retirada" ? 0 : row.taxa_entrega),
+        total: Math.max(
+          row.itens_total + (row.tipo_entrega === "retirada" ? 0 : row.taxa_entrega) - descontoPedido.desconto,
+          0,
+        ),
         criado_em: row.criado_em,
       });
     } catch (err) {

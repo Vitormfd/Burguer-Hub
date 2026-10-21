@@ -59,6 +59,8 @@ interface FlowResult {
   invalid?: boolean;
   /** Robô desistiu do pedido automático: avisa o dono no painel */
   handoff?: boolean;
+  /** Aviso de loja fechada: não conta como conversa (a boas-vindas sai normal quando abrir) */
+  avisoFechado?: boolean;
 }
 
 const BOT_START_COMMANDS = ["menu", "cardapio", "cardápio", "pedido", "inicio"];
@@ -139,6 +141,36 @@ function silentExit(dados: SessionDados): FlowResult {
     dados: emptyDados(dados.sender_name),
     clearSession: true,
     noReply: true,
+  };
+}
+
+/** Loja fechada: só avisa que está fechada (uma vez) — nada de menu, cardápio ou IA. */
+async function avisarLojaFechada(
+  supabase: SupabaseClient,
+  cfg: LojaConfig,
+  telefone: string,
+  etapa: Etapa,
+  dados: SessionDados,
+  text: string,
+): Promise<FlowResult> {
+  const silencio: FlowResult = { messages: [], etapa, dados, noReply: true };
+  const avisado = dados.fechado_avisado_em ? Date.parse(dados.fechado_avisado_em) : 0;
+  if (Date.now() - avisado < BOAS_VINDAS_INTERVALO_MS) return silencio;
+
+  if (!isBotFlowActive(etapa, dados) && !BOT_START_COMMANDS.includes(text)) {
+    // Conversa livre com a loja (dono respondeu ou notificação recente): o robô não se mete.
+    const ultima = dados.boas_vindas_em ? Date.parse(dados.boas_vindas_em) : 0;
+    if (Date.now() - ultima < BOAS_VINDAS_INTERVALO_MS) return silencio;
+    if (await lojaFalouComCliente(supabase, cfg.owner_id, telefone, BOAS_VINDAS_INTERVALO_MS)) {
+      return silencio;
+    }
+  }
+
+  return {
+    messages: [textMsg("🕐 Estamos fechados no momento.")],
+    etapa,
+    dados: { ...dados, fechado_avisado_em: new Date().toISOString() },
+    avisoFechado: true,
   };
 }
 
@@ -562,6 +594,15 @@ export async function processMessage(
   let dados: SessionDados = session?.dados || emptyDados(senderName);
   if (senderName && !dados.sender_name) dados.sender_name = senderName;
 
+  if (!isLojaAberta(cfg)) {
+    return avisarLojaFechada(supabase, cfg, telefone, etapa, dados, text);
+  }
+  if (dados.fechado_avisado_em) {
+    // Abriu: o próximo período fechado ganha um aviso novo.
+    dados = { ...dados };
+    delete dados.fechado_avisado_em;
+  }
+
   // Comandos globais
   if (["ajuda", "help", "comandos"].includes(text)) {
     return { messages: [textMsg(AJUDA_TEXTO)], etapa, dados };
@@ -812,14 +853,6 @@ export async function processMessage(
       if (selected === "2" || text === "2" || text === "finalizar") {
         if (!dados.carrinho.length) {
           return showMenuPrincipal(dados, "Seu carrinho está vazio.");
-        }
-
-        if (!isLojaAberta(cfg)) {
-          return {
-            messages: [textMsg("🕐 Estamos fechados no momento. Você pode montar o carrinho, mas não é possível finalizar agora.")],
-            etapa: "carrinho",
-            dados,
-          };
         }
 
         return {
@@ -1293,7 +1326,7 @@ export async function handleIncomingMessage(
   // A sessão nunca é apagada: guarda quando a boas-vindas foi enviada para não repetir.
   dados.boas_vindas_em ??= session?.dados.boas_vindas_em;
   // Qualquer resposta do robô conta como conversa ativa (nada de boas-vindas logo depois).
-  if (!result.noReply && result.messages.length) dados.boas_vindas_em = new Date().toISOString();
+  if (!result.noReply && !result.avisoFechado && result.messages.length) dados.boas_vindas_em = new Date().toISOString();
   if (!result.invalid) delete dados.invalidas;
 
   if (isEvolution) {
@@ -1306,7 +1339,7 @@ export async function handleIncomingMessage(
     ].slice(-BOT_TEXTOS_LEMBRADOS);
   }
 
-  if (session && (result.invalid || result.handoff)) {
+  if (session && (result.invalid || result.handoff || result.avisoFechado)) {
     // Mensagens seguidas processadas ao mesmo tempo: só uma delas responde.
     const gravou = await atualizarSessaoSeInalterada(supabase, session, etapa, dados, messageId);
     if (!gravou) return;

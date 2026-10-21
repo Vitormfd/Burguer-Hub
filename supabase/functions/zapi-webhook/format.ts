@@ -88,6 +88,8 @@ export interface SessionDados {
   opcoes_numeradas?: string[];
   /** Quando a boas-vindas foi enviada — evita repetir a cada mensagem. */
   boas_vindas_em?: string;
+  /** Quando o aviso de loja fechada foi enviado — um aviso por período fechado. */
+  fechado_avisado_em?: string;
   /** Respostas inválidas seguidas; no limite o bot sai e deixa para o atendente. */
   invalidas?: number;
   /** Evolution: início das últimas mensagens que o robô enviou (ver botTextoKey). */

@@ -422,7 +422,8 @@ interesse | pergunta_preco | pergunta_funcionalidade | quer_demonstracao | pediu
 Depois escreva a resposta (campo resposta), seguindo:
 - Explique só os benefícios mais relevantes para a pergunta. Respostas curtas (até ~600 caracteres).
 - Preço: informe exatamente o que está nos fatos do produto.
-- Quer conhecer ou pediu link: envie o link de cadastro e explique os próximos passos reais (criar a conta, cadastrar o cardápio no painel, divulgar o link).
+- Quer conhecer ou pediu link: envie o link do site e pergunte se quer conversar com a equipe para ativar. Nunca envie link de cadastro ou login.
+- Quer contratar, testar, ativar a conta ou saber como começa: precisa_humano = true e diga que alguém da equipe continua o atendimento por aqui para ativar a conta.
 - Usa Anota AI ou outro sistema: ajude a comparar recursos e custos sem prometer migração automática.
 - Dúvida técnica ou comercial que os fatos não respondem, negociação, pedido de desconto, demonstração ao vivo, irritação ou assunto sensível: precisa_humano = true e uma resposta curta dizendo que alguém da equipe vai retornar.
 - sem_interesse ou nao_contatar: resposta vazia (o sistema envia o encerramento padrão).

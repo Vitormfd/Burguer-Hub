@@ -35,7 +35,7 @@ interface Config {
   preco_mensal: number;
   teste_gratis_dias: number;
   bot_whatsapp: "incluso" | "nao_incluso" | "consultar";
-  link_cadastro: string;
+  link_site: string;
   link_demo: string;
   nome_remetente: string;
   evolution_instance: string;
@@ -57,7 +57,7 @@ const CAMPOS_EDITAVEIS: (keyof Config)[] = [
   "ativo", "dias_semana", "hora_inicio", "hora_fim", "fuso", "minutos_diarios", "meta_qualificados_dia", "meta_contatos_dia",
   "peso_anota_ai", "peso_sem_sistema", "pontuacao_minima", "limite_gasto_diario_usd", "limite_gasto_mensal_usd",
   "limite_buscas_web_dia", "limite_places_dia", "limite_respostas_ia_dia", "cotacao_dolar", "preco_mensal", "teste_gratis_dias",
-  "bot_whatsapp", "link_cadastro", "link_demo", "nome_remetente", "evolution_instance", "responder_automatico", "telefone_alertas",
+  "bot_whatsapp", "link_site", "link_demo", "nome_remetente", "evolution_instance", "responder_automatico", "telefone_alertas",
 ];
 
 export function ProspeccaoConfig({ onSalvo }: { onSalvo: () => void }) {
@@ -249,8 +249,8 @@ export function ProspeccaoConfig({ onSalvo }: { onSalvo: () => void }) {
               <Input value={cfg.nome_remetente} onChange={(e) => set("nome_remetente", e.target.value)} />
             </Campo>
           </div>
-          <Campo rotulo="Link de cadastro">
-            <Input value={cfg.link_cadastro} onChange={(e) => set("link_cadastro", e.target.value)} />
+          <Campo rotulo="Link do site enviado nas conversas (nunca o de cadastro)">
+            <Input value={cfg.link_site} onChange={(e) => set("link_site", e.target.value)} />
           </Campo>
           <Campo rotulo="Link de cardápio de demonstração (opcional)">
             <Input value={cfg.link_demo} placeholder="https://easyfoodhub.com.br/sua-loja-demo/cardapio" onChange={(e) => set("link_demo", e.target.value)} />

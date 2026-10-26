@@ -107,7 +107,7 @@ export interface ConfigProspeccao {
   preco_mensal: number;
   teste_gratis_dias: number;
   bot_whatsapp: "incluso" | "nao_incluso" | "consultar";
-  link_cadastro: string;
+  link_site: string;
   link_demo: string;
   nome_remetente: string;
   responder_automatico: boolean;
@@ -1055,7 +1055,7 @@ export function efeitoDaIntencao(intencao: Intencao, statusAtual: StatusProspect
       return { status: avancado("demonstracao"), interesse: "alto", bloquear: false, humano: true, proximaAcao: "Agendar demonstração" };
     case "interesse":
     case "pediu_link":
-      return { status: avancado("interessado"), interesse: "alto", bloquear: false, humano: false, proximaAcao: "Acompanhar cadastro" };
+      return { status: avancado("interessado"), interesse: "alto", bloquear: false, humano: false, proximaAcao: "Acompanhar e fechar contratação" };
     case "pergunta_preco":
     case "pergunta_funcionalidade":
       return { status: avancado("interessado"), interesse: "medio", bloquear: false, humano: false, proximaAcao: "Responder dúvidas" };
@@ -1212,7 +1212,7 @@ export function classificarErro(err: unknown): { tipo: TipoErro; mensagem: strin
 }
 
 /** Texto com os fatos comerciais confirmados. A IA não pode afirmar nada além disto. */
-export function fatosDoProduto(cfg: Pick<ConfigProspeccao, "preco_mensal" | "teste_gratis_dias" | "bot_whatsapp" | "link_cadastro" | "link_demo" | "nome_remetente">): string {
+export function fatosDoProduto(cfg: Pick<ConfigProspeccao, "preco_mensal" | "teste_gratis_dias" | "bot_whatsapp" | "link_site" | "link_demo" | "nome_remetente">): string {
   const preco = cfg.preco_mensal.toFixed(2).replace(".", ",").replace(",00", "");
   const linhas = [
     `PREÇO: R$ ${preco} por mês (plano único). Não existem descontos, promoções ou outros planos além disto.`,
@@ -1224,7 +1224,8 @@ export function fatosDoProduto(cfg: Pick<ConfigProspeccao, "preco_mensal" | "tes
       : cfg.bot_whatsapp === "nao_incluso"
         ? "ROBÔ DE WHATSAPP COM IA: não está incluso no preço; o valor é combinado com a equipe (encaminhe para humano)."
         : "ROBÔ DE WHATSAPP COM IA: existe, mas condições e valor devem ser confirmados com a equipe (encaminhe para humano se perguntarem).",
-    `CADASTRO: ${cfg.link_cadastro} (clicar em "Cadastrar", criar a conta e montar o cardápio no painel).`,
+    `SITE: ${cfg.link_site} (apresentação do sistema, recursos e contato). Pode enviar quando quiserem conhecer melhor.`,
+    "CONTRATAÇÃO: não existe cadastro sozinho pelo site; a conta é ativada pela nossa equipe. Nunca mande link de cadastro ou login. Quem quiser contratar, testar ou ver o sistema funcionando é atendido por uma pessoa da equipe (encaminhe para humano).",
     cfg.link_demo ? `CARDÁPIO DE DEMONSTRAÇÃO: ${cfg.link_demo}` : "Não há link de demonstração; se pedirem demonstração, encaminhe para humano.",
     cfg.nome_remetente ? `Você fala em nome de ${cfg.nome_remetente}, do Easy Food Hub.` : "Você fala em nome do Easy Food Hub.",
     "",

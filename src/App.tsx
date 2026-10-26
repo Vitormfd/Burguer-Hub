@@ -23,6 +23,7 @@ import EstoqueAdmin from "./pages/EstoqueAdmin";
 import MarketingAdmin from "./pages/MarketingAdmin";
 import ProspeccaoAdmin from "./pages/ProspeccaoAdmin";
 import AcompanharPedido from "./pages/AcompanharPedido";
+import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
+            <Route path="/lp" element={<LandingPage />} />
             <Route path="/:referencia/cardapio" element={<CardapioPublico />} />
             <Route path="/cardapio" element={<CardapioPublico />} />
             <Route path="/pedido/:pedidoId" element={<AcompanharPedido />} />

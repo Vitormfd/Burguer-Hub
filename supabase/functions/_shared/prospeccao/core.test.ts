@@ -53,7 +53,7 @@ const cfg: ConfigProspeccao = {
   preco_mensal: 199,
   teste_gratis_dias: 0,
   bot_whatsapp: "consultar",
-  link_cadastro: "https://www.easyfoodhub.com.br/auth",
+  link_site: "https://easyfoodhub.com.br/lp",
   link_demo: "",
   nome_remetente: "",
   responder_automatico: true,

@@ -61,9 +61,15 @@ if (-not $linked) {
 }
 
 # 2) Migration ----------------------------------------------------------------------
-Step "Aplicando migration 20261026120000_prospeccao_agente.sql"
-npx supabase db query --linked --file "supabase\migrations\20261026120000_prospeccao_agente.sql"
-if ($LASTEXITCODE -ne 0) { Fail "Falha na migration. Nada foi publicado (o app segue como estava)." }
+$migrations = @(
+  "20261026120000_prospeccao_agente.sql",
+  "20261026150000_prospeccao_link_site.sql"
+)
+foreach ($m in $migrations) {
+  Step "Aplicando migration $m"
+  npx supabase db query --linked --file "supabase\migrations\$m"
+  if ($LASTEXITCODE -ne 0) { Fail "Falha na migration $m. As functions NAO foram publicadas." }
+}
 
 # 3) Administrador ------------------------------------------------------------------
 Step "Administrador da prospeccao"

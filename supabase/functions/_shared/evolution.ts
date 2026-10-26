@@ -126,6 +126,17 @@ export async function evolutionConnect(instance: string): Promise<string | null>
   return data.base64.startsWith("data:") ? data.base64 : `data:image/png;base64,${data.base64}`;
 }
 
+/**
+ * Código de pareamento para conectar pelo número (WhatsApp → Aparelhos conectados →
+ * Conectar com número de telefone), alternativa ao QR. Null se a Evolution não gerar.
+ */
+export async function evolutionPairingCode(instance: string, number: string): Promise<string | null> {
+  const data = await evoFetch<{ pairingCode?: string | null }>(
+    `/instance/connect/${encodeURIComponent(instance)}?number=${number.replace(/\D/g, "")}`,
+  );
+  return data?.pairingCode || null;
+}
+
 export async function evolutionLogout(instance: string): Promise<void> {
   await evoFetch(`/instance/logout/${encodeURIComponent(instance)}`, { method: "DELETE" });
 }

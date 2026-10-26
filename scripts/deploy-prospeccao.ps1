@@ -9,6 +9,10 @@
 #   5. Chaves opcionais: Anthropic (se ainda nao estiver salva) e Google Places
 #   6. Publica as Edge Functions prospeccao-agente e prospeccao-whatsapp
 # O agente nasce PAUSADO. Chaves nunca aparecem na tela nem ficam salvas em arquivo.
+#
+# Use -SoFuncoes para so republicar as Edge Functions (pula migrations, admin, cron e chaves).
+
+param([switch]$SoFuncoes)
 
 $ErrorActionPreference = "Stop"
 $ProjectRef = "iehcswmrufrpbvnwldkw"
@@ -60,6 +64,7 @@ if (-not $linked) {
   if ($LASTEXITCODE -ne 0) { Fail "Ainda sem acesso ao projeto $ProjectRef. Nada foi alterado." }
 }
 
+if (-not $SoFuncoes) {
 # 2) Migration ----------------------------------------------------------------------
 $migrations = @(
   "20261026120000_prospeccao_agente.sql",
@@ -141,6 +146,8 @@ $secretArgs = $null
 if (-not $temEvolution) {
   Write-Host "Aviso: secrets da Evolution (EVOLUTION_API_URL/KEY/WEBHOOK_SECRET) nao encontrados." -ForegroundColor Yellow
   Write-Host "O WhatsApp comercial so funciona depois de rodar .\scripts\deploy-whatsapp-evolution.ps1" -ForegroundColor Yellow
+}
+
 }
 
 # 6) Edge Functions ------------------------------------------------------------------------

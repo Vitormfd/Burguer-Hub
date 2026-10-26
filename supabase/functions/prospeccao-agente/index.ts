@@ -8,7 +8,7 @@
 //       gerar_mensagem            reescreve a mensagem sugerida de um prospect
 //       enviar                    envia primeiro contato / follow-up pelo WhatsApp comercial
 //       registrar_contato_manual  marca como contatado quando o envio foi feito fora daqui
-//       whatsapp_status | whatsapp_conectar | whatsapp_desconectar
+//       whatsapp_status | whatsapp_conectar | whatsapp_conectar_numero | whatsapp_desconectar
 //
 // O primeiro contato NUNCA sai sozinho: o cron só descobre, qualifica e prepara a mensagem.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -55,6 +55,7 @@ import {
   evolutionCreateInstance,
   evolutionInstanceInfo,
   evolutionLogout,
+  evolutionPairingCode,
   evolutionSendText,
   evolutionSetWebhook,
 } from "../_shared/evolution.ts";
@@ -529,7 +530,7 @@ async function gerarMensagem(sb: SupabaseClient, prospectId: string) {
   return { ok: true, mensagem: data?.mensagem_sugerida };
 }
 
-async function whatsapp(sb: SupabaseClient, acao: string) {
+async function whatsapp(sb: SupabaseClient, acao: string, numero?: string) {
   const cfg = await carregarConfig(sb);
   const instancia = cfg.evolution_instance;
   if (acao === "whatsapp_status") {
@@ -545,6 +546,13 @@ async function whatsapp(sb: SupabaseClient, acao: string) {
   if (!info) await evolutionCreateInstance(instancia, url);
   else await evolutionSetWebhook(instancia, url);
   if (info?.state === "open") return { ok: true, conectado: true, telefone: info.phone };
+  if (acao === "whatsapp_conectar_numero") {
+    const destino = numeroWhatsapp(numero);
+    if (!destino) return { ok: false, error: "Informe o celular do número comercial com DDD, ex.: (75) 99999-9999" };
+    const codigo = await evolutionPairingCode(instancia, destino);
+    if (!codigo) return { ok: false, error: "A Evolution não gerou o código. Tente de novo em alguns segundos ou use o QR Code." };
+    return { ok: true, conectado: false, codigo };
+  }
   const qr = await evolutionConnect(instancia);
   return { ok: true, conectado: !qr, qr };
 }
@@ -559,7 +567,7 @@ Deno.serve(async (req) => {
   if (!supabaseUrl || !serviceKey) return json({ error: "Configuração interna ausente" }, 500);
   const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
-  const body = (await req.json().catch(() => ({}))) as { acao?: string; prospect_id?: string; texto?: string; tipo?: string; canal?: string };
+  const body = (await req.json().catch(() => ({}))) as { acao?: string; prospect_id?: string; texto?: string; tipo?: string; canal?: string; numero?: string };
   const acao = body.acao || "tick";
 
   const cronSecret = Deno.env.get("PROSPECCAO_CRON_SECRET") || "";
@@ -593,7 +601,8 @@ Deno.serve(async (req) => {
       case "whatsapp_status":
       case "whatsapp_conectar":
       case "whatsapp_desconectar":
-        return json(await whatsapp(sb, acao));
+      case "whatsapp_conectar_numero":
+        return json(await whatsapp(sb, acao, body.numero));
       default:
         return json({ ok: false, error: `Ação desconhecida: ${acao}` }, 400);
     }

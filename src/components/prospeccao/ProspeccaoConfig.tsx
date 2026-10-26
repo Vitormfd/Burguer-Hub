@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { QrCode, Save, Unplug } from "lucide-react";
+import { QrCode, Save, Smartphone, Unplug } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,6 +42,12 @@ interface Config {
   responder_automatico: boolean;
   telefone_alertas: string;
 }
+
+const ESTADO_WHATSAPP: Record<string, string> = {
+  inexistente: "Não configurado",
+  connecting: "Aguardando conexão",
+  close: "Desconectado",
+};
 
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const FUSOS = ["America/Sao_Paulo", "America/Bahia", "America/Fortaleza", "America/Recife", "America/Belem", "America/Manaus", "America/Cuiaba", "America/Campo_Grande", "America/Porto_Velho", "America/Rio_Branco", "America/Noronha"];
@@ -281,13 +287,18 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
 function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Config>(k: K, v: Config[K]) => void }) {
   const [status, setStatus] = useState<{ estado: string; telefone: string | null } | null>(null);
   const [qr, setQr] = useState<string | null>(null);
+  const [codigo, setCodigo] = useState<string | null>(null);
+  const [numero, setNumero] = useState("");
   const [busy, setBusy] = useState(false);
 
   const verificar = useCallback(async () => {
     const r = await chamarAgente<{ estado?: string; telefone?: string | null }>({ acao: "whatsapp_status" });
     if (!r.ok) return setStatus({ estado: `erro: ${r.error}`, telefone: null });
     setStatus({ estado: r.estado || "?", telefone: r.telefone ?? null });
-    if (r.estado === "open") setQr(null);
+    if (r.estado === "open") {
+      setQr(null);
+      setCodigo(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -295,10 +306,10 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
   }, [verificar]);
 
   useEffect(() => {
-    if (!qr) return;
+    if (!qr && !codigo) return;
     const t = setInterval(() => void verificar(), 5000);
     return () => clearInterval(t);
-  }, [qr, verificar]);
+  }, [qr, codigo, verificar]);
 
   const conectar = async () => {
     setBusy(true);
@@ -306,8 +317,23 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
     setBusy(false);
     if (!r.ok) return toast.error(r.error || "Erro ao conectar");
     if (r.conectado) toast.success("WhatsApp comercial conectado");
+    setCodigo(null);
     setQr(r.qr || null);
     void verificar();
+  };
+
+  const conectarPorNumero = async () => {
+    if (numero.replace(/\D/g, "").length < 10) return toast.error("Digite o número comercial com DDD.");
+    setBusy(true);
+    const r = await chamarAgente<{ codigo?: string; conectado?: boolean }>({ acao: "whatsapp_conectar_numero", numero });
+    setBusy(false);
+    if (!r.ok) return toast.error(r.error || "Erro ao gerar o código");
+    if (r.conectado) {
+      toast.success("WhatsApp comercial já está conectado");
+      return void verificar();
+    }
+    setQr(null);
+    setCodigo(r.codigo || null);
   };
 
   const desconectar = async () => {
@@ -331,7 +357,7 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
           </p>
         </div>
         <span className={cn("text-sm font-medium", conectado ? "text-emerald-600" : "text-muted-foreground")}>
-          {status ? (conectado ? `Conectado${status.telefone ? ` (${status.telefone})` : ""}` : status.estado === "inexistente" ? "Não configurado" : status.estado) : "Verificando..."}
+          {status ? (conectado ? `Conectado${status.telefone ? ` (${status.telefone})` : ""}` : ESTADO_WHATSAPP[status.estado] ?? status.estado) : "Verificando..."}
         </span>
       </div>
 
@@ -348,6 +374,17 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
         </div>
       </div>
 
+      {!conectado && (
+        <div className="flex flex-wrap items-end gap-2">
+          <Campo rotulo="Conectar pelo número (sem QR Code)">
+            <Input value={numero} placeholder="Número comercial, ex.: (75) 99999-9999" onChange={(e) => setNumero(e.target.value)} className="w-72" />
+          </Campo>
+          <Button variant="secondary" onClick={conectarPorNumero} disabled={busy}>
+            <Smartphone className="h-4 w-4 mr-1" /> Gerar código
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={conectar} disabled={busy}>
           <QrCode className="h-4 w-4 mr-1" /> {conectado ? "Reconfigurar webhook" : "Conectar (QR Code)"}
@@ -358,6 +395,15 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
           </Button>
         )}
       </div>
+      {codigo && (
+        <div className="flex flex-col items-center gap-2 rounded-md border p-4">
+          <p className="font-mono text-3xl font-bold tracking-[0.3em]">{codigo.length === 8 ? `${codigo.slice(0, 4)}-${codigo.slice(4)}` : codigo}</p>
+          <p className="max-w-md text-center text-sm text-muted-foreground">
+            No celular, abra o <b>WhatsApp Business</b> do número comercial → ⋮ → <b>Aparelhos conectados</b> → <b>Conectar aparelho</b> →{" "}
+            <b>Conectar com número de telefone</b> e digite este código. Ele vale por poucos minutos; se expirar, gere outro.
+          </p>
+        </div>
+      )}
       {qr && (
         <div className="flex flex-col items-center gap-2">
           <img src={qr} alt="QR Code do WhatsApp" className="h-56 w-56 rounded border bg-white p-2" />

@@ -42,10 +42,20 @@ npx supabase link --project-ref $ProjectRef 2>&1 | Out-Host
 $linked = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = "Stop"
 if (-not $linked) {
+  # O login pelo navegador as vezes falha no Supabase ("Could not create CLI login session").
+  # O Access Token da conta dona funciona sempre e vale so para este processo.
   Write-Host "A conta logada no Supabase CLI nao tem acesso a este projeto." -ForegroundColor Yellow
-  Write-Host "Vou sair dela e abrir o login: entre com a conta DONA do Burguer Hub." -ForegroundColor Yellow
-  npx supabase logout --yes
-  npx supabase login
+  Write-Host "Entre no Supabase com a conta DONA do Burguer Hub e gere um token em:" -ForegroundColor Yellow
+  Write-Host "  https://supabase.com/dashboard/account/tokens  (Generate new token)" -ForegroundColor Yellow
+  Write-Host "Cole o token aqui (comeca com sbp_). Enter vazio = tentar o login pelo navegador." -ForegroundColor Yellow
+  $token = Read-Secret "SUPABASE_ACCESS_TOKEN"
+  if ($token) {
+    $env:SUPABASE_ACCESS_TOKEN = $token.Trim()
+  } else {
+    npx supabase logout --yes
+    npx supabase login
+  }
+  $token = $null
   npx supabase link --project-ref $ProjectRef
   if ($LASTEXITCODE -ne 0) { Fail "Ainda sem acesso ao projeto $ProjectRef. Nada foi alterado." }
 }

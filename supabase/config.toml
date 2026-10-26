@@ -9,3 +9,11 @@ verify_jwt = false
 # Chamado pelo pg_cron (header x-cron-secret) e pelo painel (JWT validado dentro da função).
 [functions.marketing-automacoes]
 verify_jwt = false
+
+# Prospecção: cron (x-cron-secret) e painel (JWT de admin validado dentro da função).
+[functions.prospeccao-agente]
+verify_jwt = false
+
+# Webhook da instância comercial da Evolution (protegido por ?secret=).
+[functions.prospeccao-whatsapp]
+verify_jwt = false

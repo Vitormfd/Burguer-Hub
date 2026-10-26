@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone, Boxes, Send } from "lucide-react";
+import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone, Boxes, Send, Radar } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -44,6 +44,13 @@ export function AppSidebar() {
   const [pendingCount, setPendingCount] = useState(0);
   const [storeName, setStoreName] = useState("Minha loja");
   const previousPendingRef = useRef<number | null>(null);
+  const [prospeccaoAdmin, setProspeccaoAdmin] = useState(false);
+
+  // Prospecção é da plataforma, não da loja: só aparece para o administrador.
+  useEffect(() => {
+    if (!user) return;
+    void supabase.rpc("is_prospeccao_admin" as never).then(({ data }) => setProspeccaoAdmin(Boolean(data)));
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -123,7 +130,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Operação</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => {
+              {[...items, ...(prospeccaoAdmin ? [{ title: "Prospecção", url: "/admin/prospeccao", icon: Radar }] : [])].map((item) => {
                 const active = pathname === item.url || (item.url === "/mesas" && pathname === "/");
                 return (
                   <SidebarMenuItem key={item.title}>

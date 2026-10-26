@@ -91,7 +91,7 @@ export async function evolutionInstanceInfo(
 }
 
 /** Cria a instância (sem importar histórico, ignorando grupos) já com o webhook. */
-export async function evolutionCreateInstance(instance: string): Promise<void> {
+export async function evolutionCreateInstance(instance: string, webhookUrl = evolutionWebhookUrl()): Promise<void> {
   await evoFetch("/instance/create", {
     method: "POST",
     body: {
@@ -104,13 +104,12 @@ export async function evolutionCreateInstance(instance: string): Promise<void> {
       readMessages: false,
       readStatus: false,
       syncFullHistory: false,
-      webhook: webhookConfig(evolutionWebhookUrl()),
+      webhook: webhookConfig(webhookUrl),
     },
   });
 }
 
-export async function evolutionSetWebhook(instance: string): Promise<string> {
-  const url = evolutionWebhookUrl();
+export async function evolutionSetWebhook(instance: string, url = evolutionWebhookUrl()): Promise<string> {
   await evoFetch(`/webhook/set/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: { webhook: webhookConfig(url) },

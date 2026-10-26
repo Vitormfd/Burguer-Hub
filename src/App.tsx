@@ -21,6 +21,7 @@ import Clientes from "./pages/Clientes";
 import HistoricoPedidos from "./pages/HistoricoPedidos";
 import EstoqueAdmin from "./pages/EstoqueAdmin";
 import MarketingAdmin from "./pages/MarketingAdmin";
+import ProspeccaoAdmin from "./pages/ProspeccaoAdmin";
 import AcompanharPedido from "./pages/AcompanharPedido";
 import NotFound from "./pages/NotFound";
 
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/admin/financeiro" element={<Financeiro />} />
               <Route path="/admin/estoque" element={<EstoqueAdmin />} />
               <Route path="/admin/marketing" element={<MarketingAdmin />} />
+              <Route path="/admin/prospeccao" element={<ProspeccaoAdmin />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>

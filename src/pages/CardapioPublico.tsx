@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
+import { ehErroAssinatura } from "@/lib/assinatura";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -251,6 +252,8 @@ export default function CardapioPublico() {
   const [recompensas, setRecompensas] = useState<Recompensa[]>([]);
   const [bairros, setBairros] = useState<BairroTaxa[]>([]);
   const [topSellers, setTopSellers] = useState<Set<string>>(new Set());
+  // Loja sem assinatura: clientes veem "indisponível"; o dono logado vê a prévia.
+  const [situacaoLoja, setSituacaoLoja] = useState<"ativa" | "previa" | "indisponivel">("ativa");
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const [adicionando, setAdicionando] = useState<Produto | null>(null);
@@ -314,6 +317,15 @@ export default function CardapioPublico() {
       
       // Then fetch other data filtered by owner_id
       const ownerId = (c as any)?.owner_id;
+
+      if (ownerId) {
+        void (async () => {
+          const { data: liberada, error } = await (supabase as any).rpc("conta_liberada", { p_owner: ownerId });
+          if (error || liberada !== false) return;
+          const { data: sessao } = await supabase.auth.getSession();
+          setSituacaoLoja(sessao.session?.user.id === ownerId ? "previa" : "indisponivel");
+        })();
+      }
       
       const [{ data: cat }, { data: prod }, { data: rewards }, { data: b }, { data: itens }] = await Promise.all([
         ownerId
@@ -1410,7 +1422,9 @@ export default function CardapioPublico() {
 
     if (rpcError || !rpcResult?.pedido_id) {
       setBusy(false);
-      return toast.error(rpcError?.message || "Erro ao criar pedido");
+      return toast.error(
+        ehErroAssinatura(rpcError?.message) ? "Esta loja ainda não está recebendo pedidos online." : rpcError?.message || "Erro ao criar pedido",
+      );
     }
 
     const pedidoId = String(rpcResult.pedido_id);
@@ -1456,6 +1470,17 @@ export default function CardapioPublico() {
 
   if (!cfg) return <div className="min-h-screen grid place-items-center">Carregando...</div>;
 
+  if (situacaoLoja === "indisponivel") {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[#f3f3f3] p-6 text-center text-zinc-900">
+        <div>
+          <h1 className="text-xl font-semibold">{cfg.nome_loja}</h1>
+          <p className="mt-2 text-zinc-600">Este cardápio ainda não está disponível.</p>
+        </div>
+      </div>
+    );
+  }
+
   const aberta = cfg.ativo && isOpenNow(cfg);
   const horarioHoje = getTodaySchedule(cfg);
   const diaHojeNome = DIAS_SEMANA_LABEL[new Date().getDay()];
@@ -1471,6 +1496,11 @@ export default function CardapioPublico() {
 
   return (
     <div className="min-h-screen pb-32 font-cardapio bg-[#f3f3f3] text-zinc-900" style={corStyle as React.CSSProperties}>
+      {situacaoLoja === "previa" && (
+        <div className="sticky top-0 z-50 bg-amber-100 px-4 py-2 text-center text-sm text-amber-950">
+          Prévia do seu cardápio. Seus clientes ainda não conseguem abrir nem pedir: assine o Easy Food Hub para ativar.
+        </div>
+      )}
       <style>{`
         .font-cardapio,
         .font-cardapio h1,

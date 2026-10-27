@@ -10,6 +10,7 @@ import {
   registrarMensagemDaLoja,
 } from "./db.ts";
 import { handleIncomingMessage } from "./flow.ts";
+import { contaLiberada } from "../_shared/assinatura.ts";
 import type { ZapiIncomingMessage } from "./format.ts";
 
 const corsHeaders = {
@@ -86,6 +87,10 @@ async function handleEvolution(req: Request, url: URL): Promise<Response> {
   if (!loja) {
     return json({ ok: true, skipped: "loja_not_found_or_inactive" });
   }
+  // Modo demonstração: sem assinatura o robô (e a IA) não responde.
+  if (!(await contaLiberada(supabase, loja.owner_id))) {
+    return json({ ok: true, skipped: "assinatura_inativa" });
+  }
 
   try {
     await handleIncomingMessage(
@@ -161,6 +166,9 @@ Deno.serve(async (req) => {
   if (!loja) {
     console.warn("zapi-webhook: loja nao encontrada para", instanceId);
     return json({ ok: true, skipped: "loja_not_found_or_inactive" });
+  }
+  if (!(await contaLiberada(supabase, loja.owner_id))) {
+    return json({ ok: true, skipped: "assinatura_inativa" });
   }
 
   try {

@@ -22,6 +22,7 @@ import HistoricoPedidos from "./pages/HistoricoPedidos";
 import EstoqueAdmin from "./pages/EstoqueAdmin";
 import MarketingAdmin from "./pages/MarketingAdmin";
 import ProspeccaoAdmin from "./pages/ProspeccaoAdmin";
+import AssinaturasAdmin from "./pages/AssinaturasAdmin";
 import AcompanharPedido from "./pages/AcompanharPedido";
 import { Inicio, IrParaPagina, PAGINA_DE_VENDAS } from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="/admin/estoque" element={<EstoqueAdmin />} />
               <Route path="/admin/marketing" element={<MarketingAdmin />} />
               <Route path="/admin/prospeccao" element={<ProspeccaoAdmin />} />
+              <Route path="/admin/assinaturas" element={<AssinaturasAdmin />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>

@@ -9,6 +9,7 @@
 // elas (reduz risco de bloqueio do número). O cron roda de hora em hora até bater o
 // limite diário configurado em cada automação.
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { contaLiberada, MSG_ASSINATURA_INATIVA } from "../_shared/assinatura.ts";
 import {
   formatBrazilMobile,
   publicBaseUrl,
@@ -259,6 +260,7 @@ Deno.serve(async (req) => {
     // Lojas em paralelo (instâncias de WhatsApp diferentes); mensagens de uma loja em sequência.
     const resultados = await Promise.all(
       owners.map(async (ownerId) => {
+        if (!(await contaLiberada(supabase, ownerId))) return { owner_id: ownerId, skipped: "assinatura_inativa" };
         try {
           return { owner_id: ownerId, resultados: await processarLoja(supabase, ownerId, { dryRun: false }) };
         } catch (err) {
@@ -273,6 +275,8 @@ Deno.serve(async (req) => {
   const { data: userData } = await supabase.auth.getUser(jwt);
   const ownerId = userData?.user?.id;
   if (!ownerId) return json({ ok: false, error: "Não autorizado" }, 401);
+
+  if (!dryRun && !(await contaLiberada(supabase, ownerId))) return json({ ok: false, error: MSG_ASSINATURA_INATIVA });
 
   if (!dryRun && fora) {
     return json({ ok: false, error: `Envios só entre ${HORA_INICIO}h e ${HORA_FIM}h (horário de Brasília).` });

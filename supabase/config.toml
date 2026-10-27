@@ -17,3 +17,7 @@ verify_jwt = false
 # Webhook da instância comercial da Evolution (protegido por ?secret=).
 [functions.prospeccao-whatsapp]
 verify_jwt = false
+
+# Webhook da Stripe (protegido pela assinatura Stripe-Signature).
+[functions.stripe-webhook]
+verify_jwt = false

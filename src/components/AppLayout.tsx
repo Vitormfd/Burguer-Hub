@@ -5,11 +5,14 @@ import { AtendimentoBanner, AtendimentoBell } from "./AtendimentoBell";
 import { useAuth } from "@/hooks/useAuth";
 import { useDeliveryOrderAlerts } from "@/hooks/useDeliveryOrderAlerts";
 import { useAtendimentoSolicitacoes } from "@/hooks/useAtendimentoSolicitacoes";
+import { useAssinatura } from "@/hooks/useAssinatura";
+import { AssinaturaBanner } from "./AssinaturaBanner";
 
 export default function AppLayout() {
   const { session, loading } = useAuth();
   useDeliveryOrderAlerts(!!session);
   const atendimento = useAtendimentoSolicitacoes(!!session);
+  const { assinatura, aguardandoPagamento } = useAssinatura(!!session);
 
   if (loading) {
     return (
@@ -33,6 +36,7 @@ export default function AppLayout() {
             </div>
           </header>
           <div className="sticky top-0 z-30">
+            <AssinaturaBanner assinatura={assinatura} aguardandoPagamento={aguardandoPagamento} />
             <AtendimentoBanner {...atendimento} />
           </div>
           <main className="flex-1 p-6 md:p-8">

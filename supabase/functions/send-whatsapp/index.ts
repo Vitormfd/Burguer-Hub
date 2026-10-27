@@ -9,6 +9,7 @@ import {
   evolutionSetWebhook,
 } from "../_shared/evolution.ts";
 import { publicBaseUrl } from "../_shared/whatsappText.ts";
+import { contaLiberada, MSG_ASSINATURA_INATIVA } from "../_shared/assinatura.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -200,6 +201,8 @@ Deno.serve(async (req) => {
       }
 
       // evolution_connect: cria a instância se preciso, garante o webhook e devolve o QR Code.
+      // Modo demonstração não conecta WhatsApp (não ocupa o servidor da Evolution).
+      if (!(await contaLiberada(supabase, ownerId))) return json({ ok: false, error: MSG_ASSINATURA_INATIVA }, 200);
       const instance = evolutionInstance || evolutionInstanceName(provider.id);
       let info = await evolutionInstanceInfo(instance);
       if (!info) {

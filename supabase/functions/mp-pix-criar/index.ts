@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { contaLiberada } from "../_shared/assinatura.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,10 @@ Deno.serve(async (req) => {
     if (!ownerId) return json({ error: "Loja inválida" }, 400);
     if (!orderPayload || typeof orderPayload !== "object") return json({ error: "Pedido inválido" }, 400);
     if (!(valor > 0)) return json({ error: "Valor do pedido inválido" }, 400);
+    // Sem assinatura a loja não recebe pedidos: não pode cobrar um Pix que viraria pedido recusado.
+    if (!(await contaLiberada(supabase, ownerId))) {
+      return json({ error: "Esta loja ainda não está recebendo pedidos online." }, 403);
+    }
 
     const { data: integracao, error: integracaoError } = await supabase
       .from("integracoes_pagamento")

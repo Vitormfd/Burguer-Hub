@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone, Boxes, Send, Radar } from "lucide-react";
+import { Utensils, Truck, BookOpen, BarChart3, LogOut, Settings, ListChecks, Trophy, Wallet, TicketPercent, History, Megaphone, Boxes, Send, Radar, CreditCard } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -130,7 +130,15 @@ export function AppSidebar() {
           <SidebarGroupLabel>Operação</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {[...items, ...(prospeccaoAdmin ? [{ title: "Prospecção", url: "/admin/prospeccao", icon: Radar }] : [])].map((item) => {
+              {[
+                ...items,
+                ...(prospeccaoAdmin
+                  ? [
+                      { title: "Prospecção", url: "/admin/prospeccao", icon: Radar },
+                      { title: "Assinaturas", url: "/admin/assinaturas", icon: CreditCard },
+                    ]
+                  : []),
+              ].map((item) => {
                 const active = pathname === item.url || (item.url === "/mesas" && pathname === "/");
                 return (
                   <SidebarMenuItem key={item.title}>

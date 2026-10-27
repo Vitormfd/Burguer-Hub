@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
-// A página de vendas é HTML puro em public/sistema-para-restaurante (o Google lê sem JavaScript).
+// A página de vendas é a landing do Base44 renderizada em HTML (public/sistema-para-restaurante e
+// demais nichos), gerada no repositório da landing com `npm run build:seo`.
 // Na Vercel, /lp já redireciona antes de chegar aqui (vercel.json); isto cobre o dev e links antigos.
 export const PAGINA_DE_VENDAS = "/sistema-para-restaurante";
 

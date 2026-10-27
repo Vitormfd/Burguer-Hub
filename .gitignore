@@ -30,3 +30,6 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# Landing (repositório próprio, EasyFoodHubLp). O build dela vai para public/ via npm run build:seo.
+LP/

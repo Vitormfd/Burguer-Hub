@@ -18,6 +18,7 @@ import {
   detectarSistema,
   efeitoDaIntencao,
   extrairValorMensal,
+  formatosPareamentoBR,
   inicioDoPeriodo,
   mensagemFollowup,
   mensagemReserva,
@@ -198,6 +199,12 @@ describe("5. deduplicação entre redes", () => {
     const ki = k(insta);
     expect([...k(maps)].some((x) => ki.has(x))).toBe(true);
     expect([...k(face)].some((x) => ki.has(x))).toBe(true);
+  });
+
+  it("gera o número do pareamento no formato do WhatsApp (sem o 9 fora de SP/RJ/ES)", () => {
+    expect(formatosPareamentoBR("(74) 99934-8744")).toEqual(["557499348744", "5574999348744"]);
+    expect(formatosPareamentoBR("11 98765-4321")).toEqual(["5511987654321", "551187654321"]);
+    expect(formatosPareamentoBR("(75) 3221-0000")).toEqual([]);
   });
 
   it("normaliza telefones em formatos diferentes para a mesma chave", () => {

@@ -148,6 +148,22 @@ export const numeroWhatsapp = (tel: string | null | undefined): string | null =>
   return t && t.length === 11 ? `55${t}` : null;
 };
 
+// DDDs em que o WhatsApp manteve o 9º dígito na identificação da conta (SP, RJ e ES).
+// Nos demais, a conta é "55 + DDD + 8 dígitos", sem o 9 da frente.
+const DDDS_COM_NONO_DIGITO = new Set(["11", "12", "13", "14", "15", "16", "17", "18", "19", "21", "22", "24", "27", "28"]);
+
+/**
+ * Formas do número para o código de pareamento: primeiro a que o WhatsApp costuma usar
+ * (sem o 9 fora de SP/RJ/ES), depois a outra. Vazio se não for celular BR.
+ */
+export function formatosPareamentoBR(tel: string | null | undefined): string[] {
+  const t = normalizarTelefoneBR(tel);
+  if (!t || t.length !== 11) return [];
+  const com9 = `55${t}`;
+  const sem9 = `55${t.slice(0, 2)}${t.slice(3)}`;
+  return DDDS_COM_NONO_DIGITO.has(t.slice(0, 2)) ? [com9, sem9] : [sem9, com9];
+}
+
 const URL_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 export function parseUrl(raw: string | null | undefined): URL | null {

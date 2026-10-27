@@ -322,10 +322,11 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
     void verificar();
   };
 
-  const conectarPorNumero = async () => {
+  const conectarPorNumero = async (alternativo = false) => {
     if (numero.replace(/\D/g, "").length < 10) return toast.error("Digite o número comercial com DDD.");
     setBusy(true);
-    const r = await chamarAgente<{ codigo?: string; conectado?: boolean }>({ acao: "whatsapp_conectar_numero", numero });
+    setCodigo(null);
+    const r = await chamarAgente<{ codigo?: string; conectado?: boolean }>({ acao: "whatsapp_conectar_numero", numero, alternativo });
     setBusy(false);
     if (!r.ok) return toast.error(r.error || "Erro ao gerar o código");
     if (r.conectado) {
@@ -379,7 +380,7 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
           <Campo rotulo="Conectar pelo número (sem QR Code)">
             <Input value={numero} placeholder="Número comercial, ex.: (75) 99999-9999" onChange={(e) => setNumero(e.target.value)} className="w-72" />
           </Campo>
-          <Button variant="secondary" onClick={conectarPorNumero} disabled={busy}>
+          <Button variant="secondary" onClick={() => conectarPorNumero()} disabled={busy}>
             <Smartphone className="h-4 w-4 mr-1" /> Gerar código
           </Button>
         </div>
@@ -402,6 +403,9 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
             No celular, abra o <b>WhatsApp Business</b> do número comercial → ⋮ → <b>Aparelhos conectados</b> → <b>Conectar aparelho</b> →{" "}
             <b>Conectar com número de telefone</b> e digite este código. Ele vale por poucos minutos; se expirar, gere outro.
           </p>
+          <Button variant="link" size="sm" onClick={() => conectarPorNumero(true)} disabled={busy}>
+            O WhatsApp recusou o código? Gerar no outro formato do número (com/sem o 9)
+          </Button>
         </div>
       )}
       {qr && (

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { chamarAgente, sb } from "@/lib/prospeccao";
+import { chamarAgente, dataHora, sb } from "@/lib/prospeccao";
 
 interface Config {
   ativo: boolean;
@@ -285,16 +285,18 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
 }
 
 function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Config>(k: K, v: Config[K]) => void }) {
-  const [status, setStatus] = useState<{ estado: string; telefone: string | null } | null>(null);
+  const [status, setStatus] = useState<{ estado: string; telefone: string | null; quedaMotivo: string | null; quedaEm: string | null } | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [codigo, setCodigo] = useState<string | null>(null);
   const [numero, setNumero] = useState("");
   const [busy, setBusy] = useState(false);
 
   const verificar = useCallback(async () => {
-    const r = await chamarAgente<{ estado?: string; telefone?: string | null }>({ acao: "whatsapp_status" });
-    if (!r.ok) return setStatus({ estado: `erro: ${r.error}`, telefone: null });
-    setStatus({ estado: r.estado || "?", telefone: r.telefone ?? null });
+    const r = await chamarAgente<{ estado?: string; telefone?: string | null; queda_motivo?: string | null; queda_em?: string | null }>({
+      acao: "whatsapp_status",
+    });
+    if (!r.ok) return setStatus({ estado: `erro: ${r.error}`, telefone: null, quedaMotivo: null, quedaEm: null });
+    setStatus({ estado: r.estado || "?", telefone: r.telefone ?? null, quedaMotivo: r.queda_motivo ?? null, quedaEm: r.queda_em ?? null });
     if (r.estado === "open") {
       setQr(null);
       setCodigo(null);
@@ -361,6 +363,12 @@ function WhatsappComercial({ cfg, set }: { cfg: Config; set: <K extends keyof Co
           {status ? (conectado ? `Conectado${status.telefone ? ` (${status.telefone})` : ""}` : ESTADO_WHATSAPP[status.estado] ?? status.estado) : "Verificando..."}
         </span>
       </div>
+
+      {!conectado && status?.quedaMotivo && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <strong>Última queda{status.quedaEm ? ` (${dataHora(status.quedaEm)})` : ""}:</strong> {status.quedaMotivo}
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-3">
         <Campo rotulo="Nome da instância na Evolution">

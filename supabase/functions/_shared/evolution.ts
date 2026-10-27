@@ -71,12 +71,17 @@ interface FetchedInstance {
   connectionStatus?: string;
   ownerJid?: string | null;
   number?: string | null;
+  disconnectionReasonCode?: number | null;
+  disconnectionAt?: string | null;
 }
 
-/** Estado da conexão e número conectado. Retorna null se a instância não existe. */
+/**
+ * Estado da conexão e número conectado. Retorna null se a instância não existe.
+ * quedaCodigo/quedaEm: motivo (código do Baileys) e hora da última desconexão.
+ */
 export async function evolutionInstanceInfo(
   instance: string,
-): Promise<{ state: EvolutionState; phone: string } | null> {
+): Promise<{ state: EvolutionState; phone: string; quedaCodigo: number | null; quedaEm: string | null } | null> {
   const list = await evoFetch<FetchedInstance[] | FetchedInstance>(
     `/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`,
   ).catch((err) => {
@@ -87,7 +92,12 @@ export async function evolutionInstanceInfo(
   const found = arr.find((i) => (i.name ?? i.instanceName) === instance);
   if (!found) return null;
   const phone = (found.ownerJid || found.number || "").split("@")[0].replace(/\D/g, "");
-  return { state: found.connectionStatus || "close", phone };
+  return {
+    state: found.connectionStatus || "close",
+    phone,
+    quedaCodigo: found.disconnectionReasonCode ?? null,
+    quedaEm: found.disconnectionAt ?? null,
+  };
 }
 
 /** Cria a instância (sem importar histórico, ignorando grupos) já com o webhook. */

@@ -33,6 +33,7 @@ import {
   prepararProspect,
   proximaBusca,
   proximaExecucao,
+  explicarQuedaWhatsapp,
   validarMensagem,
 } from "../_shared/prospeccao/core.ts";
 import {
@@ -489,6 +490,11 @@ async function enviar(sb: SupabaseClient, body: { prospect_id?: string; texto?: 
   } catch (err) {
     const c = classificarErro(err);
     if (c.tipo === "autenticacao" || c.tipo === "configuracao") await alertar(sb, cfg, `WhatsApp comercial: ${c.mensagem}`);
+    if (/connection closed|not connected|instance.*(close|not found)/i.test(c.mensagem)) {
+      const info = await evolutionInstanceInfo(cfg.evolution_instance).catch(() => null);
+      const motivo = explicarQuedaWhatsapp(info?.quedaCodigo) ?? "Motivo não informado.";
+      return { ok: false, error: `O WhatsApp comercial está desconectado. ${motivo} A mensagem não foi enviada.` };
+    }
     return { ok: false, error: `WhatsApp: ${c.mensagem}` };
   }
   const agora = new Date().toISOString();
@@ -541,7 +547,15 @@ async function whatsapp(sb: SupabaseClient, acao: string, numero?: string, alter
   const instancia = cfg.evolution_instance;
   if (acao === "whatsapp_status") {
     const info = await evolutionInstanceInfo(instancia);
-    return { ok: true, instancia, existe: Boolean(info), estado: info?.state ?? "inexistente", telefone: info?.phone ?? null };
+    return {
+      ok: true,
+      instancia,
+      existe: Boolean(info),
+      estado: info?.state ?? "inexistente",
+      telefone: info?.phone ?? null,
+      queda_em: info?.quedaEm ?? null,
+      queda_motivo: info?.state === "open" ? null : explicarQuedaWhatsapp(info?.quedaCodigo),
+    };
   }
   if (acao === "whatsapp_desconectar") {
     await evolutionLogout(instancia);

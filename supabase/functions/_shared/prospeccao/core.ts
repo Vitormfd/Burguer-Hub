@@ -1246,6 +1246,30 @@ export function classificarErro(err: unknown): { tipo: TipoErro; mensagem: strin
   return { tipo: "outro", mensagem: msg };
 }
 
+/** Motivo legível da última queda do WhatsApp (código de desconexão do Baileys, vindo da Evolution). */
+export function explicarQuedaWhatsapp(codigo: number | null | undefined): string | null {
+  if (codigo === null || codigo === undefined) return null;
+  switch (codigo) {
+    case 401:
+      return "O próprio WhatsApp desconectou o aparelho vinculado. Em número novo, é a proteção anti-spam: mensagens para quem não tem o número salvo, logo depois de conectar.";
+    case 403:
+      return "O WhatsApp bloqueou ou restringiu a conta. Abra o WhatsApp no celular para ver o aviso.";
+    case 440:
+      return "Outra conexão com este mesmo número derrubou esta (conexão substituída).";
+    case 411:
+      return "A versão do WhatsApp não é compatível com o aparelho vinculado. Atualize o WhatsApp no celular.";
+    case 500:
+      return "A sessão ficou corrompida no servidor do WhatsApp comercial. Conecte de novo.";
+    case 408:
+    case 428:
+    case 503:
+    case 515:
+      return "Queda de rede ou reinício do servidor. Costuma voltar sozinha; se não voltar, conecte de novo.";
+    default:
+      return `Motivo não identificado (código ${codigo}).`;
+  }
+}
+
 /** Texto com os fatos comerciais confirmados. A IA não pode afirmar nada além disto. */
 export function fatosDoProduto(cfg: Pick<ConfigProspeccao, "preco_mensal" | "teste_gratis_dias" | "bot_whatsapp" | "link_site" | "link_demo" | "nome_remetente">): string {
   const preco = cfg.preco_mensal.toFixed(2).replace(".", ",").replace(",00", "");

@@ -28,6 +28,7 @@ import {
   proximaBusca,
   proximaExecucao,
   proximaJanela,
+  explicarQuedaWhatsapp,
   validarMensagem,
 } from "./core.ts";
 
@@ -281,6 +282,13 @@ describe("6. mensagens personalizadas", () => {
     expect(validarMensagem("Boa tarde! Aqui é do Easy Food Hub. Tudo bem?", { ...ctx("sem_sistema"), envio: manha }).problemas).toEqual([
       '"boa tarde" fora do horário',
     ]);
+  });
+
+  it("explica o motivo da queda do WhatsApp", () => {
+    expect(explicarQuedaWhatsapp(null)).toBeNull();
+    expect(explicarQuedaWhatsapp(401)).toMatch(/anti-spam/);
+    expect(explicarQuedaWhatsapp(440)).toMatch(/substituída/);
+    expect(explicarQuedaWhatsapp(999)).toMatch(/código 999/);
   });
 
   it("follow-up também respeita as regras", () => {

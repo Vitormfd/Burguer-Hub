@@ -475,6 +475,7 @@ async function enviar(sb: SupabaseClient, body: { prospect_id?: string; texto?: 
     precoMensal: cfg.preco_mensal,
     testeGratisDias: cfg.teste_gratis_dias,
     valoresPermitidos: p.valor_concorrente ? [Number(p.valor_concorrente)] : [],
+    envio: { agora: new Date(), fuso: cfg.fuso },
   });
   if (!v.ok) return { ok: false, error: `Mensagem fora das regras: ${v.problemas.join("; ")}`, problemas: v.problemas };
 

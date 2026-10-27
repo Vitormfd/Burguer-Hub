@@ -233,6 +233,7 @@ async function mensagemDoProspect(sb: SupabaseClient, cfg: ConfigCompleta, phone
     precoMensal: cfg.preco_mensal,
     testeGratisDias: cfg.teste_gratis_dias,
     valoresPermitidos: comp ? [comp.valorConcorrente, Math.abs(comp.diferencaMensal), Math.abs(comp.diferencaAnual)] : [],
+    envio: { agora: new Date(), fuso: cfg.fuso },
   });
 
   let bloqueio: string | null = null;

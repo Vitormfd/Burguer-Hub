@@ -282,6 +282,8 @@ const REGRAS_MENSAGEM = `Regras obrigatórias para TODAS as mensagens:
 - Português brasileiro natural, como uma pessoa escreveria no WhatsApp. Curta: 2 a 4 frases, no máximo 450 caracteres.
 - Nunca use travessão (— ou –) nem hífen como pausa. Use vírgula ou ponto.
 - Deixe claro que é um contato comercial do Easy Food Hub (diga o nome Easy Food Hub).
+- Só diga um nome de pessoa se ele estiver nos FATOS DO PRODUTO. Sem nome, use "Aqui é do Easy Food Hub" ou "Sou do Easy Food Hub".
+- Não use "bom dia", "boa tarde" nem "boa noite": a mensagem pode ser enviada em outro horário. Use "Oi" ou "Olá".
 - Não finja ser cliente, não diga que fez pedido, provou ou testou o cardápio.
 - Não use elogios artificiais ("cardápio incrível", "fotos maravilhosas").
 - Não afirme problemas internos que ninguém relatou. Pode fazer uma pergunta sobre como eles trabalham.

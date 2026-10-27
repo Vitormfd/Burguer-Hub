@@ -909,6 +909,16 @@ export interface ContextoMensagem {
   precoMensal: number;
   testeGratisDias: number;
   valoresPermitidos?: number[];
+  /** Momento do envio. Sem ele (mensagem guardada para depois), "bom dia/boa tarde/boa noite" é barrado. */
+  envio?: { agora: Date; fuso: string };
+}
+
+/** Saudação que combina com a hora local: bom dia até 11h59, boa tarde até 17h59, boa noite depois. */
+export function saudacaoDaHora(agora: Date, fuso: string): "bom dia" | "boa tarde" | "boa noite" {
+  const h = Math.floor(horaLocal(agora, fuso).minutos / 60);
+  if (h >= 5 && h < 12) return "bom dia";
+  if (h >= 12 && h < 18) return "boa tarde";
+  return "boa noite";
 }
 
 const PROIBIDOS: [RegExp, string][] = [
@@ -920,6 +930,7 @@ const PROIBIDOS: [RegExp, string][] = [
   [/\b(anota ?a[ií])(?![a-z0-9]).{0,40}\b(ruim|p[eé]ssimo|caro demais|fraco|lixo|horr[ií]vel)/i, "ataca concorrente"],
   [/(card[aá]pio|perfil|p[aá]gina|fotos?|lanches?|trabalho)\s+(?:[eé]|s[aã]o|est[aá]|t[aá]|ficou|ficaram|muito|super|t[aã]o)?\s*(?:muito |super |t[aã]o )?(incr[ií]ve(l|is)|maravilhos[oa]s?|sensaciona(l|is)|perfeit[oa]s?|top demais|lind[oa]s?|espetacula(r|res))/i, "elogio artificial"],
   [/\b(desconto|promo[cç][aã]o de lan[cç]amento|primeiro m[eê]s (gr[aá]tis|de gra[cç]a)|cashback)\b/i, "oferece condição não configurada"],
+  [/\bmeu nome [eé] (d[oa]|aqui|o time|a equipe)\b/i, "apresentação sem nome"],
 ];
 
 export function semTravessao(texto: string): string {
@@ -950,6 +961,12 @@ export function validarMensagem(bruto: string, ctx: ContextoMensagem): Validacao
     problemas.push("cita Anota AI sem evidência de uso");
   }
   if (ctx.tipo === "primeiro_contato" && !/easy ?food ?hub/i.test(texto)) problemas.push("não se identifica como Easy Food Hub");
+
+  const saudacao = texto.match(/\b(bom dia|boa tarde|boa noite)\b/i)?.[1].toLowerCase();
+  if (saudacao) {
+    if (!ctx.envio) problemas.push("saudação de horário em mensagem que pode sair em outro horário");
+    else if (saudacao !== saudacaoDaHora(ctx.envio.agora, ctx.envio.fuso)) problemas.push(`"${saudacao}" fora do horário`);
+  }
 
   if (/gr[aá]tis|gratuit|de gra[cç]a|teste (de|por) \d+ dias/i.test(texto) && ctx.testeGratisDias <= 0) {
     problemas.push("oferece teste grátis não configurado");

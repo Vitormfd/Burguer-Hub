@@ -270,6 +270,19 @@ describe("6. mensagens personalizadas", () => {
     expect(validarMensagem("Oi! Easy Food Hub com 30 dias grátis.", { ...ctx("sem_sistema"), testeGratisDias: 30 }).ok).toBe(true);
   });
 
+  it("barra apresentação sem nome e saudação de horário errado", () => {
+    expect(validarMensagem("Boa tarde! Meu nome é do time do Easy Food Hub. Como recebem pedidos?", ctx("sem_sistema")).problemas).toEqual([
+      "apresentação sem nome",
+      "saudação de horário em mensagem que pode sair em outro horário",
+    ]);
+    // 10h em São Paulo = 13h UTC
+    const manha = { agora: new Date("2026-10-27T13:00:00Z"), fuso: "America/Sao_Paulo" };
+    expect(validarMensagem("Bom dia! Aqui é do Easy Food Hub. Tudo bem?", { ...ctx("sem_sistema"), envio: manha }).ok).toBe(true);
+    expect(validarMensagem("Boa tarde! Aqui é do Easy Food Hub. Tudo bem?", { ...ctx("sem_sistema"), envio: manha }).problemas).toEqual([
+      '"boa tarde" fora do horário',
+    ]);
+  });
+
   it("follow-up também respeita as regras", () => {
     expect(validarMensagem(mensagemFollowup("x"), { ...ctx("sem_sistema"), tipo: "followup" }).ok).toBe(true);
   });

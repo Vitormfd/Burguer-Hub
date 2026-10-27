@@ -25,15 +25,18 @@ const TIPO_LABEL: Record<string, string> = { descoberta: "Agenda", manual: "Manu
 export function ProspeccaoExecucoes({ versao }: { versao: number }) {
   const [linhas, setLinhas] = useState<Execucao[]>([]);
   const [buscas, setBuscas] = useState(0);
+  const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
     void (async () => {
+      setCarregando(true);
       const [{ data }, { count }] = await Promise.all([
         sb.from("prospeccao_execucoes").select("*").order("iniciada_em", { ascending: false }).limit(100),
         sb.from("prospeccao_buscas").select("id", { count: "exact", head: true }),
       ]);
       setLinhas(data || []);
       setBuscas(count || 0);
+      setCarregando(false);
     })();
   }, [versao]);
 
@@ -83,7 +86,7 @@ export function ProspeccaoExecucoes({ versao }: { versao: number }) {
             {!linhas.length && (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                  Nenhuma execução ainda.
+                  {carregando ? "Carregando..." : "Nenhuma execução ainda."}
                 </TableCell>
               </TableRow>
             )}

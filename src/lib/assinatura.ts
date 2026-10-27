@@ -3,7 +3,7 @@
 // são bloqueados no servidor (ver supabase/migrations/20261027120000_assinaturas.sql).
 
 /** Link de pagamento da Stripe (assinatura mensal). Vazio = botão leva ao WhatsApp. */
-export const LINK_PAGAMENTO_STRIPE = "";
+export const LINK_PAGAMENTO_STRIPE = "https://buy.stripe.com/eVqaEYgnlbfZczL2xi6kg06";
 
 export const PRECO_ASSINATURA = "R$ 199/mês";
 

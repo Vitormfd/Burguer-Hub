@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,7 +23,7 @@ import EstoqueAdmin from "./pages/EstoqueAdmin";
 import MarketingAdmin from "./pages/MarketingAdmin";
 import ProspeccaoAdmin from "./pages/ProspeccaoAdmin";
 import AcompanharPedido from "./pages/AcompanharPedido";
-import LandingPage from "./pages/LandingPage";
+import { Inicio, IrParaPagina, PAGINA_DE_VENDAS } from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,13 +36,13 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/lp" element={<LandingPage />} />
+            <Route path="/" element={<Inicio />} />
+            <Route path="/lp" element={<IrParaPagina to={PAGINA_DE_VENDAS} />} />
             <Route path="/:referencia/cardapio" element={<CardapioPublico />} />
             <Route path="/cardapio" element={<CardapioPublico />} />
             <Route path="/pedido/:pedidoId" element={<AcompanharPedido />} />
             <Route path="/auth" element={<Auth />} />
             <Route element={<AppLayout />}>
-              <Route path="/" element={<Navigate to="/mesas" replace />} />
               <Route path="/mesas" element={<Mesas />} />
               <Route path="/delivery" element={<Delivery />} />
               <Route path="/historico" element={<HistoricoPedidos />} />

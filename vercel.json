@@ -1,3 +1,4 @@
 {
+  "redirects": [{ "source": "/lp", "destination": "/sistema-para-restaurante", "permanent": true }],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

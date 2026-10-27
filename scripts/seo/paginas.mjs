@@ -13,7 +13,7 @@ export const paginas = [
     principal: true,
     rotulo: "Restaurantes",
     emoji: "🍽️",
-    titulo: "Sistema para Restaurante com Mesas e Delivery | Easy Food Hub",
+    titulo: "Sistema para Restaurante: Mesas e Delivery | Easy Food Hub",
     descricao:
       "Sistema para restaurante com gestão de mesas, delivery, cardápio digital e atendimento pelo WhatsApp. Funciona no navegador, sem instalar nada.",
     h1: "Sistema para restaurante: mesas, delivery e cardápio digital no mesmo lugar",
@@ -60,7 +60,7 @@ export const paginas = [
     alvo: "a sua hamburgueria",
     rotulo: "Hamburguerias",
     emoji: "🍔",
-    titulo: "Sistema para Hamburgueria com Cardápio e Delivery | Easy Food Hub",
+    titulo: "Sistema para Hamburgueria com Delivery | Easy Food Hub",
     descricao:
       "Sistema para hamburgueria com cardápio digital, adicionais, delivery com taxa por bairro, impressão de pedidos e atendimento automático no WhatsApp.",
     h1: "Sistema para hamburgueria: adicionais, delivery e pedidos sem confusão",
@@ -106,7 +106,7 @@ export const paginas = [
     alvo: "a sua pizzaria",
     rotulo: "Pizzarias",
     emoji: "🍕",
-    titulo: "Sistema para Pizzaria com Delivery e Cardápio Digital | Easy Food Hub",
+    titulo: "Sistema para Pizzaria com Delivery | Easy Food Hub",
     descricao:
       "Sistema para pizzaria com cardápio digital, delivery com taxa por bairro, pedidos pelo WhatsApp, impressão e controle de mesas. Funciona no navegador.",
     h1: "Sistema para pizzaria: delivery, cardápio e pedidos organizados",
@@ -152,7 +152,7 @@ export const paginas = [
     alvo: "a sua lanchonete",
     rotulo: "Lanchonetes",
     emoji: "🥪",
-    titulo: "Sistema para Lanchonete: Balcão, Mesas e Delivery | Easy Food Hub",
+    titulo: "Sistema para Lanchonete: Balcão e Delivery | Easy Food Hub",
     descricao:
       "Sistema para lanchonete com pedidos no balcão, mesas, delivery, cardápio digital e controle de estoque. Simples de usar, direto no navegador.",
     h1: "Sistema para lanchonete: balcão, mesas e delivery sem papelzinho",
@@ -198,7 +198,7 @@ export const paginas = [
     alvo: "o seu delivery",
     rotulo: "Delivery",
     emoji: "🛵",
-    titulo: "Sistema para Delivery com Cardápio Digital e Pix | Easy Food Hub",
+    titulo: "Sistema para Delivery com Pix e Cardápio | Easy Food Hub",
     descricao:
       "Sistema para delivery de comida com cardápio digital, taxa por bairro, Pix no pedido, acompanhamento pelo cliente e atendimento automático no WhatsApp.",
     h1: "Sistema para delivery: do pedido à entrega, tudo organizado",

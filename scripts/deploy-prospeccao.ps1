@@ -34,6 +34,21 @@ function Run-Sql($sql) {
   }
 }
 
+# Retorna "" se a chave funciona com o modelo do agente, ou o motivo da recusa.
+function Test-AnthropicKey($key) {
+  if ($key -notmatch '^sk-ant-') { return "nao parece uma chave da Anthropic (deve comecar com sk-ant-)" }
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  try {
+    Invoke-RestMethod -Uri "https://api.anthropic.com/v1/models/claude-opus-5-5" -Headers @{ "x-api-key" = $key; "anthropic-version" = "2023-06-01" } | Out-Null
+    return ""
+  } catch {
+    $status = $_.Exception.Response.StatusCode.value__
+    if ($status -eq 401) { return "chave invalida ou revogada (401)" }
+    if ($status -eq 404) { return "a conta nao tem acesso ao modelo claude-opus-5-5 (404)" }
+    return "erro ao testar ($status)"
+  }
+}
+
 function Read-Secret($nome) {
   $secure = Read-Host $nome -AsSecureString
   return [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
@@ -127,8 +142,17 @@ if ($temAnthropic) {
 } else {
   Write-Host "ANTHROPIC_API_KEY nao encontrada. Sem ela o agente NAO pesquisa (console.anthropic.com > API Keys)." -ForegroundColor Yellow
 }
-$anthropicKey = Read-Secret "ANTHROPIC_API_KEY"
-if ($anthropicKey) { $secretArgs += "ANTHROPIC_API_KEY=$anthropicKey" }
+$anthropicKey = (Read-Secret "ANTHROPIC_API_KEY").Trim()
+if ($anthropicKey) {
+  # Testa antes de salvar: uma chave errada derrubaria a IA do WhatsApp das lojas tambem.
+  $erroChave = Test-AnthropicKey $anthropicKey
+  if ($erroChave) {
+    Write-Host "Chave recusada ($erroChave). A chave atual foi MANTIDA." -ForegroundColor Red
+  } else {
+    $secretArgs += "ANTHROPIC_API_KEY=$anthropicKey"
+    Write-Host "Chave testada e aceita pela Anthropic." -ForegroundColor Green
+  }
+}
 $anthropicKey = $null
 
 Write-Host ""

@@ -387,6 +387,7 @@ describe("12. erros de integração", () => {
     expect(classificarErro(Object.assign(new Error("invalid x-api-key"), { status: 401 })).tipo).toBe("autenticacao");
     expect(classificarErro(new Error("Google Places HTTP 403: API key not valid")).tipo).toBe("autenticacao");
     expect(classificarErro(Object.assign(new Error("rate limit"), { status: 429 })).tipo).toBe("limite");
+    expect(classificarErro(new Error('400 {"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}')).tipo).toBe("saldo");
     expect(classificarErro(new Error("Evolution POST /message/sendText HTTP 502: bad gateway")).tipo).toBe("indisponivel");
     expect(classificarErro(new Error("ANTHROPIC_API_KEY não configurada")).tipo).toBe("configuracao");
   });

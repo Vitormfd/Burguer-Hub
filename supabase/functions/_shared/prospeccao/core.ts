@@ -1211,7 +1211,7 @@ export function custoUsd(u: { entrada?: number; saida?: number; cacheLeitura?: n
   return Math.round(c * 10000) / 10000;
 }
 
-export type TipoErro = "autenticacao" | "limite" | "indisponivel" | "configuracao" | "outro";
+export type TipoErro = "autenticacao" | "saldo" | "limite" | "indisponivel" | "configuracao" | "outro";
 
 export function classificarErro(err: unknown): { tipo: TipoErro; mensagem: string } {
   const msg = err instanceof Error ? err.message : String(err);
@@ -1219,6 +1219,8 @@ export function classificarErro(err: unknown): { tipo: TipoErro; mensagem: strin
   if (status === 401 || status === 403 || /invalid x-api-key|authentication|api key not valid|PERMISSION_DENIED|unauthorized/i.test(msg)) {
     return { tipo: "autenticacao", mensagem: msg };
   }
+  // Conta sem créditos chega como 400: não é culpa da busca, então não pode "queimá-la".
+  if (/credit balance is too low|insufficient.?(credit|balance|funds)|billing/i.test(msg)) return { tipo: "saldo", mensagem: msg };
   if (status === 429 || /rate.?limit|quota|RESOURCE_EXHAUSTED/i.test(msg)) return { tipo: "limite", mensagem: msg };
   if (status >= 500 || /timeout|timed out|ECONNRESET|fetch failed|overloaded|network/i.test(msg)) {
     return { tipo: "indisponivel", mensagem: msg };

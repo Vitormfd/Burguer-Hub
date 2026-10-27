@@ -136,9 +136,12 @@ const TODAS_UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "
 
 async function planejarBusca(sb: SupabaseClient, cfg: ConfigCompleta): Promise<BuscaPlanejada | null> {
   const desde = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
-  const feitas = await todasAsLinhas<{ chave: string }>((de, ate) =>
-    sb.from("prospeccao_buscas").select("chave").gte("executada_em", desde).order("executada_em").range(de, ate)
+  const historico = await todasAsLinhas<{ chave: string; fonte: string; executada_em: string }>((de, ate) =>
+    sb.from("prospeccao_buscas").select("chave, fonte, executada_em").gte("executada_em", desde).order("executada_em").range(de, ate)
   );
+  // Busca que deu erro volta a valer depois de 24h (o erro pode ter sido da conta, não da busca).
+  const umDia = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const feitas = historico.filter((b) => b.fonte !== "erro" || b.executada_em >= umDia);
   const jaFeitas = new Set(feitas.map((f) => f.chave));
   const contador = feitas.length;
 
@@ -397,6 +400,7 @@ async function cicloDescoberta(sb: SupabaseClient, manual: boolean): Promise<Rec
     await atualizarEstado(sb, { estado: "erro", proxima_execucao_em: proximaExecucao(cfg, null, new Date())?.toISOString() ?? null });
     const textoAlerta: Record<string, string> = {
       autenticacao: "A chave da Anthropic foi recusada (autenticação). O agente não consegue pesquisar até a chave ser corrigida.",
+      saldo: "A conta da Anthropic está sem créditos. Compre créditos em console.anthropic.com > Plans & Billing; o agente volta sozinho no próximo ciclo.",
       limite: "Limite de uso da API da Anthropic atingido. O agente tenta de novo nos próximos ciclos.",
       configuracao: `Configuração incompleta: ${c.mensagem}`,
       indisponivel: `Serviço externo indisponível: ${c.mensagem}`,

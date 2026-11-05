@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
+import { RastreamentoMeta } from "@/components/RastreamentoMeta";
+import { Privacidade, Termos } from "./pages/Legal";
 import Auth from "./pages/Auth";
 import Mesas from "./pages/Mesas";
 import Delivery from "./pages/Delivery";
@@ -36,8 +38,11 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <RastreamentoMeta />
           <Routes>
             <Route path="/" element={<Inicio />} />
+            <Route path="/privacidade" element={<Privacidade />} />
+            <Route path="/termos" element={<Termos />} />
             <Route path="/lp" element={<IrParaPagina to={PAGINA_DE_VENDAS} />} />
             <Route path="/:referencia/cardapio" element={<CardapioPublico />} />
             <Route path="/cardapio" element={<CardapioPublico />} />

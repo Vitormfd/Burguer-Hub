@@ -1,0 +1,9 @@
+{
+  "name": "efh-testes-banco",
+  "private": true,
+  "description": "Testes das migrations em Postgres local (PGlite), sem Docker e sem tocar em produção. Fica fora do package.json da raiz para não mudar a instalação do deploy.",
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "0.2.17"
+  }
+}

@@ -41,6 +41,7 @@ import type { BairroTaxa, CarrosselSlide, Configuracao, HorarioFuncionamentoDia,
 import { getCarrosselSlides, slidesToUrls } from "@/lib/carrossel";
 import { carregarTodasPromocoes, PROMOCAO_TIPO_LABELS, type Promocao } from "@/lib/promocoes";
 import { configureWhatsappWebhook } from "@/lib/whatsapp";
+import { useAssinatura } from "@/hooks/useAssinatura";
 import { EvolutionConnect } from "@/components/whatsapp/EvolutionConnect";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -251,6 +252,7 @@ function TestMsgModal({
 // --- Main Component ----------------------------------------------------------
 
 export default function Configuracoes() {
+  const { assinatura } = useAssinatura(true);
   const [cfg, setCfg] = useState<Configuracao | null>(null);
   const [bairros, setBairros] = useState<BairroTaxa[]>([]);
   const [produtosOpt, setProdutosOpt] = useState<ProdutoOpt[]>([]);
@@ -1433,6 +1435,13 @@ export default function Configuracoes() {
             <h2 className="font-display text-2xl flex items-center gap-2">
               <MessageSquare className="w-6 h-6 text-green-500" /> Integracao WhatsApp
             </h2>
+
+            {assinatura?.whatsapp_liberado === false && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+                O WhatsApp automático, a IA e o marketing são liberados com a assinatura. No teste grátis, os pedidos chegam
+                pelo cardápio online.
+              </p>
+            )}
 
             <div className="space-y-2">
               <Label>Provedor</Label>

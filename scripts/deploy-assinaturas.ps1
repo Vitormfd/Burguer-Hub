@@ -37,6 +37,9 @@ if (-not $linked) {
 }
 
 # 2) Migration -----------------------------------------------------------------------
+# Rodar de novo depois do teste grátis desfaz a regra do teste e libera à mão quem está em demonstração.
+Write-Host "ATENCAO: se 20261105120000_teste_gratis.sql ja foi aplicada, NAO continue: isto desfaz a regra do teste grátis e libera todas as contas sem assinatura." -ForegroundColor Red
+if ((Read-Host "Para continuar, digite SIM") -ne "SIM") { Fail "Cancelado. Nada foi alterado." }
 Step "Aplicando migration 20261027120000_assinaturas.sql"
 npx supabase db query --linked --file "supabase\migrations\20261027120000_assinaturas.sql"
 if ($LASTEXITCODE -ne 0) { Fail "Falha na migration. As functions NAO foram publicadas." }

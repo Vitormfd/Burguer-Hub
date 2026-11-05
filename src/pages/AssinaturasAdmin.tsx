@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import { STATUS_ASSINATURA } from "@/lib/assinatura";
 
 // Tabelas e funções da assinatura ainda não estão nos tipos gerados do Supabase.
@@ -24,7 +25,14 @@ interface Conta {
   stripe_status: string | null;
   periodo_fim: string | null;
   observacao: string | null;
+  teste_ate: string | null;
+  teste_whatsapp: boolean;
+  whatsapp_contato: string | null;
+  origem: Record<string, string> | null;
 }
+
+const emTeste = (c: Conta) => Boolean(c.teste_ate && new Date(c.teste_ate).getTime() > Date.now());
+const pagaPelaStripe = (c: Conta) => Boolean(c.stripe_status && ["active", "trialing", "past_due"].includes(c.stripe_status));
 
 interface EventoSemConta {
   id: string;
@@ -79,11 +87,21 @@ export default function AssinaturasAdmin() {
     void carregar();
   };
 
+  const definirTeste = async (c: Conta, dias: number | null, whatsapp: boolean | null, aviso: string) => {
+    setSalvando(c.owner_id);
+    const { error } = await sb.rpc("admin_definir_teste", { p_owner: c.owner_id, p_dias: dias, p_whatsapp: whatsapp });
+    setSalvando(null);
+    if (error) return toast.error(error.message);
+    toast.success(aviso);
+    void carregar();
+  };
+
   if (admin === null) return <p className="text-sm text-muted-foreground">Carregando...</p>;
   if (!admin) return <Card className="p-6 text-sm text-muted-foreground">Esta área é só para o administrador do Easy Food Hub.</Card>;
 
-  const pagantes = contas.filter((c) => c.stripe_status && ["active", "trialing", "past_due"].includes(c.stripe_status)).length;
+  const pagantes = contas.filter(pagaPelaStripe).length;
   const manuais = contas.filter((c) => c.liberado_manual).length;
+  const testes = contas.filter((c) => emTeste(c) && !pagaPelaStripe(c) && !c.liberado_manual).length;
   const demo = contas.filter((c) => !c.liberada).length;
 
   return (
@@ -91,14 +109,15 @@ export default function AssinaturasAdmin() {
       <div>
         <h1 className="font-display text-4xl text-foreground">Assinaturas</h1>
         <p className="text-muted-foreground mt-1">
-          Conta sem assinatura fica em modo demonstração: monta a loja, mas não registra pedidos, não abre mesas, não usa
-          WhatsApp e o cardápio público fica indisponível. “Liberada à mão” deixa operar sem Stripe (clientes antigos,
-          pagamento por fora, cortesia).
+          Conta nova tem 7 dias grátis para operar, sem WhatsApp, IA e marketing. Depois disso, sem assinatura, fica em modo
+          demonstração: monta a loja, mas não registra pedidos, não abre mesas e o cardápio público fica indisponível.
+          “Liberada à mão” deixa operar sem Stripe (clientes antigos, pagamento por fora, cortesia).
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Card className="p-4"><p className="text-sm text-muted-foreground">Pagando pela Stripe</p><p className="text-2xl font-bold">{pagantes}</p></Card>
+        <Card className="p-4"><p className="text-sm text-muted-foreground">Em teste grátis</p><p className="text-2xl font-bold">{testes}</p></Card>
         <Card className="p-4"><p className="text-sm text-muted-foreground">Liberadas à mão</p><p className="text-2xl font-bold">{manuais}</p></Card>
         <Card className="p-4"><p className="text-sm text-muted-foreground">Em demonstração</p><p className="text-2xl font-bold">{demo}</p></Card>
       </div>
@@ -129,6 +148,7 @@ export default function AssinaturasAdmin() {
               <TableHead className="text-right">Pedidos 30 dias</TableHead>
               <TableHead>Stripe</TableHead>
               <TableHead>Situação</TableHead>
+              <TableHead>Teste grátis</TableHead>
               <TableHead>Liberada à mão</TableHead>
             </TableRow>
           </TableHeader>
@@ -138,6 +158,12 @@ export default function AssinaturasAdmin() {
                 <TableCell>
                   <div className="font-medium">{c.nome_loja || c.nome || "—"}</div>
                   <div className="text-xs text-muted-foreground">{c.email}</div>
+                  {c.whatsapp_contato && <div className="text-xs text-muted-foreground">WhatsApp: {c.whatsapp_contato}</div>}
+                  {c.origem && (c.origem.utm_campaign || c.origem.utm_content || c.origem.utm_source) && (
+                    <div className="text-xs text-muted-foreground">
+                      Origem: {[c.origem.utm_source, c.origem.utm_campaign, c.origem.utm_content].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
                   {c.observacao && <div className="text-xs text-muted-foreground mt-1 max-w-xs">{c.observacao}</div>}
                 </TableCell>
                 <TableCell className="text-sm whitespace-nowrap">{data(c.criado_em)}</TableCell>
@@ -149,6 +175,43 @@ export default function AssinaturasAdmin() {
                 <TableCell>
                   <Badge variant={c.liberada ? "secondary" : "outline"}>{c.liberada ? "Operando" : "Demonstração"}</Badge>
                 </TableCell>
+                <TableCell className="text-sm">
+                  {emTeste(c) ? (
+                    <div className="space-y-2">
+                      <div className="whitespace-nowrap">até {data(c.teste_ate)}</div>
+                      <label className="flex items-center gap-2 text-xs whitespace-nowrap">
+                        <Switch
+                          checked={c.teste_whatsapp}
+                          disabled={salvando === c.owner_id}
+                          onCheckedChange={(v) => void definirTeste(c, null, v, v ? `WhatsApp liberado no teste de ${c.email}` : `WhatsApp bloqueado no teste de ${c.email}`)}
+                        />
+                        WhatsApp no teste
+                      </label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={salvando === c.owner_id}
+                        onClick={() => void definirTeste(c, 0, false, `Teste de ${c.email} encerrado`)}
+                      >
+                        Encerrar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {c.teste_ate && <div className="whitespace-nowrap text-xs text-muted-foreground">venceu em {data(c.teste_ate)}</div>}
+                      {!pagaPelaStripe(c) && !c.liberado_manual && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={salvando === c.owner_id}
+                          onClick={() => void definirTeste(c, 7, null, `${c.email} ganhou 7 dias de teste`)}
+                        >
+                          Dar 7 dias
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Switch checked={c.liberado_manual} disabled={salvando === c.owner_id} onCheckedChange={(v) => void liberar(c, v)} />
                 </TableCell>
@@ -156,7 +219,7 @@ export default function AssinaturasAdmin() {
             ))}
             {!filtradas.length && (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Nenhuma conta.</TableCell>
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Nenhuma conta.</TableCell>
               </TableRow>
             )}
           </TableBody>

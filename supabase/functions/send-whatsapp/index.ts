@@ -9,7 +9,8 @@ import {
   evolutionSetWebhook,
 } from "../_shared/evolution.ts";
 import { publicBaseUrl } from "../_shared/whatsappText.ts";
-import { contaLiberada, MSG_ASSINATURA_INATIVA } from "../_shared/assinatura.ts";
+import { MSG_WHATSAPP_BLOQUEADO, whatsappLiberado } from "../_shared/assinatura.ts";
+import { mesmoCelular, normalizarCelularBr, somenteDigitos } from "../_shared/telefone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,31 +45,8 @@ interface SendPayload {
   };
 }
 
-const normalizePhone = (value: string): string =>
-  value.replace(/\D/g, "").trim();
-
-/** Normaliza celular BR para 11 dígitos locais (DDD + 9 + número). */
-const normalizeBrazilMobile = (
-  value: string,
-): { local: string; formatted: string } | null => {
-  let digits = normalizePhone(value);
-  if (!digits) return null;
-
-  if (digits.startsWith("55") && digits.length > 11) {
-    digits = digits.slice(2);
-  }
-
-  // DDD (2) + 8 dígitos — celular sem o 9 extra (comum em APIs/WhatsApp)
-  if (digits.length === 10) {
-    digits = digits.slice(0, 2) + "9" + digits.slice(2);
-  }
-
-  if (digits.length !== 11 || digits[2] !== "9") {
-    return null;
-  }
-
-  return { local: digits, formatted: `55${digits}` };
-};
+const normalizePhone = somenteDigitos;
+const normalizeBrazilMobile = normalizarCelularBr;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -178,13 +156,23 @@ Deno.serve(async (req) => {
   const provider = cfg as unknown as { id: string; whatsapp_provider?: string; evolution_instance?: string | null };
   const isEvolution = provider.whatsapp_provider === "evolution";
   const evolutionInstance = provider.evolution_instance ?? null;
+  const ownerId = (cfg as { owner_id?: string | null }).owner_id;
+
+  const chamouODono = async (): Promise<boolean> => {
+    const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    const { data: userData } = await supabase.auth.getUser(jwt);
+    return Boolean(userData?.user && userData.user.id === ownerId);
+  };
+
+  // configuracao_id só vem do painel (teste, reenvio e conexão). O id da loja é público,
+  // então sem esta checagem qualquer pessoa usaria o WhatsApp da loja.
+  if (configuracao_id && !(await chamouODono())) {
+    return json({ ok: false, error: "Não autorizado" }, 403);
+  }
 
   // Ações da Evolution (conectar via QR, status, desconectar) — só o dono da loja.
   if (action === "evolution_connect" || action === "evolution_status" || action === "evolution_disconnect") {
-    const ownerId = (cfg as { owner_id?: string | null }).owner_id;
-    const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-    const { data: userData } = await supabase.auth.getUser(jwt);
-    if (!userData?.user || userData.user.id !== ownerId) {
+    if (!(await chamouODono())) {
       return json({ ok: false, error: "Não autorizado" }, 403);
     }
 
@@ -201,8 +189,8 @@ Deno.serve(async (req) => {
       }
 
       // evolution_connect: cria a instância se preciso, garante o webhook e devolve o QR Code.
-      // Modo demonstração não conecta WhatsApp (não ocupa o servidor da Evolution).
-      if (!(await contaLiberada(supabase, ownerId))) return json({ ok: false, error: MSG_ASSINATURA_INATIVA }, 200);
+      // Demonstração e teste grátis não conectam WhatsApp (não ocupam o servidor da Evolution).
+      if (!(await whatsappLiberado(supabase, ownerId))) return json({ ok: false, error: MSG_WHATSAPP_BLOQUEADO }, 200);
       const instance = evolutionInstance || evolutionInstanceName(provider.id);
       let info = await evolutionInstanceInfo(instance);
       if (!info) {
@@ -226,6 +214,10 @@ Deno.serve(async (req) => {
     } catch (err) {
       return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
     }
+  }
+
+  if (action === "configure_webhook" && !(await whatsappLiberado(supabase, ownerId))) {
+    return json({ ok: false, error: MSG_WHATSAPP_BLOQUEADO }, 200);
   }
 
   // Configure Z-API received webhook for WhatsApp orders bot
@@ -339,6 +331,25 @@ Deno.serve(async (req) => {
 
   if (!pedido_id || !tipo_mensagem || !telefone) {
     return json({ error: "pedido_id, tipo_mensagem e telefone são obrigatórios" }, 400);
+  }
+
+  // Conta vencida ou em teste não envia, mesmo com o número ainda conectado.
+  if (!(await whatsappLiberado(supabase, ownerId))) {
+    return json({ skipped: true, reason: "assinatura_inativa" });
+  }
+
+  // Sem configuracao_id a chamada pode vir do cardápio público (anônima): só envia para o
+  // telefone do próprio pedido. Sem isto, daria para mandar mensagem a qualquer número.
+  if (!configuracao_id) {
+    const { data: entregas } = await supabase
+      .from("entregas")
+      .select("cliente_telefone")
+      .eq("pedido_id", pedido_id)
+      .limit(5);
+    const doPedido = (entregas || []).some((e: { cliente_telefone: string | null }) => mesmoCelular(e.cliente_telefone, telefone));
+    if (!doPedido) {
+      return json({ skipped: true, reason: "telefone_fora_do_pedido" });
+    }
   }
 
   const phone = normalizeBrazilMobile(telefone);

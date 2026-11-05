@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
 import { ehErroAssinatura } from "@/lib/assinatura";
+import { formatScheduleRange, getTodaySchedule, lojaAbertaAgora as isOpenNow, normalizeTimeHHMM } from "@/lib/horarioLoja";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -111,69 +112,6 @@ const checkoutSchema = z.object({
 });
 
 const DIAS_SEMANA_LABEL = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
-
-const normalizeTimeHHMM = (value?: string | null) => {
-  if (!value) return "00:00";
-  return value.slice(0, 5);
-};
-
-const toMinutes = (hhmm: string) => {
-  const [h, m] = normalizeTimeHHMM(hhmm).split(":").map(Number);
-  return h * 60 + m;
-};
-
-const getWeeklySchedule = (cfg: Configuracao): HorarioFuncionamentoDia[] => {
-  const fallbackAbertura = normalizeTimeHHMM(cfg.hora_abertura);
-  const fallbackFechamento = normalizeTimeHHMM(cfg.hora_fechamento);
-  const byDay = new Map<number, HorarioFuncionamentoDia>();
-
-  if (Array.isArray(cfg.horario_funcionamento)) {
-    for (const raw of cfg.horario_funcionamento) {
-      if (!raw || typeof raw !== "object") continue;
-      const dia = Number((raw as { dia?: unknown }).dia);
-      if (!Number.isInteger(dia) || dia < 0 || dia > 6) continue;
-      byDay.set(dia, {
-        dia,
-        ativo: Boolean((raw as { ativo?: unknown }).ativo),
-        abertura: normalizeTimeHHMM((raw as { abertura?: string }).abertura) || fallbackAbertura,
-        fechamento: normalizeTimeHHMM((raw as { fechamento?: string }).fechamento) || fallbackFechamento,
-      });
-    }
-  }
-
-  return [0, 1, 2, 3, 4, 5, 6].map((dia) => {
-    return byDay.get(dia) ?? {
-      dia,
-      ativo: true,
-      abertura: fallbackAbertura,
-      fechamento: fallbackFechamento,
-    };
-  });
-};
-
-const getTodaySchedule = (cfg: Configuracao, date = new Date()) => {
-  const dia = date.getDay();
-  return getWeeklySchedule(cfg).find((item) => item.dia === dia) ?? null;
-};
-
-const formatScheduleRange = (item: HorarioFuncionamentoDia | null, cfg: Configuracao) => {
-  if (!item) {
-    return `${normalizeTimeHHMM(cfg.hora_abertura)} - ${normalizeTimeHHMM(cfg.hora_fechamento)}`;
-  }
-  if (!item.ativo) return "Fechado";
-  return `${normalizeTimeHHMM(item.abertura)} - ${normalizeTimeHHMM(item.fechamento)}`;
-};
-
-const isOpenNow = (cfg: Configuracao) => {
-  const today = getTodaySchedule(cfg);
-  if (!today || !today.ativo) return false;
-
-  const now = new Date();
-  const cur = now.getHours() * 60 + now.getMinutes();
-  const ini = toMinutes(today.abertura);
-  const fim = toMinutes(today.fechamento);
-  return fim > ini ? cur >= ini && cur <= fim : cur >= ini || cur <= fim;
-};
 
 const normalizeHexColor = (value?: string | null) => {
   if (!value) return "#16a34a";

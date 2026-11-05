@@ -1,4 +1,4 @@
-# Publica a cobrança do Easy Food Hub (Stripe) e o modo demonstração.
+﻿# Publica a cobrança do Easy Food Hub (Stripe) e o modo demonstração.
 # Uso: .\scripts\deploy-assinaturas.ps1
 #
 # O que faz (nessa ordem):

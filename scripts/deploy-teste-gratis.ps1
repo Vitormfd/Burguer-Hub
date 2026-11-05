@@ -1,4 +1,4 @@
-# Publica o teste grátis de 7 dias e as travas do WhatsApp.
+﻿# Publica o teste grátis de 7 dias e as travas do WhatsApp.
 # Uso: .\scripts\deploy-teste-gratis.ps1
 #
 # O que faz (nessa ordem, porque as functions dependem das funções novas do banco):
@@ -38,11 +38,11 @@ if (-not $linked) {
 }
 
 Step "Conferindo a migration de assinaturas"
-npx supabase db query --linked "select 1 from public.assinaturas limit 0" | Out-Null
+npx supabase db query --remote --read-only "select 1 from public.assinaturas limit 0" | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail "A tabela assinaturas não existe. Rode antes .\scripts\deploy-assinaturas.ps1. Nada foi alterado." }
 
 Step "Aplicando migration 20261105120000_teste_gratis.sql"
-npx supabase db query --linked --file "supabase\migrations\20261105120000_teste_gratis.sql"
+npx supabase db query --remote --yes --file "supabase\migrations\20261105120000_teste_gratis.sql"
 if ($LASTEXITCODE -ne 0) { Fail "Falha na migration. As functions NAO foram publicadas." }
 
 $funcoes = @(
@@ -52,13 +52,14 @@ $funcoes = @(
 )
 foreach ($f in $funcoes) {
   Step "Publicando $($f.nome)"
-  if ($f.semJwt) { npx supabase functions deploy $f.nome --project-ref $ProjectRef --no-verify-jwt }
-  else { npx supabase functions deploy $f.nome --project-ref $ProjectRef }
+  # CLI 3: sem Docker, o empacotamento é no servidor (--use-api); --yes confirma a alteração no projeto.
+  if ($f.semJwt) { npx supabase functions deploy $f.nome --use-api --yes --no-verify-jwt }
+  else { npx supabase functions deploy $f.nome --use-api --yes }
   if ($LASTEXITCODE -ne 0) { Fail "Falha ao publicar $($f.nome)." }
 }
 
 Step "Conferindo (só totais, sem dados pessoais)"
-npx supabase db query --linked "select count(*) filter (where public.conta_liberada(p.id)) as liberadas, count(*) filter (where a.teste_ate > now()) as em_teste, count(*) as contas, (select count(*) from pg_proc where proname = 'conta_whatsapp_liberada') as funcao_whatsapp from public.profiles p left join public.assinaturas a on a.owner_id = p.id"
+npx supabase db query --remote --read-only "select count(*) filter (where public.conta_liberada(p.id)) as liberadas, count(*) filter (where a.teste_ate > now()) as em_teste, count(*) as contas, (select count(*) from pg_proc where proname = 'conta_whatsapp_liberada') as funcao_whatsapp from public.profiles p left join public.assinaturas a on a.owner_id = p.id"
 
 Write-Host ""
 Write-Host "Concluido!" -ForegroundColor Green

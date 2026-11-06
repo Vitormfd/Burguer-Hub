@@ -1,7 +1,7 @@
 {
   "redirects": [{ "source": "/lp", "destination": "/sistema-para-restaurante", "permanent": true }],
   "rewrites": [
-    { "source": "/:pagina(sistema-para-[a-z-]+|cardapio-digital)", "destination": "/:pagina/index.html" },
+    { "source": "/:pagina(sistema-para-[a-z-]+|cardapio-digital|cardapio-sem-comissao)", "destination": "/:pagina/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

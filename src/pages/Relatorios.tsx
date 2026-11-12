@@ -3,7 +3,7 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   BarChart3, TrendingUp, TrendingDown, Info, ChevronRight,
-  Utensils, Truck, ShoppingBag, Calendar as CalendarIcon, Wallet, Eye,
+  Utensils, Truck, ShoppingBag, Calendar as CalendarIcon, Wallet, Eye, MapPin,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import { fetchPagamentosPeriodo } from "@/lib/caixaResumo";
 import { fetchVisitasCardapio, type VisitasCardapioResumo } from "@/lib/visitasCardapio";
 import { fetchInBatches } from "@/lib/supabaseBatch";
 import { selectPedidoItemAdicionais } from "@/lib/pedidoItemAdicionais";
+import { calcularRankingBairros, type BairrosRanking } from "@/lib/bairrosRanking";
 import { brl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -45,6 +46,7 @@ interface RangeKpi {
   vendasPorProduto: { nome: string; quantidade: number; receita: number }[];
   pagamentos: { forma: string; valor: number }[];
   visitas: VisitasCardapioResumo;
+  bairros: BairrosRanking;
 }
 
 interface CancelamentoDetalhe {
@@ -75,6 +77,7 @@ const emptyRange: RangeKpi = {
   faturamentoPrev: 0, pedidosPrev: 0, ticketPrev: 0,
   delivery: 0, retirada: 0, mesa: 0, vendasPorProduto: [], pagamentos: [],
   visitas: { visitas: 0, carrinho: 0, checkout: 0, pedidos: 0 },
+  bairros: { bairros: [], semBairro: { pedidos: 0, faturamento: 0 } },
 };
 
 const emptyCancelamentos: CancelamentosHojeKpi = {
@@ -102,7 +105,7 @@ async function fetchRangeData(ini: string, fim: string) {
     fetchFaturamentoPeriodo(ini, fim),
     supabase
       .from("pedidos")
-      .select("id, tipo_entrega, desconto, valor_desconto")
+      .select("id, tipo_entrega, total, subtotal, desconto, valor_desconto")
       .eq("tipo", "delivery")
       .neq("status", "cancelado")
       .gte("criado_em", ini)
@@ -137,12 +140,14 @@ async function fetchRangeData(ini: string, fim: string) {
 
   const allPedidoIds = [...new Set([...onlineIds, ...mesaIds])];
   const acc: VendasAcc = new Map();
+  const subtotalItensPorPedido = new Map<string, number>();
+  let bairros: BairrosRanking = emptyRange.bairros;
 
   if (allPedidoIds.length) {
     const itens = await fetchInBatches(allPedidoIds, (batch) =>
       supabase
         .from("pedido_itens")
-        .select("id, produto_id, quantidade, preco_unitario")
+        .select("id, pedido_id, produto_id, quantidade, preco_unitario")
         .in("pedido_id", batch)
         .eq("cancelado", false),
     );
@@ -150,6 +155,10 @@ async function fetchRangeData(ini: string, fim: string) {
     const itemIds: string[] = [];
     itens.forEach((item) => {
       itemIds.push(item.id);
+      subtotalItensPorPedido.set(
+        item.pedido_id,
+        (subtotalItensPorPedido.get(item.pedido_id) ?? 0) + Number(item.preco_unitario) * item.quantidade,
+      );
       addVenda(acc, item.produto_id ?? "—", item.quantidade, Number(item.preco_unitario) * item.quantidade);
     });
 
@@ -181,8 +190,10 @@ async function fetchRangeData(ini: string, fim: string) {
 
   if (onlineIds.length) {
     const entregas = await fetchInBatches(onlineIds, (batch) =>
-      supabase.from("entregas").select("pedido_id, taxa_entrega").in("pedido_id", batch),
+      supabase.from("entregas").select("pedido_id, taxa_entrega, bairro").in("pedido_id", batch),
     );
+
+    bairros = calcularRankingBairros(pedOnline, entregas, subtotalItensPorPedido);
 
     const pedidoMap = new Map(pedOnline.map((pedido) => [pedido.id, pedido]));
     entregas.forEach((entrega) => {
@@ -209,6 +220,7 @@ async function fetchRangeData(ini: string, fim: string) {
     retirada: faturamento.retirada.quantidade,
     mesa: faturamento.mesas.quantidade,
     acc,
+    bairros,
   };
 }
 
@@ -327,7 +339,7 @@ export default function Relatorios() {
         faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
         faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
         delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-        vendasPorProduto, pagamentos, visitas,
+        vendasPorProduto, pagamentos, visitas, bairros: cur.bairros,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao carregar relatório");
@@ -469,7 +481,7 @@ export default function Relatorios() {
         faturamento: cur.faturamento, pedidos: cur.pedidos, ticket: cur.ticket,
         faturamentoPrev: prev.faturamento, pedidosPrev: prev.pedidos, ticketPrev: prev.ticket,
         delivery: cur.delivery, retirada: cur.retirada, mesa: cur.mesa,
-        vendasPorProduto, pagamentos, visitas,
+        vendasPorProduto, pagamentos, visitas, bairros: cur.bairros,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao carregar relatório");
@@ -767,6 +779,65 @@ export default function Relatorios() {
                   {data.visitas.visitas - data.visitas.pedidos}
                 </TableCell>
               </TableRow>
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      <Card className="shadow-card">
+        <div className="p-5 border-b flex items-center gap-2">
+          <MapPin className="w-5 h-5 text-primary shrink-0" />
+          <div>
+            <h2 className="font-display text-2xl">Bairros que mais pedem</h2>
+            <p className="text-sm text-muted-foreground">
+              Pedidos de entrega no período, por bairro. Retirada no balcão e mesa não entram.
+            </p>
+          </div>
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground">Calculando...</div>
+        ) : data.bairros.bairros.length === 0 && data.bairros.semBairro.pedidos === 0 ? (
+          <div className="p-12 text-center text-muted-foreground">Nenhuma entrega registrada no período.</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">#</TableHead>
+                <TableHead>Bairro</TableHead>
+                <TableHead className="w-[30%] hidden sm:table-cell">Participação</TableHead>
+                <TableHead className="text-right w-20">Pedidos</TableHead>
+                <TableHead className="text-right w-32">Faturamento</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.bairros.bairros.map((b, idx) => {
+                const maxPedidos = data.bairros.bairros[0]?.pedidos || 1;
+                return (
+                  <TableRow key={b.chave}>
+                    <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                    <TableCell className="font-medium">{b.nome}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-primary"
+                          style={{ width: `${(b.pedidos / maxPedidos) * 100}%` }}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">{b.pedidos}</TableCell>
+                    <TableCell className="text-right font-semibold text-primary">{brl(b.faturamento)}</TableCell>
+                  </TableRow>
+                );
+              })}
+              {data.bairros.semBairro.pedidos > 0 && (
+                <TableRow>
+                  <TableCell />
+                  <TableCell className="text-muted-foreground italic">Sem bairro informado</TableCell>
+                  <TableCell className="hidden sm:table-cell" />
+                  <TableCell className="text-right text-muted-foreground">{data.bairros.semBairro.pedidos}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{brl(data.bairros.semBairro.faturamento)}</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         )}
